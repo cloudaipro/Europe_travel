@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vienna 5-Day Travel Guide</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #2c3e50;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px;
+            background-color: #fcfcfc;
+        }
+        
+        .header {
+            text-align: center;
+            border-bottom: 3px solid #8b0000;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        h1 {
+            color: #8b0000;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            margin-bottom: 5px;
+            font-size: 32px;
+        }
+        .subtitle { font-size: 18px; color: #7f8c8d; font-style: italic; }
+
+        .checklist {
+            background: #fff3cd;
+            padding: 20px 25px;
+            border-radius: 8px;
+            border-left: 6px solid #ffc107;
+            margin-bottom: 40px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .checklist h3 { margin-top: 0; color: #856404; }
+        .checklist ul { padding-left: 20px; margin-bottom: 0; }
+        .checklist li { margin-bottom: 8px; }
+
+        h2 {
+            color: #27ae60;
+            font-size: 24px;
+            margin-top: 50px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .event-card {
+            background: #ffffff;
+            border: 1px solid #ecf0f1;
+            border-left: 5px solid #2980b9;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 6px;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.04);
+            page-break-inside: avoid;
+        }
+        
+        .event-food { border-left-color: #e74c3c; }
+        .event-view { border-left-color: #f39c12; }
+        .event-walk { border-left-color: #27ae60; }
+        
+        .event-card h3 {
+            margin-top: 0;
+            color: #2c3e50;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+        .event-card h3 span { font-size: 22px; margin-right: 10px; }
+        
+        .address {
+            font-size: 14px;
+            color: #7f8c8d;
+            margin-top: 0;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+        }
+        .address a {
+            color: #3498db;
+            text-decoration: none;
+            font-weight: bold;
+            margin-left: 8px;
+        }
+        .address a:hover { text-decoration: underline; color: #2980b9; }
+
+        .tag {
+            font-weight: 700;
+            color: #34495e;
+            text-transform: uppercase;
+            font-size: 13px;
+            letter-spacing: 1px;
+            background: #ecf0f1;
+            padding: 3px 6px;
+            border-radius: 4px;
+            margin-right: 5px;
+        }
+        .event-desc { margin-top: 10px; margin-bottom: 0; }
+        .event-desc p { margin-top: 8px; margin-bottom: 0; }
+
+        #printBtn {
+            display: block;
+            width: 250px;
+            margin: 0 auto 30px;
+            padding: 15px;
+            text-align: center;
+            background: #8b0000;
+            color: white;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(139,0,0,0.2);
+            transition: all 0.2s ease;
+        }
+        #printBtn:hover { background: #600000; transform: translateY(-2px); }
+
+        @media print {
+            #printBtn { display: none !important; }
+            body { padding: 0; background-color: #fff; }
+            .event-card { box-shadow: none; border: 1px solid #ddd; border-left-width: 5px; }
+            .page-break { page-break-before: always; }
+            a[href]:after { content: none !important; }
+            .address a { color: #7f8c8d; text-decoration: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <button id="printBtn" onclick="window.print()">🖨️ Save as PDF</button>
+
+    <div class="header">
+        <h1>Vienna Travel Itinerary</h1>
+        <div class="subtitle">May 18 – May 22 | Local & Vlogger Secrets</div>
+    </div>
+
+    <div class="checklist">
+        <h3>🎒 Pre-Trip Checklist</h3>
+        <ul>
+            <li><strong>Download WienMobil App:</strong> Buy your 72-hour transit pass here. No turnstiles, but strict undercover checkers!</li>
+            <li><strong>Cash is King:</strong> Go to an ATM upon arrival. Many traditional spots on this list are cash-only.</li>
+            <li><strong>Tipping Etiquette:</strong> Don't leave money on the table. Tell the waiter the total you want to pay (rounding up 5-10%).</li>
+        </ul>
+    </div>
+
+    <!-- DAY 1 -->
+    <h2>🛬 Day 1: May 18 (Sunday) – Arrival & The First Authentic Bite</h2>
+    <p style="font-style: italic; color: #7f8c8d; margin-bottom: 20px;">You will arrive at 5:00 PM. By the time you drop your bags, it will be 6:30 PM. Let's dive straight into local culture.</p>
+
+    <div class="event-card event-food">
+        <h3><span>🥩</span> 7:30 PM – Dinner at Gastwirtschaft Steman</h3>
+        <p class="address">📍 Otto-Bauer-Gasse 7, 1060 Wien | <a href="https://www.google.com/maps/search/?api=1&query=Gastwirtschaft+Steman+Otto-Bauer-Gasse+7+1060+Wien" target="_blank">[Open in Google Maps]</a></p>
+        <div class="event-desc">
+            <p><span class="tag">The Spot</span> Recommended by local chefs. This 100-year-old traditional Wirtshaus (tavern) has zero tourist lines and an incredibly authentic, wood-paneled atmosphere.</p>
+            <p><span class="tag">The Food</span> Skip the tourist traps and get your first real Viennese Schnitzel here. Perfectly wavy, golden-fried veal. Squeeze fresh lemon over it and eat it alongside a traditional vinegary potato salad.</p>
+        </div>
+    </div>
+
+    <div class="event-card event-view">
+        <h3><span>🌆</span> 9:00 PM – The Vibe at Museumsquartier (MQ)</h3>
+        <p class="address">📍 Museumsplatz 1, 1070 Wien | <a href="https://www.google.com/maps/search/?api=1&query=Museumsquartier+Museumsplatz+1+1070+Wien" target="_blank">[Open in Google Maps]</a></p>
+        <div class="event-desc">
+            <p><span class="tag">The Spot</span> Locals hang out in the inner courtyard on the "Enzis" (giant, geometric lounge chairs). Grab a drink from the kiosk and sit under the evening lights to soak in the local Sunday night atmosphere.</p>
+        </div>
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- DAY 2 -->
+    <h2>☕ Day 2: May 19 (Monday) – Trams, Grandeur, and Imperial Feasts</h2>
+
+    <div class="event-card event-food">
+        <h3><span>🍰</span> 9:30 AM – Breakfast at Café Korb</h3>
+        <p class="address">📍 Brandstätte 9, 1010 Wien | <a href="https://www.google.com/maps/search/?api=1&query=Cafe+Korb+Brandstatte+9+1010+Wien" target="_blank">[Open in Google Maps]</a></p>
+        <div class="event-desc">
+            <p><span class="tag">The Spot</span> A mid-century modern coffeehouse beloved by local artists and writers. Experience the famous Wiener Schmäh (dry, charming waiter humor).</p>
+            <p><span class="tag">The Food</span> Order the Apfelstrudel sitting in a pool of vanilla sauce, paired with an Einspänner (black coffee topped with cold whipped cream).</p>
+        </div>
+    </div>
+
+    <div class="event-card event-walk">
+        <h3><span>🚋</span> 11:00 AM – The D-Tram Sightseeing Hack</h3>
+        <p class="address">📍 Start near Oper: Opernring 2, 1010 Wien | <a href="https://www.google.com/maps/search/?api=1&query=Vienna+State+Opera+Opernring+2+1010+Wien" target="_blank">[Open in Google Maps]</a></p>
+        <div class="event-desc">
+            <p><span class="tag">The Hack</span> Instead of a €35 tourist bus, board public Tram Line D using your transit pass. It loops directly around the Ringstraße, giving front-row views of the Opera House, Parliament, and Hofburg Palace.</p>
+        </div>
+    </div>
+
+    <div class="event-card event-view">
+        <h3><span>🏭</span> 3:30 PM – Quirky Architecture at Spittelau</h3>
+        <p class="address">📍 Spittelauer Lände 45, 1090 Wien | <a href="https://www.google.com/maps/search/?api=1&query=Spittelau+Lande+45+1090+Wien" target="_blank">[Open in Google Maps]</a></p>
+        <div class="event-desc">
+            <p><span class="tag">The Spot</span> Take the U-Bahn to Spittelau. Designed by eccentric architect Hundertwasser, this functioning waste plant looks like a psychedelic Willy Wonka factory. A massive hidden gem for photos.</p>
+        </div>
+    </div>
+
+    <div class="event-card event-food">
+        <h3><span>🍲</span> 7:00 PM – Dinner at Plachutta (Wollzeile)</h3>
+        <p class="address">📍 Wollzeile 38, 1010 Wien | <a href="https://www.google.com/maps/search/?api=1&query=Plachutta+Wollzeile+38+1010+Wien" target="_blank">[Open in Google Maps]</a></p>
+        <div class="event-desc">
+            <p><span class="tag">The Food</span> Emperor Franz Joseph’s favorite dish: Tafelspitz. Follow the 3 steps: 1) Drink the beef consommé. 2) Spread hot bone marrow onto toasted rye bread. 3) Eat the tender boiled beef with apple-horseradish.</p>
+        </div>
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- DAY 3 -->
+    <h2>🌿 Day 3: May 20 (Tuesday) – Hipster Grätzel & Vineyard Sunsets</h2>
+
+    <div class="event-card event-food">
+        <h3><span>👵</span> 9:30 AM – Breakfast at Vollpension</h3>
+        <p class="address">📍 Schleifmühlgasse 16, 1040 Wien | <a href="https://www.google.com/maps/search/?api=1&query=Vollpension+Schleifmuhlgasse+16+1040+Wien" target="_blank">[Open in Google Maps]</a></p>
+        <div class="event-desc">
+            <p><span class="tag">The Spot</span> A massive hit on YouTube. Designed like a retro living room and staffed entirely by local grandmas and grandpas (Omas and Opas) baking their own family cake recipes.</p>
+        </div>
+    </div>
+
+    <div class="event-card event-view">
+        <h3><span>🌇</span> 1:30 PM – Free Views at IKEA Westbahnhof</h3>
+        <p class="address">📍 Europaplatz 1, 1150 Wien | <a href="https://www.google.com/maps/search/?api=1&query=IKEA+Westbahnhof+Europaplatz+1+1150+Wien" target="_blank">[Open in Google Maps]</a></p>
+        <div class="event-desc">
+            <p><span class="tag">The Hack</span> Skip expensive tower entry fees. Take the escalator to the top of the eco-friendly, car-free IKEA. It has a completely free, public rooftop terrace offering spectacular panoramic views of Vienna.</p>
+        </div>
+    </div>
+
+    <div class="event-card event-walk">
+        <h3><span>🍇</span> 4:00 PM – Stadtwanderweg 1 & Heuriger Dinner</h3>
+        <p class="address">📍 Trail Start: Zahnradbahnstraße, 1190 Wien | <a href="https://www.google.com/maps/search/?api=1&query=Zahnradbahnstrasse+1190+Wien" target="_blank">[Open in Google Maps]</a></p>
+        <p class="address">📍 Dinner at Mayer am Pfarrplatz: Pfarrplatz 2, 1190 Wien | <a href="https://www.google.com/maps/search/?api=1&query=Mayer+am+Pfarrplatz+2+1190+Wien" target="_blank">[Open in Google Maps]</a></p>
+        <div class="event-desc">
+            <p><span class="tag">The Excursion</span> Take the D-Tram to Nußdorf and walk up the Stadtwanderweg 1 trail through active vineyards. Stop at a Heuriger (wine tavern) like Mayer am Pfarrplatz. Build a charcuterie board and drink Gemischter Satz (local white wine).</p>
+        </div>
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- DAY 4 -->
+    <h2>🌊 Day 4: May 21 (Wednesday) – Rivers, Markets & The Emperor's Mess</h2>
+
+    <div class="event-card event-walk">
+        <h3><span>🛍️</span> 10:00 AM – Karmelitermarkt</h3>
+        <p class="address">📍 Karmelitermarkt, 1020 Wien | <a href="https://www.google.com/maps/search/?api=1&query=Karmelitermarkt+1020+Wien" target="_blank">[Open in Google Maps]</a></p>
+        <div class="event-desc">
+            <p><span class="tag">The Spot</span> Skip the touristy Naschmarkt. Karmelitermarkt is a booming, trendy local market. Grab a coffee and browse the stalls.</p>
+        </div>
+    </div>
+
+    <div class="event-card event-view">
+        <h3><span>⛵</span> 3:00 PM – Boating on the Alte Donau (Old Danube)</h3>
+        <p class="address">📍 U-Bahn Alte Donau: Wagramer Str., 1220 Wien | <a href="https://www.google.com/maps/search/?api=1&query=Alte+Donau+Wagramer+Str+1220+Wien" target="_blank">[Open in Google Maps]</a></p>
+        <div class="event-desc">
+            <p><span class="tag">The Spot</span> Vienna’s water comes from the Alps. The Old Danube is a calm offshoot. Rent a retro electric boat to cruise the water and look at the skyline—a true local activity.</p>
+        </div>
+    </div>
+
+    <div class="event-card event-food">
+        <h3><span>🥞</span> 6:00 PM – The Sweet Finale at Demel</h3>
+        <p class="address">📍 Kohlmarkt 14, 1010 Wien | <a href="https://www.google.com/maps/search/?api=1&query=Cafe+Demel+Kohlmarkt+14+1010+Wien" target="_blank">[Open in Google Maps]</a></p>
+        <div class="event-desc">
+            <p><span class="tag">The Food</span> "The Emperor's Mess" (Kaiserschmarrn). A massive, caramelized pancake shredded into pieces, dusted with powdered sugar, and served with plum roaster. Watch the pastry chefs make it in the glass-walled kitchen.</p>
+        </div>
+    </div>
+
+    <div class="event-card event-food">
+        <h3><span>🌭</span> 8:30 PM – Night Cap at Bitzinger Würstelstand</h3>
+        <p class="address">📍 Albertinaplatz 1, 1010 Wien | <a href="https://www.google.com/maps/search/?api=1&query=Bitzinger+Wurstelstand+Albertinaplatz+1+1010+Wien" target="_blank">[Open in Google Maps]</a></p>
+        <div class="event-desc">
+            <p><span class="tag">The Food</span> Order a Käsekrainer (pork sausage injected with chunks of Emmental cheese). Get it sliced with an Ottakringer beer, eating under the glowing lights of the Opera House.</p>
+        </div>
+    </div>
+
+    <!-- DAY 5 -->
+    <h2>🛫 Day 5: May 22 (Thursday) – Departure Morning</h2>
+    
+    <div class="event-card event-walk">
+        <h3><span>🥐</span> 8:00 AM – The "Bakery Run" like a Local</h3>
+        <p class="address">📍 Any major U-Bahn station (e.g., Westbahnhof or Hauptbahnhof)</p>
+        <div class="event-desc">
+            <p><span class="tag">The Spot</span> Since you leave at 10:00 AM, skip the sit-down breakfast. Stop at a Ströck or Anker bakery inside the U-Bahn station. Grab a Topfengolatsche (sweet curd cheese pastry) and a coffee to go before heading to the airport/train!</p>
+        </div>
+    </div>
+
+</body>
+</html>
