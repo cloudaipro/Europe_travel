@@ -1,10 +1,10 @@
 * [Aggstein Castle](https://www.ruineaggstein.at)  -  [360-degree-tour](https://www.ruineaggstein.at/en/castle-ruin/360-degree-tour)  
-<img width="900" height="250" alt="image" src="https://github.com/user-attachments/assets/5ebd1e3d-816c-495b-bf60-f1c0c70e91b5" />
+<img width="900" height="250" alt="image" src="../imgs/Aggstein_Castle.png" />
 
 <br/>
 
 * [DDSG 觀光遊船 TIMETABLE](https://ddsg-blue-danube.at/cruises-wachau/?lang=en)  
-<img width="640" height="640" alt="image" src="https://github.com/user-attachments/assets/3526b7fb-18da-4f88-b698-62fb6f8024e2" />
+<img width="640" height="640" alt="image" src="../imgs/DDSG_route.png" />
 
 * 酒莊  
 [Weingut Hermenegild Man](https://www.weingut-hermenegild-mang.at)  
