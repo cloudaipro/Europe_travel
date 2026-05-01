@@ -14,34 +14,36 @@
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
 
-  /* ── Nav tabs ── */
-  .nav-tab { padding: 6px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; transition: all .15s; }
-  .nav-tab.active  { background: rgba(255,255,255,.18); color: #fff; }
-  .nav-tab.inactive{ color: rgba(255,255,255,.55); }
-  .nav-tab.inactive:hover { color: #fff; background: rgba(255,255,255,.1); }
+  /* ── App header ── */
+  .app-header { background: #fff; border-bottom: 1px solid #f1f5f9; }
 
-  /* ── Day tab pills (plan view) ── */
-  .day-tab {
-    display: flex; flex-direction: column; align-items: center;
-    padding: 8px 18px; border-radius: 12px; border: 2px solid transparent;
-    font-size: 13px; cursor: pointer; transition: all .15s; white-space: nowrap; flex-shrink: 0;
-  }
-  .day-tab.active  { background: #1e3a5f; color: #fff; border-color: #1e3a5f; }
-  .day-tab:not(.active) { background: #fff; color: #475569; border-color: #e2e8f0; }
-  .day-tab:not(.active):hover { border-color: #94a3b8; color: #1e3a5f; }
+  /* ── Nav tabs ── */
+  .nav-tab-wrap { background: #f1f5f9; border-radius: 999px; padding: 3px; display: flex; }
+  .nav-tab { padding: 6px 16px; border-radius: 999px; font-size: 13px; font-weight: 600; transition: all .15s; }
+  .nav-tab.active   { background: #0f172a; color: #fff; }
+  .nav-tab.inactive { color: #64748b; }
+  .nav-tab.inactive:hover { color: #1e293b; background: rgba(15,23,42,.06); }
 
   /* ── Stop card (plan) ── */
   .stop-card { transition: box-shadow .15s; }
   .stop-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,.08); }
   .stop-card summary { list-style: none; }
   .stop-card summary::-webkit-details-marker { display: none; }
-  .expand-icon { transition: transform .15s; font-size: 20px; font-weight: 300; color: #cbd5e1; }
+  .expand-icon { transition: transform .15s; font-size: 20px; font-weight: 300; color: #cbd5e1; flex-shrink: 0; }
   .stop-card[open] .expand-icon { transform: rotate(45deg); }
   .time-badge {
     font-size: 11px; font-weight: 700; font-family: monospace;
     color: #1d4ed8; background: #eff6ff; border-radius: 6px;
     padding: 3px 8px; white-space: nowrap; flex-shrink: 0; min-width: 44px; text-align: center;
   }
+
+  /* ── Stop category tag ── */
+  .stop-tag { font-size: 9px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
+
+  /* ── Walk connector ── */
+  .walk-connector { display: flex; align-items: center; gap: 8px; padding: 1px 16px; margin: 0; }
+  .walk-connector .wc-line { width: 1px; height: 18px; background: #e2e8f0; flex-shrink: 0; margin-left: 22px; }
+  .walk-connector .wc-label { font-size: 11px; color: #94a3b8; }
 
   /* ── Sidebar tabs ── */
   .stab { flex: 1; padding: 10px 4px; font-size: 11px; font-weight: 600; text-align: center; transition: all .15s; border-bottom: 2px solid transparent; }
@@ -59,8 +61,44 @@
   .current  { background: #fef3c7; border-color: #f59e0b !important; box-shadow: 0 0 0 3px rgba(245,158,11,.2); }
   .upcoming { background: #f8fafc; border-color: #e2e8f0 !important; opacity: .7; }
 
-  /* ── Trip hero gradient ── */
-  .trip-hero { background: linear-gradient(135deg, #0f2744 0%, #1d4ed8 65%, #6d28d9 100%); }
+  /* ── Trip hero ── */
+  .trip-hero { background: linear-gradient(135deg, #0a1f3a 0%, #0f2744 40%, #1a3fa8 75%, #5b21b6 100%); position: relative; overflow: hidden; }
+  .trip-hero::before { content:''; position:absolute; inset:0; background: radial-gradient(ellipse at 70% 50%, rgba(99,102,241,.25) 0%, transparent 65%); pointer-events:none; }
+  .hero-title { font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-weight: 700; line-height: 1.1; letter-spacing: -0.02em; }
+  .hero-meta-label { font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.4); margin-bottom: 4px; }
+  .hero-meta-val { font-size: 13px; font-weight: 500; color: rgba(255,255,255,.9); }
+  .hero-meta-sub { font-size: 10px; color: rgba(255,255,255,.4); margin-top: 2px; }
+
+  /* ── Booking item ── */
+  .bk-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12); border-radius: 10px; min-width: 148px; flex-shrink: 0; transition: background .15s; }
+  .bk-item.done { background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.25); }
+  .bk-icon { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.35); display:flex; align-items:center; justify-content:center; font-size:10px; color:rgba(255,255,255,.4); flex-shrink: 0; }
+  .bk-item.done .bk-icon { background: #10b981; border-color: #10b981; color: #fff; }
+  .progress-bar-track { height: 4px; background: rgba(255,255,255,.15); border-radius: 9999px; overflow:hidden; }
+  .progress-bar-fill { height: 100%; background: #60a5fa; border-radius: 9999px; transition: width .4s; }
+
+  /* ── Day tab (plan) ── */
+  .day-tab {
+    display: flex; align-items: center; gap: 5px;
+    padding: 7px 14px; border-radius: 999px; border: 1.5px solid transparent;
+    cursor: pointer; transition: all .15s; white-space: nowrap; flex-shrink: 0;
+  }
+  .day-tab.active  { background: #0f172a; color: #fff; border-color: #0f172a; }
+  .day-tab:not(.active) { background: #fff; color: #475569; border-color: #e2e8f0; }
+  .day-tab:not(.active):hover { border-color: #94a3b8; color: #1e293b; }
+  .day-tab .dt-code  { font-size: 11px; font-weight: 800; }
+  .day-tab.active .dt-code { opacity: .75; }
+  .day-tab .dt-sep   { font-size: 11px; opacity: .3; }
+  .day-tab .dt-theme { font-size: 12px; font-weight: 600; max-width: 100px; overflow: hidden; text-overflow: ellipsis; }
+  .day-tab .dt-date  { font-size: 11px; opacity: .5; }
+
+  /* ── Day stats ── */
+  .day-stat { display: flex; flex-direction: column; align-items: flex-end; }
+  .day-stat .ds-val { font-size: 17px; font-weight: 700; color: #1e293b; line-height: 1; }
+  .day-stat .ds-label { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #94a3b8; margin-top: 2px; }
+
+  /* ── File badge ── */
+  .file-badge { width: 32px; height: 32px; border-radius: 8px; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; flex-shrink:0; }
 
   /* ── Misc ── */
   #journey-map { height: 340px; border-radius: 12px; }
@@ -70,6 +108,22 @@
   .scroll-hide::-webkit-scrollbar { display: none; }
   .scroll-hide { -ms-overflow-style: none; scrollbar-width: none; }
   .leaflet-container { font-family: inherit; }
+
+  /* ── Plan full-canvas ── */
+  #tab-plan:not(.hidden) { display: block !important; }
+  .ptab { flex: 1; padding: 10px 6px; font-size: 12px; font-weight: 600; text-align: center; transition: all .15s; border-bottom: 2px solid transparent; color: #94a3b8; }
+  .ptab.active { color: #1d4ed8; border-color: #1d4ed8; }
+  .ptab:not(.active):hover { color: #475569; }
+  .plan-day-pill { padding: 5px 14px; border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s; white-space: nowrap; flex-shrink: 0; border: 1.5px solid transparent; }
+  .plan-day-pill.active { background: #1e293b; color: #fff; border-color: #1e293b; }
+  .plan-day-pill:not(.active) { background: rgba(255,255,255,.9); color: #475569; }
+  .plan-day-pill:not(.active):hover { color: #1e293b; background: #fff; }
+  .plan-stop-card { transition: box-shadow .15s, border-color .15s; }
+  .plan-stop-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+  .plan-stop-card summary { list-style: none; }
+  .plan-stop-card summary::-webkit-details-marker { display: none; }
+  .plan-stop-card[open] .expand-icon { transform: rotate(45deg); }
+  #plan-day-map { position: absolute; inset: 0; }
 </style>
 </head>
 <body class="bg-slate-100 min-h-screen">
@@ -114,15 +168,18 @@
 </div>
 
 <!-- ──────────────── Header ──────────────── -->
-<header class="bg-gradient-to-r from-slate-900 to-blue-900 text-white shadow-xl sticky top-0 z-30">
+<header class="app-header sticky top-0 z-30 shadow-sm">
   <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-      <span class="text-2xl leading-none">🧭</span>
+    <!-- Logo + breadcrumb -->
+    <div class="flex items-center gap-2.5">
+      <div class="w-7 h-7 bg-indigo-600 rounded-lg flex items-center justify-center text-white text-sm leading-none flex-shrink-0">📍</div>
+      <span class="font-bold text-slate-900 text-sm">TourCompanion</span>
+      <span class="text-slate-300 text-sm">/</span>
       <div class="relative">
         <button id="trip-picker-btn" onclick="toggleTripPicker(event)"
-          class="flex items-center gap-1.5 hover:opacity-80 transition">
-          <span id="trip-picker-name" class="text-sm font-semibold text-white leading-tight">loading…</span>
-          <span class="text-[10px] opacity-50">▾</span>
+          class="flex items-center gap-1 hover:opacity-70 transition">
+          <span id="trip-picker-name" class="text-sm text-slate-500 font-medium">loading…</span>
+          <span class="text-slate-400 text-[10px] ml-0.5">▾</span>
         </button>
         <div id="trip-picker-menu" class="hidden absolute mt-2 left-0 bg-white text-slate-800 rounded-xl shadow-2xl border border-slate-200 z-40 min-w-[300px] max-h-[60vh] overflow-y-auto">
           <div id="trip-picker-list" class="py-1"></div>
@@ -134,63 +191,49 @@
         </div>
       </div>
     </div>
-    <nav class="flex items-center gap-0.5">
-      <button id="tab-plan-btn"   onclick="setTab('plan')"   class="nav-tab active">📋 Plan</button>
-      <button id="tab-tour-btn"   onclick="setTab('tour')"   class="nav-tab inactive">🧭 Tour</button>
-      <button id="tab-memory-btn" onclick="setTab('memory')" class="nav-tab inactive">📔 Memory</button>
-      <button onclick="logout()" title="Log out"
-        class="ml-2 w-8 h-8 flex items-center justify-center rounded-lg text-white/50 hover:text-white hover:bg-white/10 transition text-base">⏻</button>
+    <!-- Center nav pills -->
+    <nav class="nav-tab-wrap">
+      <button id="tab-plan-btn"   onclick="setTab('plan')"   class="nav-tab active">Plan</button>
+      <button id="tab-tour-btn"   onclick="setTab('tour')"   class="nav-tab inactive">Tour</button>
+      <button id="tab-memory-btn" onclick="setTab('memory')" class="nav-tab inactive">Memory</button>
     </nav>
+    <!-- Right actions -->
+    <div class="flex items-center gap-1">
+      <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition text-sm">🔍</button>
+      <button onclick="logout()" title="Log out"
+        class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition text-sm">⏻</button>
+    </div>
   </div>
 </header>
 
+<!-- ─────────────── PLAN TAB (full canvas) ─────────────── -->
+<section id="tab-plan" class="fixed inset-x-0 bottom-0 z-20" style="top:56px">
+  <div class="absolute inset-0 flex">
+    <!-- Left: full-height map -->
+    <div class="relative flex-1 min-w-0 bg-slate-200">
+      <div id="plan-day-map"></div>
+      <!-- Floating day pills — top center -->
+      <div class="absolute top-4 left-0 right-0 z-[1000] flex justify-center pointer-events-none">
+        <div id="plan-day-tabs" class="flex gap-1 bg-white/90 backdrop-blur-sm rounded-full shadow-lg border border-white/40 px-2 py-1.5 pointer-events-auto overflow-x-auto scroll-hide" style="max-width:90%"></div>
+      </div>
+      <!-- Floating hero card — bottom left -->
+      <div id="plan-hero-card" class="absolute bottom-6 left-4 z-[1000]"></div>
+    </div>
+    <!-- Right: stop list panel -->
+    <div class="bg-white border-l border-slate-200 flex flex-col shadow-xl flex-shrink-0 overflow-hidden" style="width:38%;min-width:320px;max-width:520px">
+      <div id="plan-panel-header" class="px-5 pt-4 pb-3 border-b border-slate-100 flex-shrink-0"></div>
+      <div id="plan-day-header" class="px-5 py-3 border-b border-slate-100 flex-shrink-0"></div>
+      <div class="flex border-b border-slate-100 flex-shrink-0">
+        <button onclick="setPlanPanelTab('itinerary')" id="ptab-itinerary" class="ptab active">Itinerary</button>
+        <button onclick="setPlanPanelTab('docs')" id="ptab-docs" class="ptab">Docs</button>
+        <button onclick="setPlanPanelTab('food')" id="ptab-food" class="ptab">Food</button>
+      </div>
+      <div id="plan-day-content" class="flex-1 overflow-y-auto py-2"></div>
+    </div>
+  </div>
+</section>
+
 <main class="max-w-5xl mx-auto px-4 py-5">
-
-  <!-- ─────────────── PLAN TAB ─────────────── -->
-  <section id="tab-plan" class="block space-y-4">
-
-    <!-- Trip hero card -->
-    <div class="trip-hero rounded-2xl p-5 text-white shadow-lg">
-      <div class="flex items-start justify-between gap-4 mb-4">
-        <div class="flex-1 min-w-0">
-          <h2 id="trip-overview-name" class="text-2xl font-bold leading-tight mb-1"></h2>
-          <div id="trip-overview-meta" class="text-sm text-blue-100/80 space-y-0.5"></div>
-        </div>
-        <span id="trip-overview-status"
-          class="bg-white/15 backdrop-blur text-white text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap flex-shrink-0">
-          Planning ✓
-        </span>
-      </div>
-      <!-- Booking checklist -->
-      <div class="bg-white/10 rounded-xl p-4">
-        <h3 class="text-xs font-bold text-white/80 uppercase tracking-wide mb-2.5">⚠️ Pre-trip bookings</h3>
-        <ul id="booking-list" class="space-y-1.5"></ul>
-      </div>
-    </div>
-
-    <!-- Day tabs + sidebar row -->
-    <div class="flex gap-4 items-start">
-
-      <!-- Left: day tabs + stop list -->
-      <div class="flex-1 min-w-0 space-y-3">
-        <!-- Day tab strip -->
-        <div id="plan-day-tabs" class="flex gap-2 overflow-x-auto scroll-hide pb-0.5"></div>
-        <!-- Day theme line + stops -->
-        <div id="plan-day-content"></div>
-      </div>
-
-      <!-- Right: consolidated sidebar -->
-      <aside class="w-60 flex-shrink-0 bg-white rounded-2xl shadow-sm overflow-hidden">
-        <div class="flex border-b border-slate-100">
-          <button onclick="setSidebarTab('docs')" id="stab-docs" class="stab active">📚 Docs</button>
-          <button onclick="setSidebarTab('maps')" id="stab-maps" class="stab">🗺 Maps</button>
-          <button onclick="setSidebarTab('food')" id="stab-food" class="stab">🍴 Food</button>
-        </div>
-        <div id="sidebar-panel" class="p-3 space-y-1"></div>
-      </aside>
-
-    </div>
-  </section>
 
   <!-- ─────────────── TOUR TAB ─────────────── -->
   <section id="tab-tour" class="hidden space-y-4">
@@ -304,6 +347,7 @@ let API_TOKEN = localStorage.getItem("tc_token") || null;
 let API_USER_EMAIL = localStorage.getItem("tc_email") || null;
 let selectedPlanDay = 1;
 let currentSidebarTab = "docs";
+let currentPlanTab = "itinerary";
 
 const API_BASE = "/api";
 
@@ -592,59 +636,187 @@ function setTab(name) {
     btn.classList.toggle("inactive", t !== name);
   });
   if (name === "memory") setTimeout(initMap, 50);
+  if (name === "plan") setTimeout(() => { if (planMap) planMap.invalidateSize(); }, 60);
 }
 
 /* ════════════════════════════════════════════
    PLAN TAB — hero + day tabs + sidebar
    ════════════════════════════════════════════ */
 function renderPlan() {
-  // Hero: trip name + meta
-  document.getElementById("trip-overview-name").textContent = TRIP.name;
-  const meta = document.getElementById("trip-overview-meta");
-  const parts = [];
-  if (TRIP.dates) parts.push(`📅 ${TRIP.dates}`);
-  if (HOTEL.name) parts.push(`🏨 ${HOTEL.name}${HOTEL.address ? " · " + HOTEL.address : ""}`);
-  if (TRIP.source_url) {
-    let host = TRIP.source_url;
-    try { host = new URL(TRIP.source_url).hostname.replace("www.", ""); } catch(e) {}
-    parts.push(`📺 <a href="${TRIP.source_url}" target="_blank" class="underline hover:opacity-80">${host}</a>`);
-  }
-  meta.innerHTML = parts.join("<span class='mx-1.5 opacity-40'>·</span>");
-
-  // Hero: booking checklist
-  const bl = document.getElementById("booking-list");
-  bl.innerHTML = TRIP.bookings.map(b => `
-    <li class="flex items-start gap-2">
-      <span class="text-sm flex-shrink-0 ${b.done ? "text-emerald-400" : "text-amber-300"}">${b.done ? "✓" : "○"}</span>
-      <a href="${b.url}" target="_blank"
-        class="text-sm flex-1 ${b.done ? "line-through text-white/40" : "text-white/90 hover:text-white"}">${b.label}</a>
-    </li>
-  `).join("");
-
-  // Day tabs (default to day 1)
   selectedPlanDay = 1;
-  renderPlanDayTabs();
-  renderPlanDayContent(selectedPlanDay);
 
-  // Sidebar (default: docs)
-  setSidebarTab("docs");
+  // Panel header: trip name + dates + hotel
+  const panelHeader = document.getElementById("plan-panel-header");
+  if (panelHeader) {
+    const dateRange = TRIP.dates ? TRIP.dates.replace("→", "—") : "";
+    panelHeader.innerHTML = `
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <h2 class="font-bold text-slate-900 text-base leading-tight truncate">${TRIP.name}</h2>
+          <div class="text-xs text-slate-400 mt-0.5">${dateRange}${HOTEL.name ? " · " + HOTEL.name : ""}</div>
+        </div>
+        <div class="flex gap-1 flex-shrink-0">
+          <button onclick="openNewTripModal()" title="New trip"
+            class="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 text-sm transition">＋</button>
+        </div>
+      </div>`;
+  }
+
+  renderPlanDayTabs();
+  renderPlanDayMap(selectedPlanDay);
+  renderPlanDayHeader(selectedPlanDay);
+  renderPlanHeroCard(selectedPlanDay);
+  setPlanPanelTab("itinerary");
+}
+
+function renderPlanDayHeader(n) {
+  const day = TRIP.days.find(d => d.n === n);
+  const el = document.getElementById("plan-day-header");
+  if (!el || !day) return;
+  const themeParts = (day.theme || "").split(/\s*[·—]\s*/);
+  const themeTitle = themeParts[0] || ("Day " + day.n);
+  const walkKm = (day.stops.length * 1.4).toFixed(1);
+  el.innerHTML = `
+    <div class="text-xs text-slate-400 font-medium mb-0.5">Day ${day.n} · ${day.date}</div>
+    <div class="flex items-end justify-between gap-2">
+      <h3 class="text-xl font-bold text-slate-800 leading-tight flex-1 min-w-0 truncate">${themeTitle}</h3>
+      <div class="flex gap-4 flex-shrink-0">
+        <div class="text-center">
+          <div class="text-sm font-bold text-slate-800 leading-none">${day.stops.length}</div>
+          <div class="text-[10px] text-slate-400 uppercase tracking-wide mt-0.5">Stops</div>
+        </div>
+        <div class="text-center">
+          <div class="text-sm font-bold text-slate-800 leading-none">${walkKm} km</div>
+          <div class="text-[10px] text-slate-400 uppercase tracking-wide mt-0.5">Walk</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderPlanHeroCard(n) {
+  const day = TRIP.days.find(d => d.n === n);
+  const el = document.getElementById("plan-hero-card");
+  if (!el || !day) return;
+  const themeParts = (day.theme || "").split(/\s*[·—]\s*/);
+  const themeTitle = themeParts[0] || ("Day " + day.n);
+  const themeSub = themeParts.slice(1).join(" · ");
+  const walkKm = (day.stops.length * 1.4).toFixed(1);
+  el.innerHTML = `
+    <div class="bg-slate-900/95 backdrop-blur-sm text-white rounded-2xl p-4 shadow-2xl" style="min-width:210px;max-width:280px">
+      <div class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Day ${day.n} · ${day.date}</div>
+      <div class="text-lg font-bold leading-tight mb-1">${themeTitle}</div>
+      ${themeSub ? `<div class="text-xs text-slate-400 mb-3 leading-snug">${themeSub}</div>` : `<div class="mb-3"></div>`}
+      <div class="flex gap-5">
+        <div><div class="text-sm font-bold">${day.stops.length}</div><div class="text-[10px] text-slate-400 uppercase tracking-[.08em]">Stops</div></div>
+        <div><div class="text-sm font-bold">${walkKm} km</div><div class="text-[10px] text-slate-400 uppercase tracking-[.08em]">Walk</div></div>
+      </div>
+    </div>`;
 }
 
 function renderPlanDayTabs() {
   const el = document.getElementById("plan-day-tabs");
   if (!el) return;
-  el.innerHTML = TRIP.days.map(d => `
-    <button onclick="selectPlanDay(${d.n})" class="day-tab ${d.n === selectedPlanDay ? "active" : ""}">
-      <span class="text-xs font-bold">Day ${d.n}</span>
-      <span class="text-[10px] opacity-60">${d.date.split(" ").slice(0,2).join(" ")}</span>
-    </button>
-  `).join("");
+  el.innerHTML = TRIP.days.map(d => {
+    const shortDate = d.date.split(" ").slice(0, 2).join(" ");
+    return `
+      <button onclick="selectPlanDay(${d.n})" class="plan-day-pill ${d.n === selectedPlanDay ? "active" : ""}">
+        <span style="font-size:10px;opacity:.65;margin-right:4px">D${d.n}</span>${shortDate}
+      </button>`;
+  }).join("");
 }
 
 function selectPlanDay(n) {
   selectedPlanDay = n;
   renderPlanDayTabs();
-  renderPlanDayContent(n);
+  renderPlanDayMap(n);
+  renderPlanDayHeader(n);
+  renderPlanHeroCard(n);
+  if (currentPlanTab === "itinerary") renderPlanDayContent(n);
+}
+
+/* ── Plan day route map ── */
+let planMap = null;
+let _planMapLayers = [];
+
+function renderPlanDayMap(n) {
+  const day = TRIP.days.find(d => d.n === n);
+  const el  = document.getElementById("plan-day-map");
+  if (!el || !day) return;
+
+  if (!planMap) {
+    planMap = L.map("plan-day-map", { scrollWheelZoom: true, zoomControl: false });
+    L.control.zoom({ position: "bottomright" }).addTo(planMap);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap", maxZoom: 19
+    }).addTo(planMap);
+  } else {
+    _planMapLayers.forEach(l => l.remove());
+    _planMapLayers = [];
+  }
+
+  const stops = day.stops.filter(s => s.lat && s.lng);
+  if (stops.length === 0) {
+    setTimeout(() => { planMap.invalidateSize(); planMap.setView([47.4979, 19.0402], 13); }, 60);
+    return;
+  }
+
+  const coords = stops.map(s => [s.lat, s.lng]);
+
+  // Hotel marker
+  if (HOTEL.lat && HOTEL.lng) {
+    const hIcon = L.divIcon({
+      className: "",
+      html: `<div style="width:28px;height:28px;background:#10b981;border:2.5px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.3)">🏨</div>`,
+      iconSize: [28, 28], iconAnchor: [14, 14]
+    });
+    _planMapLayers.push(L.marker([HOTEL.lat, HOTEL.lng], { icon: hIcon }).addTo(planMap).bindPopup(`<b>${HOTEL.name}</b>`));
+  }
+
+  // Numbered stop markers
+  stops.forEach((s, i) => {
+    const isFirst = i === 0, isLast = i === stops.length - 1;
+    const bg = isFirst ? "#1d4ed8" : isLast ? "#7c3aed" : "#1d4ed8";
+    const icon = L.divIcon({
+      className: "",
+      html: `<div style="width:28px;height:28px;background:${bg};border:2.5px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;box-shadow:0 2px 8px rgba(0,0,0,.3)">${i+1}</div>`,
+      iconSize: [28, 28], iconAnchor: [14, 14]
+    });
+    _planMapLayers.push(
+      L.marker([s.lat, s.lng], { icon })
+        .addTo(planMap)
+        .bindPopup(`<b style="font-size:12px">${s.time} · ${s.name}</b>${s.address ? `<br><span style="color:#64748b;font-size:11px">${s.address.split(",")[0]}</span>` : ""}`)
+    );
+  });
+
+  // Route polyline
+  if (coords.length >= 2) {
+    _planMapLayers.push(
+      L.polyline(coords, { color: "#3b82f6", weight: 3, opacity: 0.75, dashArray: "8 6" }).addTo(planMap)
+    );
+  }
+
+  setTimeout(() => {
+    planMap.invalidateSize();
+    if (coords.length === 1) planMap.setView(coords[0], 15);
+    else planMap.fitBounds(L.latLngBounds(coords).pad(0.18));
+  }, 30);
+}
+
+function _stopCategory(s) {
+  const nm = (s.name + " " + (s.address || "") + " " + (s.tickets || "")).toLowerCase();
+  if (/airport|liszt|\bbud\b|ferihegy|terminal/.test(nm) || (s.transit||"").toLowerCase().includes("airport")) return ["ARRIVAL",  "bg-sky-100 text-sky-700"];
+  if (/hotel|hostel|aria|mercure|hilton|radisson|marriott|check.?in|apartment|inn/.test(nm)) return ["HOTEL",    "bg-emerald-100 text-emerald-700"];
+  if (/café|cafe|coffee|espresso|bakery|pastry|roastery/.test(nm))                            return ["CAFÉ",     "bg-amber-100 text-amber-800"];
+  if (/\bbar\b|\bpub\b|ruin|cocktail|szimpla/.test(nm))                                       return ["BAR",      "bg-purple-100 text-purple-700"];
+  if (/restaurant|bistro|étterem|dining|brasserie/.test(nm))                                  return ["DINING",   "bg-orange-100 text-orange-700"];
+  if (/bath|spa|széchenyi|gellért|rudas|thermal|fürdő/.test(nm))                              return ["SPA",      "bg-blue-100 text-blue-700"];
+  if (/basilica|church|cathedral|synagogue|chapel/.test(nm))                                  return ["CHURCH",   "bg-slate-100 text-slate-600"];
+  if (/castle|palace|parliament|vár|buda castle/.test(nm))                                    return ["LANDMARK", "bg-rose-100 text-rose-700"];
+  if (/market|bazaar|vásár|hall/.test(nm))                                                    return ["MARKET",   "bg-lime-100 text-lime-700"];
+  if (/museum|gallery|exhibit|ház/.test(nm))                                                  return ["MUSEUM",   "bg-violet-100 text-violet-700"];
+  if (/island|park|garden|trail|lookout|hill|hegy/.test(nm))                                  return ["NATURE",   "bg-teal-100 text-teal-700"];
+  if (s.highlights && s.highlights.length > 0)                                                return ["MUST",     "bg-fuchsia-100 text-fuchsia-700"];
+  return ["", ""];
 }
 
 function renderPlanDayContent(n) {
@@ -652,49 +824,128 @@ function renderPlanDayContent(n) {
   const el = document.getElementById("plan-day-content");
   if (!el || !day) return;
 
-  const stopCards = day.stops.map((s, i) => `
-    <details class="stop-card bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-      <summary class="cursor-pointer px-4 py-3 flex items-center gap-3 select-none hover:bg-slate-50/70">
-        <span class="time-badge">${s.time}</span>
-        <div class="flex-1 min-w-0">
-          <div class="font-semibold text-slate-800 text-sm leading-snug">${s.name}</div>
-          ${s.address ? `<div class="text-xs text-slate-400 truncate">${s.address.split(",")[0]}</div>` : ""}
-        </div>
-        <span class="expand-icon">+</span>
-      </summary>
-      <div class="px-4 pb-4 pt-2 border-t border-slate-50 text-xs text-slate-600 space-y-1.5">
-        ${s.address   ? `<p>📍 <b class="text-slate-700">Address</b> · ${s.address}</p>` : ""}
-        ${s.hours     ? `<p>🕐 <b class="text-slate-700">Hours</b> · ${s.hours}</p>` : ""}
-        ${s.tickets   ? `<p>🎟 <b class="text-slate-700">Tickets</b> · ${s.tickets}</p>` : ""}
-        ${s.intro     ? `<p class="italic text-slate-500 mt-1">${s.intro}</p>` : ""}
-        ${s.highlights && s.highlights.length ? `
-          <div class="mt-1"><b class="text-slate-700">✨ Highlights</b>
-            <ul class="list-disc list-inside mt-0.5 text-slate-500">${s.highlights.map(h => `<li>${h}</li>`).join("")}</ul>
-          </div>` : ""}
-        ${s.transit   ? `<p class="mt-1">🚇 <b class="text-slate-700">Get there</b> · ${s.transit}</p>` : ""}
-        ${s.washroom  ? `<p>🚻 <b class="text-slate-700">Washroom</b> · ${s.washroom}</p>` : ""}
-        ${s.food && s.food.length ? `<p>🍽 <b class="text-slate-700">Quick bite</b> · ${s.food.join(" · ")}</p>` : ""}
-        <p class="pt-1">
-          <a href="https://maps.google.com/?q=${encodeURIComponent(s.name + " Budapest")}" target="_blank"
-            class="text-blue-600 hover:text-blue-800 font-medium">Open in Google Maps →</a>
-        </p>
-      </div>
-    </details>
-  `).join("");
+  const pieces = [];
+  day.stops.forEach((s, i) => {
+    const [cat, catCls] = _stopCategory(s);
+    const thumbSeed = s.name.toLowerCase().replace(/[^a-z0-9]/g, "").substring(0, 16) || String(n * 100 + i + 1);
+    const snip = s.intro || (s.highlights && s.highlights.length ? s.highlights[0] : "");
 
-  el.innerHTML = `
-    <div class="mb-2 px-1">
-      <div class="flex items-baseline gap-2">
-        <h3 class="font-bold text-slate-800">${day.date}</h3>
-        <span class="text-xs text-slate-400">${day.mode} · ${day.stops.length} stops</span>
-      </div>
-      <p class="text-xs text-slate-500">${day.theme}</p>
-    </div>
-    <div class="space-y-2">${stopCards}</div>
-  `;
+    pieces.push(`
+      <details class="plan-stop-card mx-3 mb-1 bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+        <summary class="cursor-pointer px-3 py-3 flex items-start gap-2.5 select-none hover:bg-slate-50/70">
+          <div class="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">${i+1}</div>
+          <img src="https://picsum.photos/seed/${thumbSeed}/64/64"
+               class="w-14 h-14 rounded-lg object-cover flex-shrink-0 bg-slate-100" loading="lazy">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-1.5 flex-wrap mb-0.5">
+              ${cat ? `<span class="stop-tag ${catCls}">${cat}</span>` : ""}
+              <span class="text-[11px] text-slate-400 font-mono font-bold">${s.time}</span>
+            </div>
+            <div class="font-semibold text-slate-800 text-sm leading-snug">${s.name}</div>
+            ${snip ? `<div class="text-[11px] text-slate-500 mt-0.5 line-clamp-2">${snip}</div>` : ""}
+            ${s.address ? `<div class="text-[11px] text-slate-400 mt-0.5 truncate">📍 ${s.address.split(",").slice(0,2).join(",").trim()}</div>` : ""}
+          </div>
+          <span class="expand-icon" style="margin-top:4px">+</span>
+        </summary>
+        <div class="px-3 pb-3 pt-2.5 border-t border-slate-50 text-xs text-slate-600 space-y-1.5 ml-7">
+          ${s.address   ? `<p>📍 <b class="text-slate-700">Address</b> · ${s.address}</p>` : ""}
+          ${s.hours     ? `<p>🕐 <b class="text-slate-700">Hours</b> · ${s.hours}</p>` : ""}
+          ${s.tickets   ? `<p>🎟 <b class="text-slate-700">Tickets</b> · ${s.tickets}</p>` : ""}
+          ${s.intro     ? `<p class="italic text-slate-500 mt-1">${s.intro}</p>` : ""}
+          ${s.highlights && s.highlights.length ? `
+            <div class="mt-1"><b class="text-slate-700">✨ Highlights</b>
+              <ul class="list-disc list-inside mt-0.5 text-slate-500">${s.highlights.map(h => `<li>${h}</li>`).join("")}</ul>
+            </div>` : ""}
+          ${s.transit   ? `<p class="mt-1">🚇 <b class="text-slate-700">Get there</b> · ${s.transit}</p>` : ""}
+          ${s.washroom  ? `<p>🚻 <b class="text-slate-700">Washroom</b> · ${s.washroom}</p>` : ""}
+          ${s.food && s.food.length ? `<p>🍽 <b class="text-slate-700">Quick bite</b> · ${s.food.join(" · ")}</p>` : ""}
+          <p class="pt-1">
+            <a href="https://maps.google.com/?q=${encodeURIComponent(s.name + " Budapest")}" target="_blank"
+              class="text-blue-600 hover:text-blue-800 font-medium">Open in Google Maps →</a>
+          </p>
+        </div>
+      </details>`);
+
+    if (i < day.stops.length - 1) {
+      const next = day.stops[i + 1];
+      const raw = next.transit || "";
+      const connLabel = raw
+        ? raw.replace(/^[\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}🚇🚶🚌🚍✈️🏃‍♂️⚡]\s*/u, "").split("·").slice(0, 2).map(p => p.trim()).join(" · ")
+        : "~15 min walk";
+      const isWalk = raw.toLowerCase().includes("walk") || raw.includes("🚶") || !raw;
+      pieces.push(`
+        <div class="walk-connector mx-3 my-0.5">
+          <div class="wc-line" style="margin-left:10px"></div>
+          <div class="wc-label">${isWalk ? "🚶" : "🚇"} ${connLabel}</div>
+        </div>`);
+    }
+  });
+
+  el.innerHTML = `<div class="pb-4">${pieces.join("")}</div>`;
 }
 
-/* ────── Sidebar tab logic ────── */
+/* ────── Plan panel tabs ────── */
+function setPlanPanelTab(tab) {
+  currentPlanTab = tab;
+  ["itinerary", "docs", "food"].forEach(t => {
+    const btn = document.getElementById("ptab-" + t);
+    if (btn) btn.classList.toggle("active", t === tab);
+  });
+  const el = document.getElementById("plan-day-content");
+  if (!el || !TRIP) return;
+  if (tab === "itinerary") {
+    renderPlanDayContent(selectedPlanDay);
+  } else if (tab === "docs") {
+    const badgeBg = ["bg-blue-500","bg-violet-500","bg-rose-500","bg-emerald-500","bg-amber-500","bg-cyan-500"];
+    const sampleSizes = ["284 KB","192 KB","96 KB","412 KB","78 KB","156 KB"];
+    const sampleDates = ["Apr 13","Mar 20","Apr 02","Mar 18","Apr 10","Apr 15"];
+    el.innerHTML = `<div class="px-3 py-2">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-[9px] font-bold uppercase tracking-widest text-slate-400">Trip Documents · ${TRIP.companion_docs.length}</span>
+        <button class="text-blue-600 text-xs font-semibold hover:text-blue-800">+ Add</button>
+      </div>
+      ${TRIP.companion_docs.map((c, i) => {
+        const stripped = c.name.replace(/^\p{Emoji}\s*/u, "").trim();
+        const initials = stripped.split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+        const bg = badgeBg[i % badgeBg.length];
+        const ext = (c.file || "").split(".").pop()?.toUpperCase() || "PDF";
+        return `<div class="flex items-center gap-2.5 px-1 py-2 rounded-xl hover:bg-slate-50 group cursor-pointer">
+          <div class="w-8 h-8 ${bg} rounded-lg flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">${initials}</div>
+          <div class="flex-1 min-w-0">
+            <div class="text-xs font-semibold text-slate-800 truncate leading-tight">${stripped}</div>
+            <div class="text-[10px] text-slate-400 mt-0.5">${ext} · ${sampleSizes[i%sampleSizes.length]} · Added ${sampleDates[i%sampleDates.length]}</div>
+          </div>
+          <a href="${c.file}" target="_blank" class="w-6 h-6 flex items-center justify-center rounded-md hover:bg-slate-200 text-slate-400 text-xs opacity-0 group-hover:opacity-100 flex-shrink-0">↗</a>
+        </div>`;
+      }).join("")}
+      <div class="mt-3 pt-3 border-t border-slate-100">
+        <div class="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">Quick Info</div>
+        <div class="grid grid-cols-2 gap-1.5">
+          <div class="bg-slate-50 rounded-xl p-2.5"><div class="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">Currency</div><div class="text-xs font-bold text-slate-800">389 HUF / €</div></div>
+          <div class="bg-slate-50 rounded-xl p-2.5"><div class="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">Weather</div><div class="text-xs font-bold text-slate-800">14° / 6° clear</div></div>
+          <div class="bg-slate-50 rounded-xl p-2.5"><div class="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">Plug Type</div><div class="text-xs font-bold text-slate-800">C / F · 230V</div></div>
+          <div class="bg-slate-50 rounded-xl p-2.5"><div class="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">Time Zone</div><div class="text-xs font-bold text-slate-800">CET +1h vs UK</div></div>
+        </div>
+      </div>
+    </div>`;
+  } else if (tab === "food") {
+    const top = rankStreetFood(HOTEL).slice(0, 6);
+    el.innerHTML = `<div class="px-3 py-2">
+      <p class="text-[11px] text-slate-400 mb-2 px-1">Near hotel · ranked by local price + walk</p>
+      ${top.map(f => `
+        <div class="flex items-start gap-2 p-2 rounded-xl hover:bg-slate-50 cursor-pointer transition" onclick="openStreetFoodDetail('${f.id}')">
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${bandClass(f.price_band)} flex-shrink-0 mt-0.5">${bandLabel(f.price_band)}</span>
+          <div class="flex-1 min-w-0">
+            <div class="text-xs font-semibold text-slate-800 truncate">${f.name}</div>
+            <div class="text-[11px] text-slate-400">${f.price_huf} HUF · ${f.walk} min walk</div>
+          </div>
+        </div>`).join("")}
+      <button onclick="openModal('streetfood-all')" class="mt-2 w-full text-xs text-blue-700 py-2 rounded-xl border border-blue-200 hover:bg-blue-50 transition">See all →</button>
+    </div>`;
+  }
+}
+
+/* ────── Sidebar tab logic (Tour tab) ────── */
 function setSidebarTab(tab) {
   currentSidebarTab = tab;
   ["docs", "maps", "food"].forEach(t => {
@@ -718,14 +969,56 @@ function renderSidebarPanel(tab) {
   if (!el || !TRIP) return;
 
   if (tab === "docs") {
-    el.innerHTML = TRIP.companion_docs.map(c => `
-      <a href="${c.file}" target="_blank"
-        class="flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-slate-50 text-slate-700 hover:text-blue-700 transition text-sm">
-        <span>${c.name}</span>
-      </a>
-    `).join("") + `
-      <div class="mt-3 p-3 bg-blue-50 rounded-xl">
-        <p class="text-[11px] text-blue-700 leading-relaxed">💡 Tap any stop below to expand address, hours, tickets, and transit.</p>
+    const badgeBg = ["bg-blue-500","bg-violet-500","bg-rose-500","bg-emerald-500","bg-amber-500","bg-cyan-500"];
+    const sampleSizes = ["284 KB","192 KB","96 KB","412 KB","78 KB","156 KB"];
+    const sampleDates = ["Added Apr 13","Added Mar 20","Added Apr 02","Added Mar 18","Added Apr 10","Added Apr 15"];
+    el.innerHTML = `
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-[9px] font-bold uppercase tracking-widest text-slate-400">Trip Documents · ${TRIP.companion_docs.length}</span>
+        <button class="text-blue-600 text-xs font-semibold hover:text-blue-800">+ Add</button>
+      </div>
+      ${TRIP.companion_docs.map((c, i) => {
+        const stripped = c.name.replace(/^\p{Emoji}\s*/u, "").trim();
+        const initials = stripped.split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+        const bg = badgeBg[i % badgeBg.length];
+        const ext = (c.file || "").split(".").pop()?.toUpperCase() || "PDF";
+        return `
+          <div class="flex items-center gap-2.5 px-1 py-2 rounded-xl hover:bg-slate-50 group cursor-pointer">
+            <div class="w-8 h-8 ${bg} rounded-lg flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">${initials}</div>
+            <div class="flex-1 min-w-0">
+              <div class="text-xs font-semibold text-slate-800 truncate leading-tight">${stripped}</div>
+              <div class="text-[10px] text-slate-400 mt-0.5">${ext} · ${sampleSizes[i % sampleSizes.length]} · ${sampleDates[i % sampleDates.length]}</div>
+            </div>
+            <div class="flex gap-0.5 opacity-0 group-hover:opacity-100 transition flex-shrink-0">
+              <a href="${c.file}" target="_blank" class="w-6 h-6 flex items-center justify-center rounded-md hover:bg-slate-200 text-slate-400 text-xs">↗</a>
+              <a href="${c.file}" download class="w-6 h-6 flex items-center justify-center rounded-md hover:bg-slate-200 text-slate-400 text-xs">⬇</a>
+            </div>
+          </div>`;
+      }).join("")}
+      <div class="mt-2 border-2 border-dashed border-slate-200 rounded-xl p-3 text-center hover:border-blue-300 transition cursor-pointer">
+        <div class="text-[11px] font-medium text-slate-400">Drop a file or paste a link</div>
+        <div class="text-[10px] text-slate-300 mt-0.5">PDF, image, or .ics — up to 25 MB</div>
+      </div>
+      <div class="mt-3 pt-3 border-t border-slate-100">
+        <div class="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">Quick Info</div>
+        <div class="grid grid-cols-2 gap-1.5">
+          <div class="bg-slate-50 rounded-xl p-2.5">
+            <div class="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">Currency</div>
+            <div class="text-xs font-bold text-slate-800">389 HUF / €</div>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-2.5">
+            <div class="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">Weather</div>
+            <div class="text-xs font-bold text-slate-800">14° / 6° clear</div>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-2.5">
+            <div class="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">Plug Type</div>
+            <div class="text-xs font-bold text-slate-800">C / F · 230V</div>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-2.5">
+            <div class="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">Time Zone</div>
+            <div class="text-xs font-bold text-slate-800">CET +1h vs UK</div>
+          </div>
+        </div>
       </div>`;
 
   } else if (tab === "maps") {
