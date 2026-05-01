@@ -13,27 +13,68 @@
         crossorigin=""></script>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
-  .tab-active { background: #1a3a52; color: white; }
-  .tab-inactive { background: #f1f5f9; color: #475569; }
-  .stop-card { transition: all 0.2s ease-in-out; }
-  .stop-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-  .day-pill { transition: all 0.15s; }
-  .checked { background: #d4edda; border-color: #28a745 !important; }
-  .current { background: #fff3cd; border-color: #ffc107 !important; box-shadow: 0 0 0 3px rgba(255,193,7,0.25); }
-  .upcoming { background: #f8f9fa; border-color: #dee2e6 !important; opacity: 0.75; }
-  #journey-map { height: 400px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-  .photo-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; cursor: pointer; transition: transform 0.15s; }
+
+  /* ── Nav tabs ── */
+  .nav-tab { padding: 6px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; transition: all .15s; }
+  .nav-tab.active  { background: rgba(255,255,255,.18); color: #fff; }
+  .nav-tab.inactive{ color: rgba(255,255,255,.55); }
+  .nav-tab.inactive:hover { color: #fff; background: rgba(255,255,255,.1); }
+
+  /* ── Day tab pills (plan view) ── */
+  .day-tab {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 8px 18px; border-radius: 12px; border: 2px solid transparent;
+    font-size: 13px; cursor: pointer; transition: all .15s; white-space: nowrap; flex-shrink: 0;
+  }
+  .day-tab.active  { background: #1e3a5f; color: #fff; border-color: #1e3a5f; }
+  .day-tab:not(.active) { background: #fff; color: #475569; border-color: #e2e8f0; }
+  .day-tab:not(.active):hover { border-color: #94a3b8; color: #1e3a5f; }
+
+  /* ── Stop card (plan) ── */
+  .stop-card { transition: box-shadow .15s; }
+  .stop-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,.08); }
+  .stop-card summary { list-style: none; }
+  .stop-card summary::-webkit-details-marker { display: none; }
+  .expand-icon { transition: transform .15s; font-size: 20px; font-weight: 300; color: #cbd5e1; }
+  .stop-card[open] .expand-icon { transform: rotate(45deg); }
+  .time-badge {
+    font-size: 11px; font-weight: 700; font-family: monospace;
+    color: #1d4ed8; background: #eff6ff; border-radius: 6px;
+    padding: 3px 8px; white-space: nowrap; flex-shrink: 0; min-width: 44px; text-align: center;
+  }
+
+  /* ── Sidebar tabs ── */
+  .stab { flex: 1; padding: 10px 4px; font-size: 11px; font-weight: 600; text-align: center; transition: all .15s; border-bottom: 2px solid transparent; }
+  .stab.active { color: #1d4ed8; border-color: #1d4ed8; }
+  .stab:not(.active) { color: #94a3b8; }
+  .stab:not(.active):hover { color: #475569; }
+
+  /* ── Tour tab stop cards ── */
+  .tour-stop-card { transition: box-shadow .15s; }
+  .tour-stop-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+
+  /* ── Day pills (tour tab) ── */
+  .day-pill { transition: all .15s; }
+  .checked  { background: #d1fae5; border-color: #10b981 !important; }
+  .current  { background: #fef3c7; border-color: #f59e0b !important; box-shadow: 0 0 0 3px rgba(245,158,11,.2); }
+  .upcoming { background: #f8fafc; border-color: #e2e8f0 !important; opacity: .7; }
+
+  /* ── Trip hero gradient ── */
+  .trip-hero { background: linear-gradient(135deg, #0f2744 0%, #1d4ed8 65%, #6d28d9 100%); }
+
+  /* ── Misc ── */
+  #journey-map { height: 340px; border-radius: 12px; }
+  .photo-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; cursor: pointer; transition: transform .15s; }
   .photo-grid img:hover { transform: scale(1.04); }
-  .voice-note-active { background: #ef4444; animation: pulse 1.2s infinite; }
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-  .modal-backdrop { background: rgba(0,0,0,0.5); }
+  .modal-backdrop { background: rgba(0,0,0,.5); backdrop-filter: blur(4px); }
   .scroll-hide::-webkit-scrollbar { display: none; }
+  .scroll-hide { -ms-overflow-style: none; scrollbar-width: none; }
   .leaflet-container { font-family: inherit; }
 </style>
 </head>
-<body class="bg-slate-50 min-h-screen">
+<body class="bg-slate-100 min-h-screen">
 
-<!-- ───────────────── Login overlay ───────────────── -->
+<!-- ──────────────── Login overlay ──────────────── -->
 <div id="login-overlay" class="hidden fixed inset-0 z-50 items-center justify-center bg-gradient-to-br from-slate-900 to-blue-900 p-4">
   <form onsubmit="handleLoginSubmit(event)" class="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full">
     <div class="flex items-center gap-2 mb-1">
@@ -66,158 +107,125 @@
 
 <div id="app-shell">
 
-<!-- ───────────────── Verify-pending banner ───────────────── -->
+<!-- ──────────────── Verify banner ──────────────── -->
 <div id="verify-banner" class="hidden bg-amber-100 border-b border-amber-300 text-amber-900 text-sm px-4 py-2 text-center">
   <b>📧 Confirm your email</b> — we sent a link to <span id="verify-banner-email"></span>.
   <button onclick="resendVerify()" class="ml-2 underline hover:text-amber-700">resend</button>
 </div>
 
-<!-- ───────────────── Header ───────────────── -->
-<header class="bg-gradient-to-r from-slate-800 to-blue-900 text-white shadow-lg sticky top-0 z-30">
-  <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-    <div class="flex items-center gap-2">
-      <span class="text-2xl">🧭</span>
-      <div>
-        <h1 class="text-lg font-bold leading-tight">Tour Companion</h1>
-        <div class="relative">
-          <button id="trip-picker-btn" onclick="toggleTripPicker(event)"
-            class="text-xs text-blue-200 hover:text-white leading-tight flex items-center gap-1">
-            <span id="trip-picker-name">loading…</span>
-            <span class="text-[9px] opacity-70">▾</span>
-          </button>
-          <div id="trip-picker-menu" class="hidden absolute mt-1 left-0 bg-white text-slate-800 rounded-lg shadow-2xl border border-slate-200 z-40 min-w-[300px] max-h-[60vh] overflow-y-auto">
-            <div id="trip-picker-list" class="py-1"></div>
-            <div class="border-t border-slate-100"></div>
-            <button onclick="openNewTripModal()" class="px-3 py-2 text-sm text-blue-700 hover:bg-slate-50 w-full text-left">＋ New trip…</button>
-            <button onclick="openIngestModal()" class="px-3 py-2 text-sm text-emerald-700 hover:bg-emerald-50 w-full text-left">🤖 Generate from URL…</button>
-            <div class="border-t border-slate-100"></div>
-            <button onclick="confirmDeleteTrip()" class="px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 w-full text-left">🗑 Delete current trip</button>
-          </div>
+<!-- ──────────────── Header ──────────────── -->
+<header class="bg-gradient-to-r from-slate-900 to-blue-900 text-white shadow-xl sticky top-0 z-30">
+  <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="text-2xl leading-none">🧭</span>
+      <div class="relative">
+        <button id="trip-picker-btn" onclick="toggleTripPicker(event)"
+          class="flex items-center gap-1.5 hover:opacity-80 transition">
+          <span id="trip-picker-name" class="text-sm font-semibold text-white leading-tight">loading…</span>
+          <span class="text-[10px] opacity-50">▾</span>
+        </button>
+        <div id="trip-picker-menu" class="hidden absolute mt-2 left-0 bg-white text-slate-800 rounded-xl shadow-2xl border border-slate-200 z-40 min-w-[300px] max-h-[60vh] overflow-y-auto">
+          <div id="trip-picker-list" class="py-1"></div>
+          <div class="border-t border-slate-100"></div>
+          <button onclick="openNewTripModal()" class="px-3 py-2 text-sm text-blue-700 hover:bg-slate-50 w-full text-left">＋ New trip…</button>
+          <button onclick="openIngestModal()" class="px-3 py-2 text-sm text-emerald-700 hover:bg-emerald-50 w-full text-left">🤖 Generate from URL…</button>
+          <div class="border-t border-slate-100"></div>
+          <button onclick="confirmDeleteTrip()" class="px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 w-full text-left">🗑 Delete current trip</button>
         </div>
       </div>
     </div>
-    <nav class="flex gap-1 bg-slate-900/30 rounded-lg p-1">
-      <button id="tab-plan-btn" onclick="setTab('plan')"
-        class="px-4 py-1.5 rounded-md text-sm font-medium tab-active">📋 Plan</button>
-      <button id="tab-tour-btn" onclick="setTab('tour')"
-        class="px-4 py-1.5 rounded-md text-sm font-medium tab-inactive">🧭 Tour</button>
-      <button id="tab-memory-btn" onclick="setTab('memory')"
-        class="px-4 py-1.5 rounded-md text-sm font-medium tab-inactive">📔 Memory</button>
+    <nav class="flex items-center gap-0.5">
+      <button id="tab-plan-btn"   onclick="setTab('plan')"   class="nav-tab active">📋 Plan</button>
+      <button id="tab-tour-btn"   onclick="setTab('tour')"   class="nav-tab inactive">🧭 Tour</button>
+      <button id="tab-memory-btn" onclick="setTab('memory')" class="nav-tab inactive">📔 Memory</button>
       <button onclick="logout()" title="Log out"
-        class="ml-1 px-3 py-1.5 rounded-md text-sm font-medium text-blue-200 hover:text-white hover:bg-slate-900/40">⏻</button>
+        class="ml-2 w-8 h-8 flex items-center justify-center rounded-lg text-white/50 hover:text-white hover:bg-white/10 transition text-base">⏻</button>
     </nav>
   </div>
 </header>
 
-<main class="max-w-6xl mx-auto px-4 py-6">
+<main class="max-w-5xl mx-auto px-4 py-5">
 
   <!-- ─────────────── PLAN TAB ─────────────── -->
-  <section id="tab-plan" class="block">
-    <div class="grid lg:grid-cols-3 gap-6">
+  <section id="tab-plan" class="block space-y-4">
 
-      <!-- Trip card + day list -->
-      <div class="lg:col-span-2 space-y-4">
-
-        <!-- Trip overview -->
-        <div class="bg-white rounded-xl shadow p-5">
-          <div class="flex items-center justify-between mb-3">
-            <h2 id="trip-overview-name" class="text-2xl font-bold text-slate-800"></h2>
-            <span id="trip-overview-status" class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-1 rounded">Planning ✓</span>
-          </div>
-          <div id="trip-overview-meta" class="text-sm text-slate-600 space-y-1"></div>
+    <!-- Trip hero card -->
+    <div class="trip-hero rounded-2xl p-5 text-white shadow-lg">
+      <div class="flex items-start justify-between gap-4 mb-4">
+        <div class="flex-1 min-w-0">
+          <h2 id="trip-overview-name" class="text-2xl font-bold leading-tight mb-1"></h2>
+          <div id="trip-overview-meta" class="text-sm text-blue-100/80 space-y-0.5"></div>
         </div>
+        <span id="trip-overview-status"
+          class="bg-white/15 backdrop-blur text-white text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap flex-shrink-0">
+          Planning ✓
+        </span>
+      </div>
+      <!-- Booking checklist -->
+      <div class="bg-white/10 rounded-xl p-4">
+        <h3 class="text-xs font-bold text-white/80 uppercase tracking-wide mb-2.5">⚠️ Pre-trip bookings</h3>
+        <ul id="booking-list" class="space-y-1.5"></ul>
+      </div>
+    </div>
 
-        <!-- Booking checklist -->
-        <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <h3 class="font-bold text-amber-900 mb-2">⚠️ Booking required (do this before arrival)</h3>
-          <ul id="booking-list" class="space-y-1.5 text-sm"></ul>
-        </div>
+    <!-- Day tabs + sidebar row -->
+    <div class="flex gap-4 items-start">
 
-        <!-- Days accordion -->
-        <h3 class="font-bold text-slate-700 text-lg mt-4">Day-by-Day Itinerary</h3>
-        <div id="plan-days" class="space-y-3"></div>
+      <!-- Left: day tabs + stop list -->
+      <div class="flex-1 min-w-0 space-y-3">
+        <!-- Day tab strip -->
+        <div id="plan-day-tabs" class="flex gap-2 overflow-x-auto scroll-hide pb-0.5"></div>
+        <!-- Day theme line + stops -->
+        <div id="plan-day-content"></div>
       </div>
 
-      <!-- Sidebar -->
-      <aside class="space-y-4">
-        <div class="bg-white rounded-xl shadow p-5">
-          <h3 class="font-bold text-slate-700 mb-2">📚 Companion docs</h3>
-          <div id="companion-list" class="space-y-1.5 text-sm"></div>
+      <!-- Right: consolidated sidebar -->
+      <aside class="w-60 flex-shrink-0 bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div class="flex border-b border-slate-100">
+          <button onclick="setSidebarTab('docs')" id="stab-docs" class="stab active">📚 Docs</button>
+          <button onclick="setSidebarTab('maps')" id="stab-maps" class="stab">🗺 Maps</button>
+          <button onclick="setSidebarTab('food')" id="stab-food" class="stab">🍴 Food</button>
         </div>
-
-        <div class="bg-white rounded-xl shadow p-5">
-          <h3 class="font-bold text-slate-700 mb-2">🗺 Route maps (PDFs)</h3>
-          <div id="route-list" class="space-y-1.5 text-sm"></div>
-        </div>
-
-        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <h3 class="font-bold text-blue-900 text-sm mb-1">💡 Pro tip</h3>
-          <p class="text-xs text-blue-800 leading-relaxed">
-            Tap a stop to expand its full block — address, hours, tickets, transit, washroom, and food
-            options. This is the source-of-truth your in-tour view will use.</p>
-        </div>
-
-        <div class="bg-white rounded-xl shadow p-5">
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="font-bold text-slate-700">🍴 Local street food</h3>
-            <button onclick="openModal('streetfood-all')" class="text-xs text-blue-700 hover:underline">See all →</button>
-          </div>
-          <p class="text-xs text-slate-500 mb-2">Picks scored for <b>local price</b> vs tourist trap. Curated from local-blog + review mining.</p>
-          <div id="streetfood-plan" class="space-y-1.5 text-xs"></div>
-        </div>
+        <div id="sidebar-panel" class="p-3 space-y-1"></div>
       </aside>
 
     </div>
   </section>
 
   <!-- ─────────────── TOUR TAB ─────────────── -->
-  <section id="tab-tour" class="hidden">
+  <section id="tab-tour" class="hidden space-y-4">
 
     <!-- Day strip -->
-    <div class="bg-white rounded-xl shadow p-4 mb-4">
-      <div class="flex items-center justify-between mb-3">
-        <h3 class="font-bold text-slate-700">Your trip today</h3>
-        <span class="text-xs text-slate-500" id="tour-status-summary"></span>
+    <div class="bg-white rounded-2xl shadow-sm p-4">
+      <div class="flex items-baseline justify-between mb-3">
+        <h3 class="font-bold text-slate-800">Today's tour</h3>
+        <span class="text-xs text-slate-400" id="tour-status-summary"></span>
       </div>
       <div id="day-strip" class="flex gap-2 overflow-x-auto scroll-hide pb-1"></div>
     </div>
 
-    <!-- Today's plan -->
-    <div class="grid lg:grid-cols-3 gap-6">
-      <div class="lg:col-span-2 space-y-3" id="tour-stops"></div>
+    <!-- Stops + quick sidebar -->
+    <div class="flex gap-4 items-start">
+      <div class="flex-1 min-w-0 space-y-3" id="tour-stops"></div>
 
-      <aside class="space-y-3">
-        <div class="bg-white rounded-xl shadow p-4">
-          <h3 class="font-bold text-slate-700 mb-2 text-sm">⚡ Quick actions</h3>
+      <aside class="w-56 flex-shrink-0 space-y-3">
+        <div class="bg-white rounded-2xl shadow-sm p-4">
+          <h3 class="font-bold text-slate-700 mb-3 text-sm">⚡ Quick actions</h3>
           <div class="grid grid-cols-2 gap-2">
-            <button onclick="openModal('cheapeats')" class="flex flex-col items-center gap-1 p-3 bg-rose-50 hover:bg-rose-100 rounded-lg text-xs font-medium border border-rose-200">
-              <span class="text-xl">🍴</span>Cheap eats
-            </button>
-            <button onclick="openModal('phrasebook')" class="flex flex-col items-center gap-1 p-3 bg-slate-50 hover:bg-slate-100 rounded-lg text-xs font-medium">
-              <span class="text-xl">🗣️</span>Phrasebook
-            </button>
-            <button onclick="openModal('washroom')" class="flex flex-col items-center gap-1 p-3 bg-slate-50 hover:bg-slate-100 rounded-lg text-xs font-medium">
-              <span class="text-xl">🚻</span>Washroom
-            </button>
-            <button onclick="openModal('currency')" class="flex flex-col items-center gap-1 p-3 bg-slate-50 hover:bg-slate-100 rounded-lg text-xs font-medium">
-              <span class="text-xl">💱</span>Currency
-            </button>
-            <button onclick="openModal('weather')" class="flex flex-col items-center gap-1 p-3 bg-slate-50 hover:bg-slate-100 rounded-lg text-xs font-medium">
-              <span class="text-xl">☂️</span>Weather
-            </button>
+            <button onclick="openModal('cheapeats')"  class="quick-btn bg-rose-50 border-rose-100 hover:bg-rose-100"><span>🍴</span>Cheap eats</button>
+            <button onclick="openModal('phrasebook')" class="quick-btn"><span>🗣️</span>Phrases</button>
+            <button onclick="openModal('washroom')"   class="quick-btn"><span>🚻</span>Washroom</button>
+            <button onclick="openModal('currency')"   class="quick-btn"><span>💱</span>Currency</button>
+            <button onclick="openModal('weather')"    class="quick-btn col-span-2"><span>☂️</span>Weather</button>
           </div>
         </div>
-
-        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-          <h3 class="font-bold text-emerald-900 text-sm mb-1">📡 Offline ready</h3>
-          <p class="text-xs text-emerald-800 leading-relaxed">
-            Today's full itinerary is cached. Even on 5% battery and no signal, you have stops,
-            addresses, transit notes, and the phrasebook.</p>
+        <div class="bg-white rounded-2xl shadow-sm p-4">
+          <h3 class="font-bold text-slate-700 text-sm mb-2">📊 Today</h3>
+          <div id="tour-stats" class="text-xs text-slate-600 space-y-1.5"></div>
         </div>
-
-        <div class="bg-white rounded-xl shadow p-4">
-          <h3 class="font-bold text-slate-700 text-sm mb-2">📊 Today so far</h3>
-          <div id="tour-stats" class="text-xs text-slate-700 space-y-1"></div>
+        <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-3">
+          <h3 class="font-bold text-emerald-800 text-xs mb-1">📡 Offline ready</h3>
+          <p class="text-[11px] text-emerald-700 leading-relaxed">Full day cached — works with no signal.</p>
         </div>
       </aside>
     </div>
@@ -225,34 +233,28 @@
 
   <!-- ─────────────── MEMORY TAB ─────────────── -->
   <section id="tab-memory" class="hidden">
-    <div class="grid lg:grid-cols-3 gap-6">
-      <div class="lg:col-span-2 space-y-4">
-
-        <!-- Map -->
-        <div class="bg-white rounded-xl shadow p-4">
+    <div class="flex gap-4 items-start">
+      <div class="flex-1 min-w-0 space-y-4">
+        <div class="bg-white rounded-2xl shadow-sm p-4">
           <h3 class="font-bold text-slate-700 mb-2">🗺 Your journey</h3>
           <div id="journey-map"></div>
-          <p class="text-xs text-slate-500 mt-2"><span id="memory-stats">…</span></p>
+          <p class="text-xs text-slate-400 mt-2"><span id="memory-stats">…</span></p>
         </div>
-
-        <!-- Daily wrap cards -->
-        <h3 class="font-bold text-slate-700 text-lg">Daily wrap</h3>
+        <h3 class="font-bold text-slate-700">Daily wrap</h3>
         <div id="memory-days" class="space-y-3"></div>
       </div>
 
-      <aside class="space-y-4">
-        <div class="bg-white rounded-xl shadow p-5">
-          <h3 class="font-bold text-slate-700 mb-2">✏️ Journal</h3>
-          <p class="text-xs text-slate-500 mb-2">Long-form notes for this trip — auto-saved to memory.</p>
-          <textarea id="journal" class="w-full h-40 p-3 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-300 focus:border-blue-400"
-            placeholder="What stood out today? What surprised you? Anything you want to remember…"></textarea>
+      <aside class="w-60 flex-shrink-0 space-y-4">
+        <div class="bg-white rounded-2xl shadow-sm p-4">
+          <h3 class="font-bold text-slate-700 mb-1">✏️ Journal</h3>
+          <p class="text-xs text-slate-400 mb-2">Long-form notes — auto-saved.</p>
+          <textarea id="journal" class="w-full h-36 p-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-300 focus:border-blue-400 resize-none"
+            placeholder="What stood out today?…"></textarea>
         </div>
-
-        <div class="bg-white rounded-xl shadow p-5">
-          <h3 class="font-bold text-slate-700 mb-2">📷 Photo highlights</h3>
+        <div class="bg-white rounded-2xl shadow-sm p-4">
+          <h3 class="font-bold text-slate-700 mb-2">📷 Highlights</h3>
           <div id="photo-grid" class="grid grid-cols-3 gap-1.5 photo-grid"></div>
         </div>
-
         <button onclick="openModal('book')"
           class="w-full bg-gradient-to-r from-rose-500 to-orange-500 text-white font-bold py-3 rounded-xl shadow hover:shadow-lg transition">
           📕 Print to hardcover book
@@ -260,35 +262,48 @@
       </aside>
     </div>
   </section>
-</main>
 
+</main>
 </div><!-- /app-shell -->
 
-<!-- ─────────── Modal scaffold ─────────── -->
+<!-- Quick-btn base style (injected) -->
+<style>
+  .quick-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 10px 4px; background: #f8fafc; border: 1px solid #e2e8f0;
+    border-radius: 12px; font-size: 11px; font-weight: 500; cursor: pointer; transition: all .15s;
+  }
+  .quick-btn:hover { background: #f1f5f9; }
+  .quick-btn span { font-size: 20px; line-height: 1; }
+</style>
+
+<!-- Modal -->
 <div id="modal" class="fixed inset-0 hidden items-center justify-center z-50 modal-backdrop p-4">
   <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-    <div class="flex justify-between items-center p-5 border-b border-slate-200">
-      <h3 id="modal-title" class="font-bold text-slate-800"></h3>
-      <button onclick="closeModal()" class="text-slate-400 hover:text-slate-700 text-2xl leading-none">&times;</button>
+    <div class="flex justify-between items-center p-5 border-b border-slate-100">
+      <h3 id="modal-title" class="font-bold text-slate-800 text-base"></h3>
+      <button onclick="closeModal()"
+        class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-xl leading-none">&times;</button>
     </div>
     <div id="modal-body" class="p-5"></div>
   </div>
 </div>
 
-<!-- ─────────── Snackbar ─────────── -->
+<!-- Snackbar -->
 <div id="snackbar" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-5 py-3 rounded-full shadow-2xl text-sm hidden z-50"></div>
 
 <script>
 /* ════════════════════════════════════════════
-   Budapest 5-day demo data
+   State
    ════════════════════════════════════════════ */
-/* HOTEL/TRIP/STATE are loaded from the API — see init() at bottom */
 let HOTEL = { name: "(loading)", lat: 0, lng: 0, address: "" };
 let TRIP = null;
 let STATE = null;
 let TRIP_ID = null;
 let API_TOKEN = localStorage.getItem("tc_token") || null;
 let API_USER_EMAIL = localStorage.getItem("tc_email") || null;
+let selectedPlanDay = 1;
+let currentSidebarTab = "docs";
 
 const API_BASE = "/api";
 
@@ -296,35 +311,20 @@ async function apiCall(path, opts = {}) {
   const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
   if (API_TOKEN) headers["Authorization"] = `Bearer ${API_TOKEN}`;
   const res = await fetch(API_BASE + path, { ...opts, headers });
-  if (res.status === 401) {
-    logout(); throw new Error("unauthorized");
-  }
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`API ${res.status}: ${text}`);
-  }
+  if (res.status === 401) { logout(); throw new Error("unauthorized"); }
+  if (!res.ok) { const text = await res.text(); throw new Error(`API ${res.status}: ${text}`); }
   if (res.status === 204) return null;
   return res.json();
 }
 
 function setToken(t, email) {
-  API_TOKEN = t;
-  API_USER_EMAIL = email;
-  if (t) {
-    localStorage.setItem("tc_token", t);
-    localStorage.setItem("tc_email", email || "");
-  } else {
-    localStorage.removeItem("tc_token");
-    localStorage.removeItem("tc_email");
-  }
+  API_TOKEN = t; API_USER_EMAIL = email;
+  if (t) { localStorage.setItem("tc_token", t); localStorage.setItem("tc_email", email || ""); }
+  else { localStorage.removeItem("tc_token"); localStorage.removeItem("tc_email"); }
 }
-
 function logout() {
-  setToken(null, null);
-  TRIP = null; STATE = null; TRIP_ID = null;
-  showLogin();
+  setToken(null, null); TRIP = null; STATE = null; TRIP_ID = null; showLogin();
 }
-
 async function login(email, password) {
   const fd = new FormData();
   fd.set("username", email); fd.set("password", password);
@@ -333,11 +333,9 @@ async function login(email, password) {
   const data = await res.json();
   setToken(data.access_token, data.email);
 }
-
 async function signup(email, password) {
   const res = await fetch(API_BASE + "/auth/signup", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
   if (!res.ok) throw new Error("Signup failed (email may be taken)");
@@ -345,58 +343,35 @@ async function signup(email, password) {
   setToken(data.access_token, data.email);
 }
 
-/* Adapt an API trip detail response into the legacy TRIP/STATE shape
-   the existing render code already expects. */
 function adaptTrip(api) {
   TRIP_ID = api.id;
-  HOTEL = {
-    name: api.hotel_name || "(hotel)",
-    lat: api.hotel_lat || 0,
-    lng: api.hotel_lng || 0,
-    address: api.hotel_address || "",
-  };
-
+  HOTEL = { name: api.hotel_name || "(hotel)", lat: api.hotel_lat || 0, lng: api.hotel_lng || 0, address: api.hotel_address || "" };
   const dateRange = `${api.start_date} → ${api.end_date}`;
-
   TRIP = {
-    name: api.name,
-    dates: dateRange,
-    source_url: api.source_url,
+    name: api.name, dates: dateRange, source_url: api.source_url,
     bookings: api.bookings.map(b => ({ id: b.id, label: b.label, url: b.url || "#", done: b.done })),
     companion_docs: api.companion_docs.map(c => ({ name: c.name, file: c.file_path })),
     routes: api.routes.map(r => ({ day: r.day_n, label: r.label, pdf: r.pdf_path, url: r.map_url })),
     days: api.days.map(d => ({
       n: d.n, date: d.date_label, theme: d.theme, mode: d.mode,
       stops: d.stops.map(s => ({
-        _stop_id: s.id,
-        time: s.time_label, name: s.name, address: s.address,
-        lat: s.lat, lng: s.lng,
-        hours: s.hours, tickets: s.tickets, intro: s.intro,
-        highlights: s.highlights || [], transit: s.transit,
-        washroom: s.washroom, food: s.food || [], note: s.note,
-        _checkin_count: s.check_in_count, _photos: s.photo_paths || [],
-        _voice: s.voice_transcript || "",
+        _stop_id: s.id, time: s.time_label, name: s.name, address: s.address,
+        lat: s.lat, lng: s.lng, hours: s.hours, tickets: s.tickets, intro: s.intro,
+        highlights: s.highlights || [], transit: s.transit, washroom: s.washroom,
+        food: s.food || [], note: s.note,
+        _checkin_count: s.check_in_count, _photos: s.photo_paths || [], _voice: s.voice_transcript || "",
       })),
     })),
     street_food: api.street_food.map(f => ({
-      id: f.slug, name: f.name, category: f.category,
-      lat: f.lat, lng: f.lng, address: f.address,
-      price_band: f.price_band, price_huf: f.price_huf,
-      locality_score: f.locality_score, why: f.why, hours: f.hours,
+      id: f.slug, name: f.name, category: f.category, lat: f.lat, lng: f.lng, address: f.address,
+      price_band: f.price_band, price_huf: f.price_huf, locality_score: f.locality_score,
+      why: f.why, hours: f.hours,
     })),
   };
-
   STATE = {
-    current_day: 1,
-    current_stop_index: {},
-    check_ins: {},
-    stop_photos: {},
-    voice_notes: {},
-    journal: api.journal || "",
-    badges: {},
+    current_day: 1, current_stop_index: {}, check_ins: {}, stop_photos: {},
+    voice_notes: {}, journal: api.journal || "", badges: {},
   };
-
-  // Build STATE from per-stop counts so existing render code works unchanged
   TRIP.days.forEach(d => {
     const checked = [];
     d.stops.forEach((s, i) => {
@@ -407,31 +382,23 @@ function adaptTrip(api) {
     });
     STATE.check_ins[d.n] = checked;
   });
-
-  // Determine "current day": last day with any check-in + 1 (or 1 if none)
   let lastDone = 0;
-  TRIP.days.forEach(d => {
-    if ((STATE.check_ins[d.n] || []).length === d.stops.length) lastDone = d.n;
-  });
+  TRIP.days.forEach(d => { if ((STATE.check_ins[d.n] || []).length === d.stops.length) lastDone = d.n; });
   if (lastDone < TRIP.days.length) {
     STATE.current_day = lastDone + 1;
-    const partialDay = STATE.check_ins[STATE.current_day] || [];
-    STATE.current_stop_index[STATE.current_day] = partialDay.length;
+    STATE.current_stop_index[STATE.current_day] = (STATE.check_ins[STATE.current_day] || []).length;
   } else {
     STATE.current_day = TRIP.days.length;
   }
 }
 
 let TRIP_LIST = [];
-
 async function loadTrip() {
   TRIP_LIST = await apiCall("/trips") || [];
   if (TRIP_LIST.length === 0) return null;
-
   const desired = parseInt(localStorage.getItem("tc_trip_id") || "0", 10);
   const pick = TRIP_LIST.find(t => t.id === desired) || TRIP_LIST[0];
   localStorage.setItem("tc_trip_id", pick.id);
-
   const detail = await apiCall(`/trips/${pick.id}`);
   adaptTrip(detail);
   renderTripPicker();
@@ -444,7 +411,7 @@ function renderTripPicker() {
   if (!nameEl || !listEl) return;
   if (!TRIP || TRIP_LIST.length === 0) {
     nameEl.textContent = "no trip yet";
-    listEl.innerHTML = '<p class="px-3 py-2 text-xs text-slate-400">No trips yet — create one below.</p>';
+    listEl.innerHTML = '<p class="px-3 py-2 text-xs text-slate-400">No trips yet.</p>';
     return;
   }
   nameEl.textContent = TRIP.name;
@@ -460,16 +427,14 @@ function toggleTripPicker(ev) {
   if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
   document.getElementById("trip-picker-menu").classList.toggle("hidden");
 }
-
 document.addEventListener("click", (ev) => {
   const menu = document.getElementById("trip-picker-menu");
-  const btn = document.getElementById("trip-picker-btn");
+  const btn  = document.getElementById("trip-picker-btn");
   if (menu && !menu.classList.contains("hidden") &&
       !menu.contains(ev.target) && ev.target !== btn && !btn?.contains(ev.target)) {
     menu.classList.add("hidden");
   }
 });
-
 async function selectTrip(id) {
   localStorage.setItem("tc_trip_id", id);
   document.getElementById("trip-picker-menu").classList.add("hidden");
@@ -483,31 +448,22 @@ function openNewTripModal() {
   document.getElementById("modal-title").textContent = "＋ New trip";
   document.getElementById("modal-body").innerHTML = `
     <form onsubmit="submitNewTrip(event)" class="space-y-3">
-      <div>
-        <label class="block text-xs font-medium text-slate-600 mb-1">Trip name</label>
-        <input id="new-trip-name" required class="w-full px-3 py-2 border border-slate-300 rounded text-sm" placeholder="Tokyo cherry blossom 2026">
-      </div>
-      <div>
-        <label class="block text-xs font-medium text-slate-600 mb-1">Destination</label>
-        <input id="new-trip-dest" required class="w-full px-3 py-2 border border-slate-300 rounded text-sm" placeholder="Tokyo, Japan">
-      </div>
+      <div><label class="block text-xs font-medium text-slate-600 mb-1">Trip name</label>
+        <input id="new-trip-name" required class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="Tokyo cherry blossom 2026"></div>
+      <div><label class="block text-xs font-medium text-slate-600 mb-1">Destination</label>
+        <input id="new-trip-dest" required class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="Tokyo, Japan"></div>
       <div class="grid grid-cols-2 gap-2">
-        <div>
-          <label class="block text-xs font-medium text-slate-600 mb-1">Start date</label>
-          <input id="new-trip-start" type="date" required value="${today}" class="w-full px-3 py-2 border border-slate-300 rounded text-sm">
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-slate-600 mb-1">End date</label>
-          <input id="new-trip-end" type="date" required value="${inAWeek}" class="w-full px-3 py-2 border border-slate-300 rounded text-sm">
-        </div>
+        <div><label class="block text-xs font-medium text-slate-600 mb-1">Start date</label>
+          <input id="new-trip-start" type="date" required value="${today}" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
+        <div><label class="block text-xs font-medium text-slate-600 mb-1">End date</label>
+          <input id="new-trip-end" type="date" required value="${inAWeek}" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
       </div>
       <p id="new-trip-error" class="text-xs text-rose-600 min-h-[14px]"></p>
-      <button type="submit" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-2 rounded">Create</button>
+      <button type="submit" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-2 rounded-lg">Create</button>
     </form>`;
   document.getElementById("modal").classList.remove("hidden");
   document.getElementById("modal").classList.add("flex");
 }
-
 async function submitNewTrip(ev) {
   ev.preventDefault();
   const errEl = document.getElementById("new-trip-error");
@@ -520,64 +476,41 @@ async function submitNewTrip(ev) {
   };
   try {
     const trip = await apiCall("/trips", { method: "POST", body: JSON.stringify(payload) });
-    closeModal();
-    showSnack("✓ Trip created");
-    await selectTrip(trip.id);
+    closeModal(); showSnack("✓ Trip created"); await selectTrip(trip.id);
   } catch (e) { errEl.textContent = e.message; }
 }
-
 function openIngestModal() {
   document.getElementById("trip-picker-menu").classList.add("hidden");
   document.getElementById("modal-title").textContent = "🤖 Generate trip with AI";
   document.getElementById("modal-body").innerHTML = `
     <form onsubmit="submitIngest(event)" class="space-y-3">
-      <p class="text-xs text-slate-500">
-        We'll use the tour-planner to draft an itinerary from your inputs. Output is editable —
-        treat it as a starting point, not a final plan.
-      </p>
-      <div>
-        <label class="block text-xs font-medium text-slate-600 mb-1">Destination *</label>
-        <input id="ing-destination" required placeholder="Tokyo, Japan"
-          class="w-full px-3 py-2 border border-slate-300 rounded text-sm">
-      </div>
+      <p class="text-xs text-slate-500">We'll draft an itinerary from your inputs. Treat output as a starting point.</p>
+      <div><label class="block text-xs font-medium text-slate-600 mb-1">Destination *</label>
+        <input id="ing-destination" required placeholder="Tokyo, Japan" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
       <div class="grid grid-cols-2 gap-2">
-        <div>
-          <label class="block text-xs font-medium text-slate-600 mb-1">Days *</label>
-          <input id="ing-days" type="number" min="1" max="14" value="3" required
-            class="w-full px-3 py-2 border border-slate-300 rounded text-sm">
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-slate-600 mb-1">Style</label>
-          <select id="ing-style" class="w-full px-3 py-2 border border-slate-300 rounded text-sm">
-            <option value="mixed">Mixed</option>
-            <option value="highlights">Classic highlights</option>
-            <option value="foodie">Foodie</option>
-            <option value="hidden">Quirky / hidden</option>
-          </select>
-        </div>
+        <div><label class="block text-xs font-medium text-slate-600 mb-1">Days *</label>
+          <input id="ing-days" type="number" min="1" max="14" value="3" required class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
+        <div><label class="block text-xs font-medium text-slate-600 mb-1">Style</label>
+          <select id="ing-style" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+            <option value="mixed">Mixed</option><option value="highlights">Classic highlights</option>
+            <option value="foodie">Foodie</option><option value="hidden">Quirky / hidden</option>
+          </select></div>
       </div>
-      <div>
-        <label class="block text-xs font-medium text-slate-600 mb-1">Source URL (optional)</label>
-        <input id="ing-source" placeholder="YouTube playlist, blog, etc."
-          class="w-full px-3 py-2 border border-slate-300 rounded text-sm">
-      </div>
+      <div><label class="block text-xs font-medium text-slate-600 mb-1">Source URL (optional)</label>
+        <input id="ing-source" placeholder="YouTube playlist, blog, etc." class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
       <p id="ing-error" class="text-xs text-rose-600 min-h-[14px]"></p>
-      <p id="ing-progress" class="hidden text-xs text-blue-700 italic">⏳ Generating itinerary — this can take 30–90s…</p>
-      <button id="ing-submit" type="submit"
-        class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded">Generate</button>
+      <p id="ing-progress" class="hidden text-xs text-blue-700 italic">⏳ Generating — this can take 30–90s…</p>
+      <button id="ing-submit" type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-lg">Generate</button>
     </form>`;
   document.getElementById("modal").classList.remove("hidden");
   document.getElementById("modal").classList.add("flex");
 }
-
 async function submitIngest(ev) {
   ev.preventDefault();
   const errEl = document.getElementById("ing-error");
   const progEl = document.getElementById("ing-progress");
   const btn = document.getElementById("ing-submit");
-  errEl.textContent = "";
-  progEl.classList.remove("hidden");
-  btn.disabled = true; btn.textContent = "Generating…";
+  errEl.textContent = ""; progEl.classList.remove("hidden"); btn.disabled = true; btn.textContent = "Generating…";
   const payload = {
     destination: document.getElementById("ing-destination").value.trim(),
     days: parseInt(document.getElementById("ing-days").value, 10),
@@ -585,29 +518,19 @@ async function submitIngest(ev) {
     source_url: document.getElementById("ing-source").value.trim(),
   };
   try {
-    const result = await apiCall("/plan/ingest", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-    closeModal();
-    showSnack(`✓ ${result.message} (${result.backend})`);
-    await selectTrip(result.trip_id);
+    const result = await apiCall("/plan/ingest", { method: "POST", body: JSON.stringify(payload) });
+    closeModal(); showSnack(`✓ ${result.message} (${result.backend})`); await selectTrip(result.trip_id);
   } catch (e) {
-    progEl.classList.add("hidden");
-    btn.disabled = false; btn.textContent = "Generate";
-    errEl.textContent = e.message;
+    progEl.classList.add("hidden"); btn.disabled = false; btn.textContent = "Generate"; errEl.textContent = e.message;
   }
 }
-
 async function confirmDeleteTrip() {
   document.getElementById("trip-picker-menu").classList.add("hidden");
   if (!TRIP_ID) return;
-  if (!confirm(`Delete "${TRIP.name}"? This is permanent — all check-ins, photos, journal entries are removed.`)) return;
+  if (!confirm(`Delete "${TRIP.name}"? All check-ins, photos, and journal entries are removed.`)) return;
   try {
     await apiCall(`/trips/${TRIP_ID}`, { method: "DELETE" });
-    localStorage.removeItem("tc_trip_id");
-    showSnack("Trip deleted");
-    await bootApp();
+    localStorage.removeItem("tc_trip_id"); showSnack("Trip deleted"); await bootApp();
   } catch (e) { showSnack("Delete failed: " + e.message); }
 }
 
@@ -626,21 +549,18 @@ function haversineKm(a, b) {
   const x = Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLng/2)**2;
   return 2 * R * Math.asin(Math.sqrt(x));
 }
-function walkMinutes(km) { return Math.round(km * 12.5); /* ~80 m/min */ }
+function walkMinutes(km) { return Math.round(km * 12.5); }
 function bandClass(b) {
-  return b === "local"   ? "bg-emerald-100 text-emerald-800"
-       : b === "tourist" ? "bg-rose-100 text-rose-800"
-       : "bg-amber-100 text-amber-800";
+  return b === "local" ? "bg-emerald-100 text-emerald-800" : b === "tourist" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800";
 }
 function bandLabel(b) {
-  return b === "local" ? "💚 local price" : b === "tourist" ? "🚩 tourist price" : "🟡 mid-range";
+  return b === "local" ? "💚 local" : b === "tourist" ? "🚩 tourist" : "🟡 mid";
 }
 function localityBar(score) {
   const w = Math.round(score * 100);
   const color = score >= 0.75 ? "bg-emerald-500" : score >= 0.5 ? "bg-amber-500" : "bg-rose-500";
-  return `<div class="w-20 h-1.5 bg-slate-200 rounded-full overflow-hidden"><div class="${color} h-full" style="width:${w}%"></div></div>`;
+  return `<div class="w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden"><div class="${color} h-full" style="width:${w}%"></div></div>`;
 }
-/* Get the active reference point — current stop on tour, else hotel */
 function activeAnchor() {
   const day = TRIP.days[STATE.current_day - 1];
   if (!day) return HOTEL;
@@ -648,32 +568,17 @@ function activeAnchor() {
   const s = day.stops[idx] || day.stops[0];
   return s && s.lat ? s : HOTEL;
 }
-/* Rank by combined locality + proximity */
 function rankStreetFood(anchor, opts = {}) {
-  const wantBand = opts.bandFilter; // null = all
+  const wantBand = opts.bandFilter;
   return TRIP.street_food
     .filter(f => !wantBand || f.price_band === wantBand)
     .map(f => {
       const km = haversineKm(anchor, f);
-      const proximity = Math.max(0, 1 - km / 8);  // 8km = no boost
+      const proximity = Math.max(0, 1 - km / 8);
       const score = 0.65 * f.locality_score + 0.35 * proximity;
       return { ...f, km, walk: walkMinutes(km), score };
     })
     .sort((a, b) => b.score - a.score);
-}
-function renderStreetFoodPlan() {
-  const container = document.getElementById("streetfood-plan");
-  if (!container) return;
-  const top = rankStreetFood(HOTEL).slice(0, 5);
-  container.innerHTML = top.map(f => `
-    <div class="flex items-start gap-2 p-2 rounded hover:bg-slate-50 cursor-pointer" onclick="openStreetFoodDetail('${f.id}')">
-      <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${bandClass(f.price_band)} whitespace-nowrap">${bandLabel(f.price_band)}</span>
-      <div class="flex-1 min-w-0">
-        <div class="font-medium text-slate-800 truncate">${f.name}</div>
-        <div class="text-[11px] text-slate-500">${f.price_huf} HUF · ${f.walk}-min walk from hotel</div>
-      </div>
-    </div>
-  `).join("");
 }
 
 /* ════════════════════════════════════════════
@@ -681,174 +586,252 @@ function renderStreetFoodPlan() {
    ════════════════════════════════════════════ */
 function setTab(name) {
   ["plan", "tour", "memory"].forEach(t => {
-    const sec = document.getElementById("tab-" + t);
+    document.getElementById("tab-" + t).classList.toggle("hidden", t !== name);
     const btn = document.getElementById("tab-" + t + "-btn");
-    const active = (t === name);
-    sec.classList.toggle("hidden", !active);
-    btn.classList.toggle("tab-active", active);
-    btn.classList.toggle("tab-inactive", !active);
+    btn.classList.toggle("active", t === name);
+    btn.classList.toggle("inactive", t !== name);
   });
   if (name === "memory") setTimeout(initMap, 50);
 }
 
 /* ════════════════════════════════════════════
-   PLAN tab rendering
+   PLAN TAB — hero + day tabs + sidebar
    ════════════════════════════════════════════ */
 function renderPlan() {
-  // Trip overview
+  // Hero: trip name + meta
   document.getElementById("trip-overview-name").textContent = TRIP.name;
   const meta = document.getElementById("trip-overview-meta");
-  const lines = [];
-  lines.push(`<p>📅 <b>${TRIP.dates}</b></p>`);
-  if (HOTEL.name) lines.push(`<p>🏨 ${HOTEL.name}${HOTEL.address ? ` — ${HOTEL.address}` : ""}</p>`);
-  if (TRIP.season) lines.push(`<p>🌡️ ${TRIP.season}</p>`);
-  if (TRIP.style) lines.push(`<p>🎯 Style: ${TRIP.style}</p>`);
-  if (TRIP.source_url) lines.push(`<p>📺 <b>Source:</b> <a href="${TRIP.source_url}" target="_blank" class="text-blue-700 hover:underline">${TRIP.source_url}</a></p>`);
-  meta.innerHTML = lines.join("");
+  const parts = [];
+  if (TRIP.dates) parts.push(`📅 ${TRIP.dates}`);
+  if (HOTEL.name) parts.push(`🏨 ${HOTEL.name}${HOTEL.address ? " · " + HOTEL.address : ""}`);
+  if (TRIP.source_url) {
+    let host = TRIP.source_url;
+    try { host = new URL(TRIP.source_url).hostname.replace("www.", ""); } catch(e) {}
+    parts.push(`📺 <a href="${TRIP.source_url}" target="_blank" class="underline hover:opacity-80">${host}</a>`);
+  }
+  meta.innerHTML = parts.join("<span class='mx-1.5 opacity-40'>·</span>");
 
-  // Bookings
+  // Hero: booking checklist
   const bl = document.getElementById("booking-list");
   bl.innerHTML = TRIP.bookings.map(b => `
     <li class="flex items-start gap-2">
-      <span class="${b.done ? 'text-emerald-600' : 'text-amber-600'} font-bold">
-        ${b.done ? '✓' : '○'}
-      </span>
-      <a href="${b.url}" target="_blank" class="${b.done ? 'line-through text-slate-500' : 'text-slate-800 hover:text-blue-700'} flex-1">${b.label}</a>
+      <span class="text-sm flex-shrink-0 ${b.done ? "text-emerald-400" : "text-amber-300"}">${b.done ? "✓" : "○"}</span>
+      <a href="${b.url}" target="_blank"
+        class="text-sm flex-1 ${b.done ? "line-through text-white/40" : "text-white/90 hover:text-white"}">${b.label}</a>
     </li>
   `).join("");
 
-  // Companion docs
-  const cl = document.getElementById("companion-list");
-  cl.innerHTML = TRIP.companion_docs.map(c => `
-    <a href="${c.file}" target="_blank" class="block px-3 py-2 bg-slate-50 hover:bg-slate-100 rounded text-slate-700 hover:text-blue-700">${c.name}</a>
-  `).join("");
+  // Day tabs (default to day 1)
+  selectedPlanDay = 1;
+  renderPlanDayTabs();
+  renderPlanDayContent(selectedPlanDay);
 
-  // Routes
-  const rl = document.getElementById("route-list");
-  rl.innerHTML = TRIP.routes.map(r => `
-    <div class="flex items-center justify-between px-3 py-2 bg-slate-50 hover:bg-slate-100 rounded">
-      <span class="text-slate-700 text-xs">${r.label}</span>
-      <span class="flex gap-2">
-        <a href="${r.url}" target="_blank" title="Open in Google Maps" class="text-blue-700 hover:underline text-xs">🗺</a>
-        <a href="${r.pdf}" target="_blank" title="Open PDF" class="text-rose-700 hover:underline text-xs">📄</a>
-      </span>
-    </div>
-  `).join("");
+  // Sidebar (default: docs)
+  setSidebarTab("docs");
+}
 
-  // Street food picks
-  renderStreetFoodPlan();
-
-  // Days
-  const dd = document.getElementById("plan-days");
-  dd.innerHTML = TRIP.days.map(d => `
-    <details class="bg-white rounded-xl shadow group" ${d.n === 1 ? "open" : ""}>
-      <summary class="cursor-pointer p-4 flex items-center gap-3 hover:bg-slate-50 rounded-xl">
-        <span class="text-2xl font-bold text-blue-700">${d.n}</span>
-        <div class="flex-1">
-          <div class="font-bold text-slate-800">${d.date}</div>
-          <div class="text-xs text-slate-500">${d.theme}</div>
-        </div>
-        <span class="text-xs text-slate-400 hidden sm:inline">${d.mode} · ${d.stops.length} stops</span>
-        <span class="text-slate-400 group-open:rotate-90 transition">▶</span>
-      </summary>
-      <div class="border-t border-slate-100 p-4 space-y-2">
-        ${d.stops.map((s, i) => `
-          <details class="border border-slate-200 rounded-lg stop-card bg-slate-50/50">
-            <summary class="cursor-pointer p-3 flex items-center gap-3 text-sm">
-              <span class="font-mono text-xs text-blue-600 w-12">${s.time}</span>
-              <span class="font-medium flex-1">${s.name}</span>
-              <span class="text-xs text-slate-400">${s.address ? s.address.split(",")[0] : ""}</span>
-            </summary>
-            <div class="px-4 pb-3 pt-1 text-xs text-slate-700 space-y-1.5">
-              ${s.address ? `<p>📍 <b>Address</b> · ${s.address}</p>` : ""}
-              ${s.hours ? `<p>🕐 <b>Hours</b> · ${s.hours}</p>` : ""}
-              ${s.tickets ? `<p>🎟 <b>Tickets</b> · ${s.tickets}</p>` : ""}
-              ${s.intro ? `<p class="text-slate-600 italic mt-2">${s.intro}</p>` : ""}
-              ${s.highlights ? `<div class="mt-1.5"><b>✨ Highlights</b><ul class="list-disc list-inside text-slate-600">${s.highlights.map(h => `<li>${h}</li>`).join("")}</ul></div>` : ""}
-              ${s.transit ? `<p class="mt-1.5">🚇 <b>Get there</b> · ${s.transit}</p>` : ""}
-              ${s.washroom ? `<p>🚻 <b>Washroom</b> · ${s.washroom}</p>` : ""}
-              ${s.food ? `<div>🍽 <b>Quick bite</b> · ${s.food.join(" · ")}</div>` : ""}
-              <p class="pt-2"><a href="https://maps.google.com/?q=${encodeURIComponent(s.name + " Budapest")}" target="_blank" class="text-blue-600 hover:underline">Open in Google Maps →</a></p>
-            </div>
-          </details>
-        `).join("")}
-      </div>
-    </details>
+function renderPlanDayTabs() {
+  const el = document.getElementById("plan-day-tabs");
+  if (!el) return;
+  el.innerHTML = TRIP.days.map(d => `
+    <button onclick="selectPlanDay(${d.n})" class="day-tab ${d.n === selectedPlanDay ? "active" : ""}">
+      <span class="text-xs font-bold">Day ${d.n}</span>
+      <span class="text-[10px] opacity-60">${d.date.split(" ").slice(0,2).join(" ")}</span>
+    </button>
   `).join("");
 }
 
+function selectPlanDay(n) {
+  selectedPlanDay = n;
+  renderPlanDayTabs();
+  renderPlanDayContent(n);
+}
+
+function renderPlanDayContent(n) {
+  const day = TRIP.days.find(d => d.n === n);
+  const el = document.getElementById("plan-day-content");
+  if (!el || !day) return;
+
+  const stopCards = day.stops.map((s, i) => `
+    <details class="stop-card bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+      <summary class="cursor-pointer px-4 py-3 flex items-center gap-3 select-none hover:bg-slate-50/70">
+        <span class="time-badge">${s.time}</span>
+        <div class="flex-1 min-w-0">
+          <div class="font-semibold text-slate-800 text-sm leading-snug">${s.name}</div>
+          ${s.address ? `<div class="text-xs text-slate-400 truncate">${s.address.split(",")[0]}</div>` : ""}
+        </div>
+        <span class="expand-icon">+</span>
+      </summary>
+      <div class="px-4 pb-4 pt-2 border-t border-slate-50 text-xs text-slate-600 space-y-1.5">
+        ${s.address   ? `<p>📍 <b class="text-slate-700">Address</b> · ${s.address}</p>` : ""}
+        ${s.hours     ? `<p>🕐 <b class="text-slate-700">Hours</b> · ${s.hours}</p>` : ""}
+        ${s.tickets   ? `<p>🎟 <b class="text-slate-700">Tickets</b> · ${s.tickets}</p>` : ""}
+        ${s.intro     ? `<p class="italic text-slate-500 mt-1">${s.intro}</p>` : ""}
+        ${s.highlights && s.highlights.length ? `
+          <div class="mt-1"><b class="text-slate-700">✨ Highlights</b>
+            <ul class="list-disc list-inside mt-0.5 text-slate-500">${s.highlights.map(h => `<li>${h}</li>`).join("")}</ul>
+          </div>` : ""}
+        ${s.transit   ? `<p class="mt-1">🚇 <b class="text-slate-700">Get there</b> · ${s.transit}</p>` : ""}
+        ${s.washroom  ? `<p>🚻 <b class="text-slate-700">Washroom</b> · ${s.washroom}</p>` : ""}
+        ${s.food && s.food.length ? `<p>🍽 <b class="text-slate-700">Quick bite</b> · ${s.food.join(" · ")}</p>` : ""}
+        <p class="pt-1">
+          <a href="https://maps.google.com/?q=${encodeURIComponent(s.name + " Budapest")}" target="_blank"
+            class="text-blue-600 hover:text-blue-800 font-medium">Open in Google Maps →</a>
+        </p>
+      </div>
+    </details>
+  `).join("");
+
+  el.innerHTML = `
+    <div class="mb-2 px-1">
+      <div class="flex items-baseline gap-2">
+        <h3 class="font-bold text-slate-800">${day.date}</h3>
+        <span class="text-xs text-slate-400">${day.mode} · ${day.stops.length} stops</span>
+      </div>
+      <p class="text-xs text-slate-500">${day.theme}</p>
+    </div>
+    <div class="space-y-2">${stopCards}</div>
+  `;
+}
+
+/* ────── Sidebar tab logic ────── */
+function setSidebarTab(tab) {
+  currentSidebarTab = tab;
+  ["docs", "maps", "food"].forEach(t => {
+    const btn = document.getElementById("stab-" + t);
+    if (btn) { btn.classList.toggle("active", t === tab); }
+  });
+  renderSidebarPanel(tab);
+}
+
+function docIcon(name) {
+  const n = name.toLowerCase();
+  if (n.includes("food")) return "🍴";
+  if (n.includes("phrase")) return "🗣";
+  if (n.includes("washroom") || n.includes("toilet")) return "🚻";
+  if (n.includes("itinerary") || n.includes("full")) return "📋";
+  return "📄";
+}
+
+function renderSidebarPanel(tab) {
+  const el = document.getElementById("sidebar-panel");
+  if (!el || !TRIP) return;
+
+  if (tab === "docs") {
+    el.innerHTML = TRIP.companion_docs.map(c => `
+      <a href="${c.file}" target="_blank"
+        class="flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-slate-50 text-slate-700 hover:text-blue-700 transition text-sm">
+        <span>${c.name}</span>
+      </a>
+    `).join("") + `
+      <div class="mt-3 p-3 bg-blue-50 rounded-xl">
+        <p class="text-[11px] text-blue-700 leading-relaxed">💡 Tap any stop below to expand address, hours, tickets, and transit.</p>
+      </div>`;
+
+  } else if (tab === "maps") {
+    el.innerHTML = TRIP.routes.map(r => `
+      <div class="flex items-center gap-2 p-2 rounded-xl hover:bg-slate-50 transition">
+        <span class="text-xs text-slate-700 flex-1 min-w-0">${r.label}</span>
+        <a href="${r.url}" target="_blank" title="Google Maps"
+          class="w-7 h-7 flex items-center justify-center rounded-lg bg-blue-50 hover:bg-blue-100 text-sm flex-shrink-0">🗺</a>
+        <a href="${r.pdf}" target="_blank" title="PDF"
+          class="w-7 h-7 flex items-center justify-center rounded-lg bg-rose-50 hover:bg-rose-100 text-sm flex-shrink-0">📄</a>
+      </div>
+    `).join("");
+
+  } else if (tab === "food") {
+    const top = rankStreetFood(HOTEL).slice(0, 6);
+    el.innerHTML = `
+      <p class="text-[11px] text-slate-400 mb-1 px-1">Near hotel · ranked by local price + walk</p>
+      ${top.map(f => `
+        <div class="flex items-start gap-2 p-2 rounded-xl hover:bg-slate-50 cursor-pointer transition"
+          onclick="openStreetFoodDetail('${f.id}')">
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${bandClass(f.price_band)} flex-shrink-0 mt-0.5">${bandLabel(f.price_band)}</span>
+          <div class="flex-1 min-w-0">
+            <div class="text-xs font-semibold text-slate-800 truncate">${f.name}</div>
+            <div class="text-[11px] text-slate-400">${f.price_huf} HUF · ${f.walk} min</div>
+          </div>
+        </div>
+      `).join("")}
+      <button onclick="openModal('streetfood-all')"
+        class="mt-2 w-full text-xs text-blue-700 py-2 rounded-xl border border-blue-200 hover:bg-blue-50 transition">
+        See all →
+      </button>`;
+  }
+}
+
 /* ════════════════════════════════════════════
-   TOUR tab rendering
+   TOUR TAB rendering
    ════════════════════════════════════════════ */
 function renderTour() {
-  // Day strip
   const ds = document.getElementById("day-strip");
   ds.innerHTML = TRIP.days.map(d => {
     const status = DAY_STATUS(d.n);
-    const cls = status === "done" ? "checked" : status === "current" ? "current" : "upcoming";
+    const cls  = status === "done" ? "checked" : status === "current" ? "current" : "upcoming";
     const icon = status === "done" ? "✓" : status === "current" ? "●" : "⌛";
     return `
-      <button onclick="STATE.current_day=${d.n}; renderTour();" class="day-pill ${cls} flex flex-col items-center min-w-[110px] px-3 py-2 rounded-lg border-2 hover:opacity-100">
+      <button onclick="STATE.current_day=${d.n}; renderTour();"
+        class="day-pill ${cls} flex flex-col items-center min-w-[100px] px-3 py-2 rounded-xl border-2 hover:opacity-100">
         <span class="text-xs font-bold">${icon} Day ${d.n}</span>
-        <span class="text-[10px] text-slate-600 mt-0.5">${d.date}</span>
-      </button>
-    `;
+        <span class="text-[10px] text-slate-600 mt-0.5">${d.date.split(" ").slice(0,2).join(" ")}</span>
+      </button>`;
   }).join("");
 
   document.getElementById("tour-status-summary").textContent =
-    `Day ${STATE.current_day} of 5 · ${TRIP.days[STATE.current_day-1].theme}`;
+    `Day ${STATE.current_day} of ${TRIP.days.length} · ${TRIP.days[STATE.current_day-1].theme}`;
 
-  // Today's stops
   const day = TRIP.days[STATE.current_day - 1];
   const dayCheckins = STATE.check_ins[day.n] || [];
   const ts = document.getElementById("tour-stops");
   ts.innerHTML = day.stops.map((s, i) => {
-    const checked = dayCheckins.includes(i);
-    const photos = STATE.stop_photos[`${day.n}-${i}`] || [];
-    const note = STATE.voice_notes[`${day.n}-${i}`];
+    const checked   = dayCheckins.includes(i);
+    const photos    = STATE.stop_photos[`${day.n}-${i}`] || [];
+    const note      = STATE.voice_notes[`${day.n}-${i}`];
     const isCurrent = (DAY_STATUS(day.n) === "current") && (i === (STATE.current_stop_index[day.n] || 0));
-    const tsCls = checked ? "border-emerald-300 bg-emerald-50" : isCurrent ? "border-amber-300 bg-amber-50 ring-2 ring-amber-100" : "border-slate-200 bg-white";
+    const border    = checked ? "border-emerald-300 bg-emerald-50" : isCurrent ? "border-amber-300 bg-amber-50 ring-2 ring-amber-100" : "border-slate-200 bg-white";
     return `
-      <div class="rounded-xl shadow-sm border-2 p-4 stop-card ${tsCls}">
+      <div class="rounded-2xl shadow-sm border-2 p-4 tour-stop-card ${border}">
         <div class="flex items-start gap-3">
-          <div class="font-mono text-xs text-blue-700 w-12 pt-0.5">${s.time}</div>
-          <div class="flex-1">
-            <h4 class="font-bold text-slate-800 leading-tight">${s.name} ${checked ? "✓" : isCurrent ? "● now" : ""}</h4>
+          <span class="time-badge mt-0.5">${s.time}</span>
+          <div class="flex-1 min-w-0">
+            <h4 class="font-bold text-slate-800 leading-snug">
+              ${s.name} ${checked ? '<span class="text-emerald-600 text-xs font-normal">✓ done</span>' : isCurrent ? '<span class="text-amber-600 text-xs font-normal">● now</span>' : ""}
+            </h4>
             ${s.address ? `<p class="text-xs text-slate-500">${s.address}</p>` : ""}
             ${s.transit ? `<p class="text-xs text-slate-600 mt-1">🚇 ${s.transit}</p>` : ""}
-            ${note ? `<p class="text-xs italic text-slate-700 mt-2 bg-slate-100 p-2 rounded">🎤 “${note}”</p>` : ""}
-            ${photos.length ? `<div class="flex gap-1 mt-2">${photos.map(p => `<img src="${p}" class="w-16 h-16 object-cover rounded" onerror="this.style.display='none'">`).join("")}</div>` : ""}
+            ${note ? `<p class="text-xs italic text-slate-700 mt-2 bg-slate-100 p-2 rounded-lg">🎤 "${note}"</p>` : ""}
+            ${photos.length ? `<div class="flex gap-1 mt-2">${photos.map(p => `<img src="${p}" class="w-14 h-14 object-cover rounded-lg" onerror="this.style.display='none'">`).join("")}</div>` : ""}
           </div>
         </div>
         <div class="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-slate-100">
-          <a href="https://maps.google.com/?q=${encodeURIComponent(s.name + ' Budapest')}" target="_blank" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded font-medium">🧭 Navigate</a>
-          ${!checked ? `<button onclick="checkIn(${day.n}, ${i})" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-1.5 rounded font-medium">📍 Check in</button>` : ""}
-          <button onclick="addPhoto(${day.n}, ${i})" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs px-3 py-1.5 rounded font-medium">📷 Photo</button>
-          <button onclick="recordVoice(${day.n}, ${i})" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs px-3 py-1.5 rounded font-medium">🎤 Voice note</button>
-          ${s.tickets ? `<span class="text-xs text-slate-500 ml-auto self-center">🎟 ${s.tickets}</span>` : ""}
+          <a href="https://maps.google.com/?q=${encodeURIComponent(s.name + ' Budapest')}" target="_blank"
+            class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-lg font-medium">🧭 Navigate</a>
+          ${!checked ? `<button onclick="checkIn(${day.n}, ${i})"
+            class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-1.5 rounded-lg font-medium">📍 Check in</button>` : ""}
+          <button onclick="addPhoto(${day.n}, ${i})"
+            class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-3 py-1.5 rounded-lg font-medium">📷 Photo</button>
+          <button onclick="recordVoice(${day.n}, ${i})"
+            class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-3 py-1.5 rounded-lg font-medium">🎤 Voice</button>
+          ${s.tickets ? `<span class="text-xs text-slate-400 ml-auto self-center">🎟 ${s.tickets}</span>` : ""}
         </div>
-      </div>
-    `;
+      </div>`;
   }).join("");
 
-  // Stats
   const totalCheckins = Object.values(STATE.check_ins).flat().length;
-  const totalPhotos = Object.values(STATE.stop_photos).flat().length;
-  const totalNotes = Object.keys(STATE.voice_notes).length;
-  const totalStops = TRIP.days.reduce((s, d) => s + d.stops.length, 0);
+  const totalPhotos   = Object.values(STATE.stop_photos).flat().length;
+  const totalNotes    = Object.keys(STATE.voice_notes).length;
+  const totalStops    = TRIP.days.reduce((s, d) => s + d.stops.length, 0);
   document.getElementById("tour-stats").innerHTML = `
-    <p>📍 <b>${totalCheckins}</b> / ${totalStops} stops checked in</p>
-    <p>📷 <b>${totalPhotos}</b> photos taken</p>
+    <p>📍 <b>${totalCheckins}</b> / ${totalStops} stops</p>
+    <p>📷 <b>${totalPhotos}</b> photos</p>
     <p>🎤 <b>${totalNotes}</b> voice notes</p>
-    <p>🚶 <b>~${(totalCheckins * 1.2).toFixed(1)} km</b> walked today</p>
-  `;
+    <p>🚶 <b>~${(totalCheckins * 1.2).toFixed(1)} km</b> walked</p>`;
 }
 
 function _stopIdFor(day, idx) {
   const d = TRIP.days.find(x => x.n === day);
   return d?.stops[idx]?._stop_id;
 }
-
 async function checkIn(day, idx) {
   const sid = _stopIdFor(day, idx);
   if (!sid) return;
@@ -861,7 +844,6 @@ async function checkIn(day, idx) {
     renderTour(); renderMemory();
   } catch (e) { showSnack("Check-in failed: " + e.message); }
 }
-
 async function addPhoto(day, idx) {
   const sid = _stopIdFor(day, idx);
   if (!sid) return;
@@ -875,16 +857,13 @@ async function addPhoto(day, idx) {
   const existing = STATE.stop_photos[key] || [];
   const path = candidates[existing.length % candidates.length];
   try {
-    await apiCall(`/stops/${sid}/photos-link`, {
-      method: "POST", body: JSON.stringify({ path }),
-    });
+    await apiCall(`/stops/${sid}/photos-link`, { method: "POST", body: JSON.stringify({ path }) });
     if (!STATE.stop_photos[key]) STATE.stop_photos[key] = [];
     STATE.stop_photos[key].push(path);
     showSnack("📷 Photo added.  Auto-tagged to this stop");
     renderTour(); renderMemory();
   } catch (e) { showSnack("Photo failed: " + e.message); }
 }
-
 async function recordVoice(day, idx) {
   const sid = _stopIdFor(day, idx);
   if (!sid) return;
@@ -897,9 +876,7 @@ async function recordVoice(day, idx) {
   ];
   const transcript = sampleNotes[Math.floor(Math.random() * sampleNotes.length)];
   try {
-    await apiCall(`/stops/${sid}/voice`, {
-      method: "POST", body: JSON.stringify({ transcript }),
-    });
+    await apiCall(`/stops/${sid}/voice`, { method: "POST", body: JSON.stringify({ transcript }) });
     STATE.voice_notes[key] = transcript;
     showSnack("🎤 Voice note saved.  Transcribed & tagged");
     renderTour(); renderMemory();
@@ -907,93 +884,78 @@ async function recordVoice(day, idx) {
 }
 
 /* ════════════════════════════════════════════
-   MEMORY tab rendering
+   MEMORY TAB rendering
    ════════════════════════════════════════════ */
 let mapInstance = null;
 function initMap() {
   if (mapInstance) { mapInstance.invalidateSize(); return; }
   mapInstance = L.map("journey-map", { scrollWheelZoom: false }).setView([47.4979, 19.0402], 12);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: '&copy; OpenStreetMap',
-    maxZoom: 19
+    attribution: "© OpenStreetMap", maxZoom: 19
   }).addTo(mapInstance);
-
-  // Draw points + line for visited stops
   const visitedCoords = [];
   TRIP.days.forEach(d => {
-    const checkins = STATE.check_ins[d.n] || [];
-    checkins.forEach(idx => {
+    (STATE.check_ins[d.n] || []).forEach(idx => {
       const s = d.stops[idx];
       if (s.lat && s.lng) {
         visitedCoords.push([s.lat, s.lng]);
-        const marker = L.circleMarker([s.lat, s.lng], {
-          radius: 7, fillColor: "#1a3a52", color: "white", weight: 2, fillOpacity: 0.9
-        }).addTo(mapInstance);
-        marker.bindPopup(`<b>Day ${d.n}</b> · ${s.time}<br>${s.name}`);
+        L.circleMarker([s.lat, s.lng], { radius: 7, fillColor: "#1d4ed8", color: "white", weight: 2, fillOpacity: 0.9 })
+          .addTo(mapInstance).bindPopup(`<b>Day ${d.n}</b> · ${s.time}<br>${s.name}`);
       }
     });
   });
-  if (visitedCoords.length >= 2) {
-    L.polyline(visitedCoords, { color: "#dc2626", weight: 3, dashArray: "6, 5", opacity: 0.7 }).addTo(mapInstance);
-  }
-  if (visitedCoords.length) {
-    mapInstance.fitBounds(L.latLngBounds(visitedCoords).pad(0.15));
-  }
+  if (visitedCoords.length >= 2)
+    L.polyline(visitedCoords, { color: "#dc2626", weight: 3, dashArray: "6 5", opacity: 0.7 }).addTo(mapInstance);
+  if (visitedCoords.length) mapInstance.fitBounds(L.latLngBounds(visitedCoords).pad(0.15));
 }
 
 function renderMemory() {
   const totalCheckins = Object.values(STATE.check_ins).flat().length;
-  const totalPhotos = Object.values(STATE.stop_photos).flat().length;
-  const totalNotes = Object.keys(STATE.voice_notes).length;
+  const totalPhotos   = Object.values(STATE.stop_photos).flat().length;
+  const totalNotes    = Object.keys(STATE.voice_notes).length;
   document.getElementById("memory-stats").innerHTML =
-    `<b>${totalCheckins}</b> stops · <b>${totalPhotos}</b> photos · <b>${totalNotes}</b> voice notes · journey-line drawn from check-ins`;
+    `<b>${totalCheckins}</b> stops · <b>${totalPhotos}</b> photos · <b>${totalNotes}</b> voice notes`;
 
-  // Daily wrap cards (only completed days)
   const md = document.getElementById("memory-days");
   md.innerHTML = TRIP.days.filter(d => DAY_STATUS(d.n) === "done").map(d => {
     const checkins = STATE.check_ins[d.n] || [];
     const photos = checkins.flatMap(i => STATE.stop_photos[`${d.n}-${i}`] || []);
     return `
-      <div class="bg-white rounded-xl shadow-sm p-4">
-        <div class="flex items-baseline justify-between mb-2">
+      <div class="bg-white rounded-2xl shadow-sm p-4">
+        <div class="flex items-baseline justify-between mb-1">
           <h4 class="font-bold text-slate-800">Day ${d.n} · ${d.date}</h4>
-          <span class="text-xs text-slate-500">${checkins.length} stops · ${photos.length} photos</span>
+          <span class="text-xs text-slate-400">${checkins.length} stops · ${photos.length} photos</span>
         </div>
-        <p class="text-xs text-slate-600 italic mb-2">${d.theme}</p>
-        ${photos.length ? `<div class="grid grid-cols-4 gap-1.5 mb-2">${photos.slice(0,8).map(p => `<img src="${p}" class="w-full aspect-square object-cover rounded" onerror="this.style.display='none'">`).join("")}</div>` : ""}
-        <details class="text-xs text-slate-700">
+        <p class="text-xs text-slate-500 italic mb-2">${d.theme}</p>
+        ${photos.length ? `<div class="grid grid-cols-4 gap-1.5 mb-2">${photos.slice(0,8).map(p => `<img src="${p}" class="w-full aspect-square object-cover rounded-lg" onerror="this.style.display='none'">`).join("")}</div>` : ""}
+        <details class="text-xs text-slate-600">
           <summary class="cursor-pointer text-blue-700 hover:underline">Show stop-by-stop notes</summary>
-          <div class="mt-2 space-y-1.5 pl-2 border-l-2 border-slate-200">
+          <div class="mt-2 space-y-1.5 pl-3 border-l-2 border-slate-200">
             ${checkins.map(i => {
               const s = d.stops[i];
               const note = STATE.voice_notes[`${d.n}-${i}`];
-              return `<div class="text-slate-700"><b>${s.time}</b> ${s.name}${note ? `<p class="italic text-slate-500 mt-0.5">"${note}"</p>` : ""}</div>`;
+              return `<div><b>${s.time}</b> ${s.name}${note ? `<p class="italic text-slate-400 mt-0.5">"${note}"</p>` : ""}</div>`;
             }).join("")}
           </div>
         </details>
-      </div>
-    `;
-  }).join("") || `<p class="text-sm text-slate-500 italic">No completed days yet — your daily wraps appear here as you check in.</p>`;
+      </div>`;
+  }).join("") || `<p class="text-sm text-slate-400 italic">No completed days yet — daily wraps appear here as you check in.</p>`;
 
-  // Photo grid (last 9)
   const allPhotos = Object.values(STATE.stop_photos).flat().slice(0, 9);
   const pg = document.getElementById("photo-grid");
   pg.innerHTML = allPhotos.map(p => `<img src="${p}" onerror="this.style.display='none'">`).join("") ||
-    `<p class="text-xs text-slate-500 col-span-3">Photos appear here as you take them in the Tour tab.</p>`;
+    `<p class="text-xs text-slate-400 col-span-3">Photos appear here as you take them.</p>`;
 
-  // Journal
   const j = document.getElementById("journal");
   if (j && !j._bound) {
     j.value = STATE.journal;
-    let _journalTimer;
+    let _jt;
     j.addEventListener("input", () => {
       STATE.journal = j.value;
-      clearTimeout(_journalTimer);
-      _journalTimer = setTimeout(() => {
-        apiCall(`/trips/${TRIP_ID}/journal`, {
-          method: "PUT",
-          body: JSON.stringify({ journal: j.value }),
-        }).catch(e => showSnack("Save failed: " + e.message));
+      clearTimeout(_jt);
+      _jt = setTimeout(() => {
+        apiCall(`/trips/${TRIP_ID}/journal`, { method: "PUT", body: JSON.stringify({ journal: j.value }) })
+          .catch(e => showSnack("Save failed: " + e.message));
       }, 600);
     });
     j._bound = true;
@@ -1001,23 +963,17 @@ function renderMemory() {
 }
 
 /* ════════════════════════════════════════════
-   Modals + snackbar
+   Modals
    ════════════════════════════════════════════ */
 function openModal(kind) {
-  // Dynamic street-food modals — compute body live
-  if (kind === "cheapeats" || kind === "streetfood-all") {
-    return openStreetFoodModal(kind);
-  }
+  if (kind === "cheapeats" || kind === "streetfood-all") return openStreetFoodModal(kind);
   const titles = {
-    phrasebook: "🗣 Pocket phrasebook",
-    washroom: "🚻 Nearest washrooms",
-    currency: "💱 Currency converter",
-    weather: "☂️ Weather today",
-    book: "📕 Print to hardcover book"
+    phrasebook: "🗣 Pocket phrasebook", washroom: "🚻 Nearest washrooms",
+    currency: "💱 Currency", weather: "☂️ Weather today", book: "📕 Print to hardcover book"
   };
   const bodies = {
     phrasebook: `
-      <ul class="text-sm space-y-2">
+      <ul class="text-sm space-y-2.5">
         <li><b>Hello</b> — <i>Szia</i> · "see-ah" 🔊</li>
         <li><b>Thank you</b> — <i>Köszönöm</i> · "kuh-suh-nuhm" 🔊</li>
         <li><b>The bill, please</b> — <i>A számlát, kérem</i> · "ah saam-laat keh-rem" 🔊</li>
@@ -1025,40 +981,40 @@ function openModal(kind) {
         <li><b>Where is the bathroom?</b> — <i>Hol van a mosdó?</i> · "hol von oh mosh-doh" 🔊</li>
         <li><b>Cheers!</b> — <i>Egészségedre!</i> · "egg-aess-shay-ged-reh" 🔊</li>
       </ul>
-      <p class="text-xs text-slate-500 mt-3">Tap 🔊 to play TTS audio (production version).</p>`,
+      <p class="text-xs text-slate-400 mt-3">Tap 🔊 to play TTS audio (production).</p>`,
     washroom: `
-      <p class="text-sm text-slate-700 mb-3">Within 5 minutes of your current stop:</p>
-      <ul class="text-sm space-y-2">
-        <li>🚻 <b>Marriott lobby</b> · 3 min walk · free with espresso purchase</li>
+      <p class="text-sm text-slate-600 mb-3">Within 5 minutes of your current stop:</p>
+      <ul class="text-sm space-y-2.5">
+        <li>🚻 <b>Marriott lobby</b> · 3 min · free with espresso</li>
         <li>🚻 <b>Vörösmarty tér Metro M1</b> · 4 min · free</li>
-        <li>🚻 <b>Vigadó concert hall lobby</b> · 5 min · free during business hrs</li>
-        <li>🚻 <b>Public WC Vigadó tér</b> · 2 min · paid 200 HUF</li>
+        <li>🚻 <b>Vigadó concert hall</b> · 5 min · free during business hrs</li>
+        <li>🚻 <b>Public WC Vigadó tér</b> · 2 min · 200 HUF</li>
       </ul>`,
     currency: `
-      <div class="text-sm space-y-2">
-        <div class="flex items-center gap-2"><span class="font-mono w-20">100 USD</span> = <b>~36,500 HUF</b></div>
-        <div class="flex items-center gap-2"><span class="font-mono w-20">100 EUR</span> = <b>~39,800 HUF</b></div>
-        <div class="flex items-center gap-2"><span class="font-mono w-20">100 CAD</span> = <b>~26,400 HUF</b></div>
-        <p class="text-xs text-slate-500 pt-2 border-t mt-3">Rates from the European Central Bank. Avoid Euronet ATMs (high fees).</p>
+      <div class="text-sm space-y-2.5">
+        <div class="flex gap-2"><span class="font-mono text-slate-500 w-20">100 USD</span><b>~36,500 HUF</b></div>
+        <div class="flex gap-2"><span class="font-mono text-slate-500 w-20">100 EUR</span><b>~39,800 HUF</b></div>
+        <div class="flex gap-2"><span class="font-mono text-slate-500 w-20">100 CAD</span><b>~26,400 HUF</b></div>
+        <p class="text-xs text-slate-400 pt-3 border-t mt-3">Rates from ECB. Avoid Euronet ATMs (high fees).</p>
       </div>`,
     weather: `
-      <p class="text-sm text-slate-700">📅 Sunday May 24, 2026, Budapest</p>
-      <div class="text-3xl font-bold mt-2">21°C · ☀️ Sunny</div>
-      <p class="text-sm text-slate-500 mt-1">Sunset 20:30 · 0% rain · UV 6 (high)</p>
+      <p class="text-sm text-slate-600">📅 Sunday May 24, 2026 · Budapest</p>
+      <div class="text-3xl font-bold mt-2 mb-1">21°C ☀️</div>
+      <p class="text-sm text-slate-500">Sunset 20:30 · 0% rain · UV 6</p>
       <ul class="text-xs text-slate-600 mt-3 space-y-1">
         <li>Bring sunscreen for the Gellért hike</li>
         <li>Light layer for after sunset</li>
-        <li>No umbrella needed</li>
       </ul>`,
     book: `
       <p class="text-sm text-slate-700 mb-3">Generate a 28-page hardcover book of your trip, $39.99.</p>
       <ul class="text-xs text-slate-600 list-disc list-inside space-y-1 mb-4">
-        <li>Auto-laid out from your photos and journal</li>
+        <li>Auto-laid out from photos and journal</li>
         <li>Front cover: trip map; chapters: one per day</li>
         <li>Includes voice-note transcripts as captions</li>
         <li>Ships in 7–10 business days</li>
       </ul>
-      <button onclick="closeModal();showSnack('📕 Book preview generated (demo).')" class="w-full bg-rose-500 text-white py-2 rounded-lg font-bold hover:bg-rose-600">Generate preview</button>`
+      <button onclick="closeModal();showSnack('📕 Book preview generated (demo).')"
+        class="w-full bg-rose-500 text-white py-2 rounded-xl font-bold hover:bg-rose-600">Generate preview</button>`
   };
   document.getElementById("modal-title").textContent = titles[kind] || "";
   document.getElementById("modal-body").innerHTML = bodies[kind] || "";
@@ -1072,84 +1028,73 @@ function closeModal() {
 
 function openStreetFoodModal(kind) {
   const anchor = activeAnchor();
-  const isAll = kind === "streetfood-all";
+  const isAll  = kind === "streetfood-all";
   const ranked = rankStreetFood(anchor);
-  const list = isAll ? ranked : ranked.filter(f => f.price_band !== "tourist").slice(0, 5);
-
+  const list   = isAll ? ranked : ranked.filter(f => f.price_band !== "tourist").slice(0, 5);
   const anchorLabel = anchor === HOTEL || !anchor.name ? "Astoria (hotel)" : anchor.name;
   const subtitle = isAll
-    ? `${ranked.length} curated picks across Budapest. Sorted by locality + proximity to <b>${anchorLabel}</b>.`
-    : `Top ${list.length} <b>local-priced</b> bites near you (anchor: <b>${anchorLabel}</b>). Tourist-priced spots hidden.`;
-
-  const items = list.map(f => `
-    <div class="border border-slate-200 rounded-lg p-3 hover:bg-slate-50">
-      <div class="flex items-start justify-between gap-2 mb-1">
-        <div class="flex-1 min-w-0">
-          <div class="font-bold text-slate-800 leading-tight">${f.name}</div>
-          <div class="text-xs text-slate-500">${f.address}</div>
-        </div>
-        <span class="px-2 py-0.5 rounded text-[10px] font-bold ${bandClass(f.price_band)} whitespace-nowrap">${bandLabel(f.price_band)}</span>
-      </div>
-      <div class="flex items-center gap-2 text-xs text-slate-700 mt-1">
-        <span class="font-mono">${f.price_huf} HUF</span>
-        <span class="text-slate-400">·</span>
-        <span>🚶 ${f.walk} min (${f.km.toFixed(1)} km)</span>
-        <span class="text-slate-400">·</span>
-        ${localityBar(f.locality_score)}
-        <span class="text-[10px] text-slate-500">${(f.locality_score*100|0)}%</span>
-      </div>
-      <p class="text-xs text-slate-600 italic mt-1.5">${f.why}</p>
-      <div class="text-[11px] text-slate-500 mt-1">🕐 ${f.hours || "—"}</div>
-      <div class="flex gap-2 mt-2">
-        <a href="https://maps.google.com/?q=${encodeURIComponent(f.name + ' Budapest')}" target="_blank"
-           class="text-blue-600 hover:underline text-xs">🧭 Navigate</a>
-      </div>
-    </div>
-  `).join("");
+    ? `${ranked.length} curated picks. Sorted by locality + proximity to <b>${anchorLabel}</b>.`
+    : `Top ${list.length} <b>local-priced</b> bites near <b>${anchorLabel}</b>.`;
 
   const filterBar = isAll ? `
     <div class="flex gap-2 mb-3 text-xs">
-      <button onclick="filterStreetFood(event,null)" class="filter-pill px-2 py-1 rounded bg-slate-800 text-white">All</button>
-      <button onclick="filterStreetFood(event,'local')" class="filter-pill px-2 py-1 rounded bg-emerald-100 text-emerald-800">Local</button>
-      <button onclick="filterStreetFood(event,'mid')" class="filter-pill px-2 py-1 rounded bg-amber-100 text-amber-800">Mid</button>
-      <button onclick="filterStreetFood(event,'tourist')" class="filter-pill px-2 py-1 rounded bg-rose-100 text-rose-800">Tourist</button>
+      <button onclick="filterStreetFood(event,null)" class="filter-pill px-2.5 py-1 rounded-lg bg-slate-800 text-white">All</button>
+      <button onclick="filterStreetFood(event,'local')" class="filter-pill px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800">Local</button>
+      <button onclick="filterStreetFood(event,'mid')" class="filter-pill px-2.5 py-1 rounded-lg bg-amber-100 text-amber-800">Mid</button>
+      <button onclick="filterStreetFood(event,'tourist')" class="filter-pill px-2.5 py-1 rounded-lg bg-rose-100 text-rose-800">Tourist</button>
     </div>` : "";
 
-  document.getElementById("modal-title").textContent = isAll ? "🍴 All street-food picks" : "🍴 Cheap eats near you";
-  document.getElementById("modal-body").innerHTML =
-    `<p class="text-xs text-slate-500 mb-3">${subtitle}</p>${filterBar}<div id="streetfood-list" class="space-y-2">${items}</div>`;
-  document.getElementById("modal").classList.remove("hidden");
-  document.getElementById("modal").classList.add("flex");
-}
-
-function filterStreetFood(ev, band) {
-  document.querySelectorAll(".filter-pill").forEach(p => p.classList.remove("ring-2","ring-blue-400"));
-  if (ev && ev.currentTarget) ev.currentTarget.classList.add("ring-2","ring-blue-400");
-  const anchor = activeAnchor();
-  const filtered = rankStreetFood(anchor, { bandFilter: band });
-  const list = document.getElementById("streetfood-list");
-  if (!list) return;
-  list.innerHTML = filtered.map(f => `
-    <div class="border border-slate-200 rounded-lg p-3 hover:bg-slate-50">
+  const items = list.map(f => `
+    <div class="border border-slate-200 rounded-xl p-3 hover:bg-slate-50">
       <div class="flex items-start justify-between gap-2 mb-1">
         <div class="flex-1 min-w-0">
-          <div class="font-bold text-slate-800 leading-tight">${f.name}</div>
-          <div class="text-xs text-slate-500">${f.address}</div>
+          <div class="font-bold text-slate-800 text-sm leading-tight">${f.name}</div>
+          <div class="text-xs text-slate-400">${f.address}</div>
         </div>
         <span class="px-2 py-0.5 rounded text-[10px] font-bold ${bandClass(f.price_band)} whitespace-nowrap">${bandLabel(f.price_band)}</span>
       </div>
-      <div class="flex items-center gap-2 text-xs text-slate-700 mt-1">
+      <div class="flex items-center gap-2 text-xs text-slate-600 mt-1">
         <span class="font-mono">${f.price_huf} HUF</span>
-        <span class="text-slate-400">·</span>
+        <span class="text-slate-300">·</span>
         <span>🚶 ${f.walk} min</span>
-        <span class="text-slate-400">·</span>
+        <span class="text-slate-300">·</span>
+        ${localityBar(f.locality_score)}
+        <span class="text-slate-400 text-[10px]">${(f.locality_score*100|0)}%</span>
+      </div>
+      <p class="text-xs text-slate-500 italic mt-1.5">${f.why}</p>
+      <a href="https://maps.google.com/?q=${encodeURIComponent(f.name + ' Budapest')}" target="_blank"
+        class="text-blue-600 hover:underline text-xs mt-1.5 block">🧭 Navigate</a>
+    </div>`).join("");
+
+  document.getElementById("modal-title").textContent = isAll ? "🍴 All street-food picks" : "🍴 Cheap eats near you";
+  document.getElementById("modal-body").innerHTML =
+    `<p class="text-xs text-slate-400 mb-3">${subtitle}</p>${filterBar}<div id="streetfood-list" class="space-y-2">${items}</div>`;
+  document.getElementById("modal").classList.remove("hidden");
+  document.getElementById("modal").classList.add("flex");
+}
+function filterStreetFood(ev, band) {
+  document.querySelectorAll(".filter-pill").forEach(p => p.classList.remove("ring-2", "ring-blue-400"));
+  if (ev?.currentTarget) ev.currentTarget.classList.add("ring-2", "ring-blue-400");
+  const anchor = activeAnchor();
+  const list   = document.getElementById("streetfood-list");
+  if (!list) return;
+  list.innerHTML = rankStreetFood(anchor, { bandFilter: band }).map(f => `
+    <div class="border border-slate-200 rounded-xl p-3 hover:bg-slate-50">
+      <div class="flex items-start justify-between gap-2 mb-1">
+        <div class="flex-1 min-w-0">
+          <div class="font-bold text-slate-800 text-sm leading-tight">${f.name}</div>
+          <div class="text-xs text-slate-400">${f.address}</div>
+        </div>
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold ${bandClass(f.price_band)} whitespace-nowrap">${bandLabel(f.price_band)}</span>
+      </div>
+      <div class="flex items-center gap-2 text-xs text-slate-600 mt-1">
+        <span>${f.price_huf} HUF</span><span class="text-slate-300">·</span>
+        <span>🚶 ${f.walk} min</span><span class="text-slate-300">·</span>
         ${localityBar(f.locality_score)}
       </div>
-      <p class="text-xs text-slate-600 italic mt-1.5">${f.why}</p>
-    </div>
-  `).join("");
+      <p class="text-xs text-slate-500 italic mt-1.5">${f.why}</p>
+    </div>`).join("");
 }
-
 function openStreetFoodDetail(id) {
   const f = TRIP.street_food.find(x => x.id === id);
   if (!f) return;
@@ -1157,20 +1102,19 @@ function openStreetFoodDetail(id) {
   const km = haversineKm(anchor, f);
   document.getElementById("modal-title").textContent = `🍴 ${f.name}`;
   document.getElementById("modal-body").innerHTML = `
-    <span class="inline-block px-2 py-0.5 rounded text-xs font-bold ${bandClass(f.price_band)} mb-2">${bandLabel(f.price_band)}</span>
-    <p class="text-sm text-slate-700 mb-1">📍 ${f.address}</p>
-    <p class="text-sm text-slate-700 mb-1">💰 <b>${f.price_huf} HUF</b></p>
-    <p class="text-sm text-slate-700 mb-1">🕐 ${f.hours || "—"}</p>
-    <p class="text-sm text-slate-700 mb-1">🚶 ${walkMinutes(km)} min (${km.toFixed(1)} km from current location)</p>
-    <div class="flex items-center gap-2 mt-2 mb-3">
+    <span class="inline-block px-2 py-0.5 rounded text-xs font-bold ${bandClass(f.price_band)} mb-3">${bandLabel(f.price_band)}</span>
+    <p class="text-sm mb-1">📍 ${f.address}</p>
+    <p class="text-sm mb-1">💰 <b>${f.price_huf} HUF</b></p>
+    <p class="text-sm mb-1">🕐 ${f.hours || "—"}</p>
+    <p class="text-sm mb-2">🚶 ${walkMinutes(km)} min (${km.toFixed(1)} km away)</p>
+    <div class="flex items-center gap-2 mb-3">
       <span class="text-xs text-slate-500">Local-ness</span>
       ${localityBar(f.locality_score)}
       <span class="text-xs font-bold">${(f.locality_score*100|0)}%</span>
     </div>
-    <p class="text-sm text-slate-700 italic mb-3 p-3 bg-slate-50 rounded">${f.why}</p>
+    <p class="text-sm italic mb-4 p-3 bg-slate-50 rounded-xl text-slate-600">${f.why}</p>
     <a href="https://maps.google.com/?q=${encodeURIComponent(f.name + ' Budapest')}" target="_blank"
-       class="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white py-2 rounded font-bold">🧭 Open in Google Maps</a>
-  `;
+      class="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-bold">🧭 Open in Google Maps</a>`;
   document.getElementById("modal").classList.remove("hidden");
   document.getElementById("modal").classList.add("flex");
 }
@@ -1178,27 +1122,24 @@ function openStreetFoodDetail(id) {
 let snackTimer;
 function showSnack(msg) {
   const s = document.getElementById("snackbar");
-  s.textContent = msg;
-  s.classList.remove("hidden");
+  s.textContent = msg; s.classList.remove("hidden");
   clearTimeout(snackTimer);
   snackTimer = setTimeout(() => s.classList.add("hidden"), 2400);
 }
 
 /* ════════════════════════════════════════════
-   Login UI
+   Auth / login UI
    ════════════════════════════════════════════ */
 function showLogin() {
   document.getElementById("login-overlay").classList.remove("hidden");
   document.getElementById("login-overlay").classList.add("flex");
   document.getElementById("app-shell").classList.add("hidden");
 }
-
 function hideLogin() {
   document.getElementById("login-overlay").classList.add("hidden");
   document.getElementById("login-overlay").classList.remove("flex");
   document.getElementById("app-shell").classList.remove("hidden");
 }
-
 async function handleLoginSubmit(ev) {
   ev.preventDefault();
   const email = document.getElementById("login-email").value.trim();
@@ -1206,115 +1147,70 @@ async function handleLoginSubmit(ev) {
   const mode = document.getElementById("login-mode").value;
   const errEl = document.getElementById("login-error");
   const infoEl = document.getElementById("login-info");
-  errEl.textContent = "";
-  infoEl.classList.add("hidden");
+  errEl.textContent = ""; infoEl.classList.add("hidden");
   try {
     if (mode === "signup") {
-      await signup(email, password);
-      hideLogin();
-      await bootApp();
+      await signup(email, password); hideLogin(); await bootApp();
     } else if (mode === "forgot") {
-      await fetch(API_BASE + "/auth/forgot", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      infoEl.textContent = "If that email is registered, we sent a reset link.";
-      infoEl.classList.remove("hidden");
+      await fetch(API_BASE + "/auth/forgot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+      infoEl.textContent = "If that email is registered, we sent a reset link."; infoEl.classList.remove("hidden");
     } else if (mode === "reset") {
       const token = document.getElementById("login-mode").dataset.token;
-      const res = await fetch(API_BASE + "/auth/reset", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, new_password: password }),
-      });
+      const res = await fetch(API_BASE + "/auth/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, new_password: password }) });
       if (!res.ok) throw new Error((await res.json()).detail || "reset failed");
-      infoEl.textContent = "Password reset. You can log in now.";
-      infoEl.classList.remove("hidden");
-      setLoginMode("login");
+      infoEl.textContent = "Password reset. You can log in now."; infoEl.classList.remove("hidden"); setLoginMode("login");
     } else {
-      await login(email, password);
-      hideLogin();
-      await bootApp();
+      await login(email, password); hideLogin(); await bootApp();
     }
-  } catch (e) {
-    errEl.textContent = e.message;
-  }
+  } catch (e) { errEl.textContent = e.message; }
 }
-
 function setLoginMode(mode, token) {
   const modeEl = document.getElementById("login-mode");
-  const btn = document.getElementById("login-submit");
-  const link = document.getElementById("login-toggle");
+  const btn    = document.getElementById("login-submit");
+  const link   = document.getElementById("login-toggle");
   const forgot = document.getElementById("login-forgot");
-  const pwRow = document.getElementById("login-password-row");
-  const pw = document.getElementById("login-password");
-  modeEl.value = mode;
-  modeEl.dataset.token = token || "";
+  const pwRow  = document.getElementById("login-password-row");
+  const pw     = document.getElementById("login-password");
+  modeEl.value = mode; modeEl.dataset.token = token || "";
   document.getElementById("login-error").textContent = "";
   if (mode === "signup") {
-    btn.textContent = "Create account";
-    link.textContent = "have an account? log in";
-    forgot.style.display = "none";
-    pwRow.style.display = ""; pw.required = true;
+    btn.textContent = "Create account"; link.textContent = "have an account? log in";
+    forgot.style.display = "none"; pwRow.style.display = ""; pw.required = true;
   } else if (mode === "forgot") {
-    btn.textContent = "Send reset link";
-    link.textContent = "back to log in";
-    forgot.style.display = "none";
-    pwRow.style.display = "none"; pw.required = false;
+    btn.textContent = "Send reset link"; link.textContent = "back to log in";
+    forgot.style.display = "none"; pwRow.style.display = "none"; pw.required = false;
   } else if (mode === "reset") {
-    btn.textContent = "Set new password";
-    link.textContent = "back to log in";
-    forgot.style.display = "none";
-    pwRow.style.display = ""; pw.required = true; pw.value = ""; pw.placeholder = "new password";
+    btn.textContent = "Set new password"; link.textContent = "back to log in";
+    forgot.style.display = "none"; pwRow.style.display = ""; pw.required = true; pw.value = ""; pw.placeholder = "new password";
   } else {
-    modeEl.value = "login";
-    btn.textContent = "Log in";
-    link.textContent = "no account? sign up";
-    forgot.style.display = "";
-    pwRow.style.display = ""; pw.required = true;
+    modeEl.value = "login"; btn.textContent = "Log in"; link.textContent = "no account? sign up";
+    forgot.style.display = ""; pwRow.style.display = ""; pw.required = true;
   }
 }
-
 function toggleLoginMode() {
   const cur = document.getElementById("login-mode").value;
-  if (cur === "login") setLoginMode("signup");
-  else setLoginMode("login");
+  setLoginMode(cur === "login" ? "signup" : "login");
 }
-
 async function handleVerifyTokenFromURL() {
   const params = new URLSearchParams(location.search);
   const verifyTok = params.get("verify");
-  const resetTok = params.get("reset");
+  const resetTok  = params.get("reset");
   if (verifyTok) {
     try {
-      const res = await fetch(API_BASE + "/auth/verify", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: verifyTok }),
-      });
-      if (res.ok) showSnack("✅ Email verified");
-      else showSnack("Verify link invalid or expired");
+      const res = await fetch(API_BASE + "/auth/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: verifyTok }) });
+      showSnack(res.ok ? "✅ Email verified" : "Verify link invalid or expired");
     } catch (e) { showSnack("Verify failed: " + e.message); }
     history.replaceState({}, "", "/");
   }
-  if (resetTok) {
-    showLogin();
-    setLoginMode("reset", resetTok);
-    history.replaceState({}, "", "/");
-  }
+  if (resetTok) { showLogin(); setLoginMode("reset", resetTok); history.replaceState({}, "", "/"); }
 }
-
 async function resendVerify() {
-  try {
-    await apiCall("/auth/resend-verification", { method: "POST", body: "{}" });
-    showSnack("📧 Verification email resent");
-  } catch (e) { showSnack("Resend failed: " + e.message); }
+  try { await apiCall("/auth/resend-verification", { method: "POST", body: "{}" }); showSnack("📧 Verification email resent"); }
+  catch (e) { showSnack("Resend failed: " + e.message); }
 }
-
 function updateVerifyBanner(user) {
   const banner = document.getElementById("verify-banner");
-  if (!user || user.email_verified_at) {
-    banner.classList.add("hidden");
-    return;
-  }
+  if (!user || user.email_verified_at) { banner.classList.add("hidden"); return; }
   document.getElementById("verify-banner-email").textContent = user.email;
   banner.classList.remove("hidden");
 }
@@ -1324,44 +1220,33 @@ async function bootApp() {
     const user = await apiCall("/auth/me");
     updateVerifyBanner(user);
     const detail = await loadTrip();
-    document.querySelector("header h1").textContent = "Tour Companion";
     renderTripPicker();
     if (!detail || !TRIP) {
-      document.getElementById("plan-days").innerHTML =
-        '<div class="bg-white rounded-xl p-8 text-center text-slate-500">' +
+      document.getElementById("plan-day-content").innerHTML =
+        '<div class="bg-white rounded-2xl p-8 text-center text-slate-500 shadow-sm">' +
         '<p class="mb-2 text-lg">📭 No trips yet</p>' +
         '<p class="text-sm mb-4">Create your first trip to get started.</p>' +
-        '<button onclick="openNewTripModal()" class="bg-blue-700 hover:bg-blue-800 text-white font-bold py-2 px-4 rounded">＋ New trip</button>' +
-        '<button onclick="openIngestModal()" class="ml-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2 px-4 rounded">🤖 Generate from URL</button>' +
+        '<button onclick="openNewTripModal()" class="bg-blue-700 hover:bg-blue-800 text-white font-bold py-2 px-4 rounded-xl">＋ New trip</button>' +
+        '<button onclick="openIngestModal()" class="ml-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2 px-4 rounded-xl">🤖 Generate from URL</button>' +
         '</div>';
       return;
     }
     renderPlan();
     renderTour();
     renderMemory();
-  } catch (e) {
-    showSnack("Boot failed: " + e.message);
-  }
+  } catch (e) { showSnack("Boot failed: " + e.message); }
 }
 
-/* ════════════════════════════════════════════
-   Init
-   ════════════════════════════════════════════ */
 async function init() {
   await handleVerifyTokenFromURL();
   if (!API_TOKEN) { showLogin(); return; }
   try {
-    await apiCall("/auth/me");  // validates token
-    hideLogin();
-    await bootApp();
-  } catch (e) {
-    setToken(null, null);
-    showLogin();
-  }
+    await apiCall("/auth/me");
+    hideLogin(); await bootApp();
+  } catch (e) { setToken(null, null); showLogin(); }
 }
 
 init();
 </script>
-
 </body>
 </html>
