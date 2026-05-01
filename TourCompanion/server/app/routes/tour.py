@@ -1,14 +1,10 @@
-import shutil
-import uuid
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
-from .. import schemas
+from .. import schemas, storage
 from ..auth import CurrentUser
-from ..config import settings
 from ..db import get_db
 from ..models import CheckIn, Photo, Stop, Trip, VoiceNote
 
@@ -45,17 +41,16 @@ def add_photo(
     file: UploadFile = File(...),
 ):
     s = _own_stop(db, user, stop_id)
-    ext = Path(file.filename or "img").suffix or ".jpg"
-    fname = f"{uuid.uuid4().hex}{ext}"
-    dest = Path(settings.upload_dir) / fname
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    with dest.open("wb") as out:
-        shutil.copyfileobj(file.file, out)
-    p = Photo(stop_id=s.id, path=f"/uploads/{fname}")
+    url = storage.upload(
+        file.file,
+        filename=file.filename or "img.jpg",
+        content_type=file.content_type or "image/jpeg",
+    )
+    p = Photo(stop_id=s.id, path=url)
     db.add(p)
     db.commit()
     db.refresh(p)
-    return {"id": p.id, "stop_id": s.id, "path": p.path}
+    return {"id": p.id, "stop_id": s.id, "path": p.path, "backend": storage.backend_name()}
 
 
 @router.post("/{stop_id}/photos-link")

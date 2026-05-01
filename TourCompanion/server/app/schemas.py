@@ -25,6 +25,20 @@ class UserOut(BaseModel):
     id: int
     email: str
     display_name: str
+    email_verified_at: datetime | None = None
+
+
+class VerifyIn(BaseModel):
+    token: str
+
+
+class ForgotIn(BaseModel):
+    email: EmailStr
+
+
+class ResetIn(BaseModel):
+    token: str
+    new_password: str
 
 
 class StopOut(BaseModel):

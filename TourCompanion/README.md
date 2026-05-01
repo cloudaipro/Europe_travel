@@ -11,6 +11,11 @@ TourCompanion/
     ├── Dockerfile
     ├── requirements.txt
     ├── run_local.sh            # one-shot: venv + deps + uvicorn (SQLite, no Docker)
+    ├── migrate.sh               # alembic wrapper (injects dev DATABASE_URL default)
+    ├── alembic.ini
+    ├── alembic/                 # migrations
+    │   ├── env.py
+    │   └── versions/*.py
     ├── app/
     │   ├── main.py             # FastAPI app + lifespan + static mounts
     │   ├── config.py           # pydantic-settings
@@ -86,6 +91,8 @@ Demo creds (auto-seeded on first boot):
 ## Database migrations
 
 Schema changes go through Alembic. Use `./migrate.sh` (wraps alembic + injects dev env defaults so you don't need to remember `DATABASE_URL=…`).
+
+> **Why a wrapper?** Raw `alembic` reads `DATABASE_URL` from app settings, which defaults to Docker's `db:5432` hostname. Run outside compose → DNS error. `migrate.sh` sets `DATABASE_URL=sqlite:///./tour.db` only when unset, so local dev works zero-config. Any exported `DATABASE_URL` wins, so the same script handles dev/staging/prod.
 
 ```
 cd server

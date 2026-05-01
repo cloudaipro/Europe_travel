@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy.orm import Session
 
 from .auth import hash_password
@@ -17,6 +19,7 @@ def seed_demo_user_and_trip(db: Session) -> User:
         email=bp.DEMO_USER["email"],
         password_hash=hash_password(bp.DEMO_USER["password"]),
         display_name=bp.DEMO_USER["display_name"],
+        email_verified_at=datetime.utcnow(),  # demo seed: pre-verified
     )
     db.add(user)
     db.flush()

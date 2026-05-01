@@ -14,7 +14,22 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     display_name: Mapped[str] = mapped_column(String(100), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     trips: Mapped[list["Trip"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
+    email_tokens: Mapped[list["EmailToken"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+
+
+class EmailToken(Base):
+    __tablename__ = "email_tokens"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # "verify" | "reset"
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped[User] = relationship(back_populates="email_tokens")
 
 
 class Trip(Base):
@@ -147,6 +162,19 @@ class RouteAsset(Base):
     map_url: Mapped[str] = mapped_column(String(500), default="")
 
     trip: Mapped[Trip] = relationship(back_populates="routes")
+
+
+class IngestJob(Base):
+    __tablename__ = "ingest_jobs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="queued")  # queued|running|done|failed
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    result_trip_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str] = mapped_column(Text, default="")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class StreetFood(Base):

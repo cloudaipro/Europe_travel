@@ -6,9 +6,13 @@ from alembic.config import Config as AlembicConfig
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi import _rate_limit_exceeded_handler
 
 from .config import settings
 from .db import SessionLocal
+from .limiter import limiter
 from .routes import auth as auth_routes
 from .routes import trips, tour, journal, streetfood, plan
 from .seed import seed_demo_user_and_trip
@@ -33,6 +37,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Tour Companion API", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

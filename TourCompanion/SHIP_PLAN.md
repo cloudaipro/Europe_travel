@@ -4,11 +4,23 @@ Plan to take Tour Companion from working-demo to production-ready. Sized + seque
 
 **Ship-ready bar:** real users can sign up, create a trip from a YouTube link, photos survive a server restart, no schema drift breaks them.
 
+## Status
+
+| # | Task | Status |
+|---|---|---|
+| 1 | Alembic migrations | ✅ done |
+| 2 | Rate limit + auth hardening | ✅ done |
+| 3 | Multi-trip UI | ✅ done |
+| 4 | S3/R2 image upload | ✅ done |
+| 5 | Tour-planner ingest (real, sync MVP) | ✅ done — Phase 5B (async) deferred |
+
+**Critical-path MVP complete.** Remaining work is the "beyond the 5" launch checklist below.
+
 ---
 
 ## Sequence (do in this order)
 
-### 1. Alembic migrations — **0.5 day** ⚠ blocks everything else
+### 1. Alembic migrations — **0.5 day** ✅ DONE
 
 **Why first:** every other gap adds tables/columns. Without Alembic, schema changes either lose data or require manual SQL.
 
@@ -21,9 +33,17 @@ Plan to take Tour Companion from working-demo to production-ready. Sized + seque
 
 **Risk:** low. Standard. SQLite quirks for ALTER but already working tables stay fine.
 
+**Shipped:**
+- `server/alembic/` initialized; `env.py` reads `Base` + `DATABASE_URL` from app settings; SQLite uses `render_as_batch`
+- Initial migration `ad110b1e6a9a_init_schema.py` covers all 11 tables
+- `_run_migrations()` in `app/main.py` lifespan calls `alembic upgrade head` on boot (idempotent)
+- `server/migrate.sh` wrapper injects dev defaults (`DATABASE_URL=sqlite:///./tour.db`) so `./migrate.sh revision --autogenerate -m …` just works
+- Dockerfile copies `alembic/` + `alembic.ini`
+- Migration chain verified: 3 stacked migrations apply cleanly on fresh boot
+
 ---
 
-### 2. Rate limit + auth hardening — **1.5 days**
+### 2. Rate limit + auth hardening — **1.5 days** ✅ DONE
 
 **Why second:** if anyone gets the URL before ingest works, brute-force on /signup or /login is open. Cheap to add now.
 
@@ -38,9 +58,19 @@ Plan to take Tour Companion from working-demo to production-ready. Sized + seque
 
 **Migration impact:** needs Alembic (#1) — adds `email_verified_at`, `password_reset_tokens` table.
 
+**Shipped:**
+- `User.email_verified_at` + unified `EmailToken(kind in {verify,reset})` table — Alembic `b1e9938e8b98`
+- `app/mailer.py` — console backend default; Resend HTTP backend if `RESEND_API_KEY` set; `send_verify_email` + `send_reset_email` templates with `APP_URL` link
+- `app/limiter.py` — slowapi limiter; configured 5/min login, 3/hr signup, 3/hr forgot, 100/min default per-IP
+- New routes: `POST /auth/verify`, `/auth/resend-verification`, `/auth/forgot`, `/auth/reset`
+- Signup auto-issues verify token + sends email; login enforces `VERIFY_GRACE_DAYS=7`; forgot returns 200 even for unknown email
+- Frontend: amber verify-pending banner with resend button; forgot-password link; `?verify=…` and `?reset=…` URL handlers; reset-mode form
+- E2E verified: signup → verify URL → reset URL → new-password login; rate-limit fires 429 after 5 logins/min
+- New env: `APP_URL`, `EMAIL_FROM`, `RESEND_API_KEY`, `VERIFY_TOKEN_TTL_HOURS`, `RESET_TOKEN_TTL_MINUTES`, `VERIFY_GRACE_DAYS`, `RATE_LOGIN/SIGNUP/FORGOT/DEFAULT`
+
 ---
 
-### 3. Multi-trip UI — **1 day**
+### 3. Multi-trip UI — **1 day** ✅ DONE
 
 **Why third:** ingest (#5) creates new trips. Without a picker, user can't see them.
 
@@ -54,9 +84,19 @@ Plan to take Tour Companion from working-demo to production-ready. Sized + seque
 
 **Migration impact:** none.
 
+**Shipped:**
+- Header trip-picker dropdown lists all trips, marks current with ✓
+- "+ New trip" modal (name/destination/start/end-date) → POST `/api/trips`
+- "🤖 Generate from URL" entry point to ingest flow
+- "🗑 Delete current trip" with confirm dialog
+- `localStorage.tc_trip_id` honoured by `loadTrip`; falls back to first trip
+- Trip overview card refactored to render dynamically from TRIP (was hardcoded Budapest text)
+- No-trip empty-state with "+ New" + "🤖 Generate" buttons
+- E2E verified: switching between two trips updates overview, bookings, days, street-food in one render pass
+
 ---
 
-### 4. S3/R2 image upload — **1 day**
+### 4. S3/R2 image upload — **1 day** ✅ DONE
 
 **Why fourth:** local volume works for solo demos but breaks on multi-instance deploy. Cheap swap.
 
@@ -72,9 +112,18 @@ Plan to take Tour Companion from working-demo to production-ready. Sized + seque
 
 **Migration impact:** none.
 
+**Shipped:**
+- `app/storage.py` — single `upload(stream, filename, content_type) → URL` interface
+- Local backend (default) writes to `UPLOAD_DIR`, returns `/uploads/{uuid}.ext`
+- S3 backend when `S3_BUCKET` env set: `boto3.upload_fileobj` with `ContentType`; returns `S3_PUBLIC_URL_BASE/{key}` if set, else 1h presigned GET
+- Compatible with AWS S3 / Cloudflare R2 / Backblaze B2 / any S3 API via `S3_ENDPOINT_URL`
+- `routes/tour.py` photo upload now routes through `storage.upload()`; response includes `backend: "local"|"s3"` for debugging
+- E2E verified: multipart upload returns persisted URL with `backend: "local"`; S3 path inert without env (no behavior change for current users)
+- New env: `S3_BUCKET, S3_ENDPOINT_URL, S3_REGION, S3_ACCESS_KEY, S3_SECRET_KEY, S3_PUBLIC_URL_BASE`
+
 ---
 
-### 5. Tour-planner ingest (real) — **5–8 days** 🏔 biggest
+### 5. Tour-planner ingest (real) — **5–8 days** 🏔 biggest — Phase 5A (sync) ✅ DONE
 
 **Why last:** depends on #1 (job table migration), #3 (UI to see new trip).
 
@@ -106,6 +155,20 @@ LLM cost guardrails:
 **Mitigation:** integration tests with frozen playlist URL; fallback to "manual create" if parser fails.
 
 **Migration impact:** new `ingest_jobs` table.
+
+**Shipped (Phase 5A — sync MVP):**
+- `IngestJob(id, owner_id, status, payload_json, result_trip_id, error, started_at, finished_at, created_at)` + Alembic `38cc69732ee9_add_ingest_jobs`
+- `app/planner.py` — calls Anthropic with focused JSON-schema system prompt; deterministic mock when `ANTHROPIC_API_KEY` unset (so dev/CI works without keys)
+- `routes/plan.py` rewrote `/api/plan/ingest`: records job → runs planner sync → persists `Trip + Bookings + Day + Stop` rows → returns `{job_id, trip_id, status, message, backend}`
+- `GET /api/plan/jobs/{id}` for audit
+- Rate-limited: `10/hour` per IP via slowapi
+- Frontend ingest modal: destination/days/style/source-URL inputs with loading state; on success closes modal, switches to new trip, snackbar
+- E2E verified: 2-day Lisbon mock generation completes <10ms, persists with bookings + 4 stops/day; auto-switch works
+- New env: `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` (default `claude-haiku-4-5-20251001`), `INGEST_MAX_SECONDS`, `RATE_INGEST`
+
+**Phase 5B (async) deferred** until sync timeouts become a real problem:
+- Job table already supports the workflow; add `arq` worker + `/api/plan/jobs/{id}` polling (already exists) once 30s+ ingests start hitting Cloudflare/Fly request timeouts
+- Frontend would change from blocking submit → enqueue + poll loop with progress messages
 
 ---
 

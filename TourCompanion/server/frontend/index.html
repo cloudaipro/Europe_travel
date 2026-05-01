@@ -45,19 +45,32 @@
     <label class="block text-xs text-slate-600 font-medium mb-1">Email</label>
     <input id="login-email" type="email" required value="demo@tourcompanion.app"
       class="w-full mb-3 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-300 focus:border-blue-400 text-sm">
-    <label class="block text-xs text-slate-600 font-medium mb-1">Password</label>
-    <input id="login-password" type="password" required value="demo1234"
-      class="w-full mb-2 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-300 focus:border-blue-400 text-sm">
+    <div id="login-password-row">
+      <label class="block text-xs text-slate-600 font-medium mb-1">Password</label>
+      <input id="login-password" type="password" value="demo1234"
+        class="w-full mb-2 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-300 focus:border-blue-400 text-sm">
+    </div>
     <p id="login-error" class="text-xs text-rose-600 min-h-[16px] mb-3"></p>
+    <p id="login-info" class="text-xs text-emerald-700 min-h-[16px] mb-3 hidden"></p>
     <button id="login-submit" type="submit"
       class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-2 rounded-lg shadow">Log in</button>
-    <button id="login-toggle" type="button" onclick="toggleLoginMode()"
-      class="w-full mt-2 text-xs text-blue-700 hover:underline">no account? sign up</button>
+    <div class="flex justify-between mt-3 text-xs">
+      <button id="login-toggle" type="button" onclick="toggleLoginMode()"
+        class="text-blue-700 hover:underline">no account? sign up</button>
+      <button id="login-forgot" type="button" onclick="setLoginMode('forgot')"
+        class="text-slate-500 hover:underline">forgot password?</button>
+    </div>
     <p class="text-[11px] text-slate-400 mt-4 text-center">Demo seed: demo@tourcompanion.app / demo1234</p>
   </form>
 </div>
 
 <div id="app-shell">
+
+<!-- ───────────────── Verify-pending banner ───────────────── -->
+<div id="verify-banner" class="hidden bg-amber-100 border-b border-amber-300 text-amber-900 text-sm px-4 py-2 text-center">
+  <b>📧 Confirm your email</b> — we sent a link to <span id="verify-banner-email"></span>.
+  <button onclick="resendVerify()" class="ml-2 underline hover:text-amber-700">resend</button>
+</div>
 
 <!-- ───────────────── Header ───────────────── -->
 <header class="bg-gradient-to-r from-slate-800 to-blue-900 text-white shadow-lg sticky top-0 z-30">
@@ -66,7 +79,21 @@
       <span class="text-2xl">🧭</span>
       <div>
         <h1 class="text-lg font-bold leading-tight">Tour Companion</h1>
-        <p class="text-xs text-blue-200 leading-tight">Budapest demo · May 22–26, 2026</p>
+        <div class="relative">
+          <button id="trip-picker-btn" onclick="toggleTripPicker(event)"
+            class="text-xs text-blue-200 hover:text-white leading-tight flex items-center gap-1">
+            <span id="trip-picker-name">loading…</span>
+            <span class="text-[9px] opacity-70">▾</span>
+          </button>
+          <div id="trip-picker-menu" class="hidden absolute mt-1 left-0 bg-white text-slate-800 rounded-lg shadow-2xl border border-slate-200 z-40 min-w-[300px] max-h-[60vh] overflow-y-auto">
+            <div id="trip-picker-list" class="py-1"></div>
+            <div class="border-t border-slate-100"></div>
+            <button onclick="openNewTripModal()" class="px-3 py-2 text-sm text-blue-700 hover:bg-slate-50 w-full text-left">＋ New trip…</button>
+            <button onclick="openIngestModal()" class="px-3 py-2 text-sm text-emerald-700 hover:bg-emerald-50 w-full text-left">🤖 Generate from URL…</button>
+            <div class="border-t border-slate-100"></div>
+            <button onclick="confirmDeleteTrip()" class="px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 w-full text-left">🗑 Delete current trip</button>
+          </div>
+        </div>
       </div>
     </div>
     <nav class="flex gap-1 bg-slate-900/30 rounded-lg p-1">
@@ -94,15 +121,10 @@
         <!-- Trip overview -->
         <div class="bg-white rounded-xl shadow p-5">
           <div class="flex items-center justify-between mb-3">
-            <h2 class="text-2xl font-bold text-slate-800">Budapest 5 Days · Spring 2026</h2>
-            <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-1 rounded">Planning ✓</span>
+            <h2 id="trip-overview-name" class="text-2xl font-bold text-slate-800"></h2>
+            <span id="trip-overview-status" class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-1 rounded">Planning ✓</span>
           </div>
-          <div class="text-sm text-slate-600 space-y-1">
-            <p>📅 <b>Friday May 22 → Tuesday May 26</b> (departure Wed May 27, 05:55 AM)</p>
-            <p>🏨 Astoria (1088 Budapest)</p>
-            <p>🌡️ Late spring: 18–25 °C, sunset ≈ 20:30</p>
-            <p>📺 <b>Source:</b> YouTube playlist (50 videos: <i>Budapest / Hungary Travel Guide</i>)</p>
-          </div>
+          <div id="trip-overview-meta" class="text-sm text-slate-600 space-y-1"></div>
         </div>
 
         <!-- Booking checklist -->
@@ -400,14 +422,193 @@ function adaptTrip(api) {
   }
 }
 
+let TRIP_LIST = [];
+
 async function loadTrip() {
-  const trips = await apiCall("/trips");
-  if (!trips || trips.length === 0) {
-    showSnack("No trips. Demo seed missing?");
+  TRIP_LIST = await apiCall("/trips") || [];
+  if (TRIP_LIST.length === 0) return null;
+
+  const desired = parseInt(localStorage.getItem("tc_trip_id") || "0", 10);
+  const pick = TRIP_LIST.find(t => t.id === desired) || TRIP_LIST[0];
+  localStorage.setItem("tc_trip_id", pick.id);
+
+  const detail = await apiCall(`/trips/${pick.id}`);
+  adaptTrip(detail);
+  renderTripPicker();
+  return detail;
+}
+
+function renderTripPicker() {
+  const nameEl = document.getElementById("trip-picker-name");
+  const listEl = document.getElementById("trip-picker-list");
+  if (!nameEl || !listEl) return;
+  if (!TRIP || TRIP_LIST.length === 0) {
+    nameEl.textContent = "no trip yet";
+    listEl.innerHTML = '<p class="px-3 py-2 text-xs text-slate-400">No trips yet — create one below.</p>';
     return;
   }
-  const detail = await apiCall(`/trips/${trips[0].id}`);
-  adaptTrip(detail);
+  nameEl.textContent = TRIP.name;
+  listEl.innerHTML = TRIP_LIST.map(t => `
+    <button onclick="selectTrip(${t.id})" class="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 ${t.id === TRIP_ID ? 'bg-blue-50 font-medium' : ''}">
+      ${t.id === TRIP_ID ? '✓ ' : ''}<span>${t.name}</span>
+      <span class="block text-[10px] text-slate-500">${t.destination} · ${t.start_date} → ${t.end_date}</span>
+    </button>
+  `).join("");
+}
+
+function toggleTripPicker(ev) {
+  if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+  document.getElementById("trip-picker-menu").classList.toggle("hidden");
+}
+
+document.addEventListener("click", (ev) => {
+  const menu = document.getElementById("trip-picker-menu");
+  const btn = document.getElementById("trip-picker-btn");
+  if (menu && !menu.classList.contains("hidden") &&
+      !menu.contains(ev.target) && ev.target !== btn && !btn?.contains(ev.target)) {
+    menu.classList.add("hidden");
+  }
+});
+
+async function selectTrip(id) {
+  localStorage.setItem("tc_trip_id", id);
+  document.getElementById("trip-picker-menu").classList.add("hidden");
+  await bootApp();
+}
+
+function openNewTripModal() {
+  document.getElementById("trip-picker-menu").classList.add("hidden");
+  const today = new Date().toISOString().slice(0, 10);
+  const inAWeek = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  document.getElementById("modal-title").textContent = "＋ New trip";
+  document.getElementById("modal-body").innerHTML = `
+    <form onsubmit="submitNewTrip(event)" class="space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Trip name</label>
+        <input id="new-trip-name" required class="w-full px-3 py-2 border border-slate-300 rounded text-sm" placeholder="Tokyo cherry blossom 2026">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Destination</label>
+        <input id="new-trip-dest" required class="w-full px-3 py-2 border border-slate-300 rounded text-sm" placeholder="Tokyo, Japan">
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Start date</label>
+          <input id="new-trip-start" type="date" required value="${today}" class="w-full px-3 py-2 border border-slate-300 rounded text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">End date</label>
+          <input id="new-trip-end" type="date" required value="${inAWeek}" class="w-full px-3 py-2 border border-slate-300 rounded text-sm">
+        </div>
+      </div>
+      <p id="new-trip-error" class="text-xs text-rose-600 min-h-[14px]"></p>
+      <button type="submit" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-2 rounded">Create</button>
+    </form>`;
+  document.getElementById("modal").classList.remove("hidden");
+  document.getElementById("modal").classList.add("flex");
+}
+
+async function submitNewTrip(ev) {
+  ev.preventDefault();
+  const errEl = document.getElementById("new-trip-error");
+  errEl.textContent = "";
+  const payload = {
+    name: document.getElementById("new-trip-name").value.trim(),
+    destination: document.getElementById("new-trip-dest").value.trim(),
+    start_date: document.getElementById("new-trip-start").value,
+    end_date: document.getElementById("new-trip-end").value,
+  };
+  try {
+    const trip = await apiCall("/trips", { method: "POST", body: JSON.stringify(payload) });
+    closeModal();
+    showSnack("✓ Trip created");
+    await selectTrip(trip.id);
+  } catch (e) { errEl.textContent = e.message; }
+}
+
+function openIngestModal() {
+  document.getElementById("trip-picker-menu").classList.add("hidden");
+  document.getElementById("modal-title").textContent = "🤖 Generate trip with AI";
+  document.getElementById("modal-body").innerHTML = `
+    <form onsubmit="submitIngest(event)" class="space-y-3">
+      <p class="text-xs text-slate-500">
+        We'll use the tour-planner to draft an itinerary from your inputs. Output is editable —
+        treat it as a starting point, not a final plan.
+      </p>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Destination *</label>
+        <input id="ing-destination" required placeholder="Tokyo, Japan"
+          class="w-full px-3 py-2 border border-slate-300 rounded text-sm">
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Days *</label>
+          <input id="ing-days" type="number" min="1" max="14" value="3" required
+            class="w-full px-3 py-2 border border-slate-300 rounded text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Style</label>
+          <select id="ing-style" class="w-full px-3 py-2 border border-slate-300 rounded text-sm">
+            <option value="mixed">Mixed</option>
+            <option value="highlights">Classic highlights</option>
+            <option value="foodie">Foodie</option>
+            <option value="hidden">Quirky / hidden</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Source URL (optional)</label>
+        <input id="ing-source" placeholder="YouTube playlist, blog, etc."
+          class="w-full px-3 py-2 border border-slate-300 rounded text-sm">
+      </div>
+      <p id="ing-error" class="text-xs text-rose-600 min-h-[14px]"></p>
+      <p id="ing-progress" class="hidden text-xs text-blue-700 italic">⏳ Generating itinerary — this can take 30–90s…</p>
+      <button id="ing-submit" type="submit"
+        class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded">Generate</button>
+    </form>`;
+  document.getElementById("modal").classList.remove("hidden");
+  document.getElementById("modal").classList.add("flex");
+}
+
+async function submitIngest(ev) {
+  ev.preventDefault();
+  const errEl = document.getElementById("ing-error");
+  const progEl = document.getElementById("ing-progress");
+  const btn = document.getElementById("ing-submit");
+  errEl.textContent = "";
+  progEl.classList.remove("hidden");
+  btn.disabled = true; btn.textContent = "Generating…";
+  const payload = {
+    destination: document.getElementById("ing-destination").value.trim(),
+    days: parseInt(document.getElementById("ing-days").value, 10),
+    style: document.getElementById("ing-style").value,
+    source_url: document.getElementById("ing-source").value.trim(),
+  };
+  try {
+    const result = await apiCall("/plan/ingest", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    closeModal();
+    showSnack(`✓ ${result.message} (${result.backend})`);
+    await selectTrip(result.trip_id);
+  } catch (e) {
+    progEl.classList.add("hidden");
+    btn.disabled = false; btn.textContent = "Generate";
+    errEl.textContent = e.message;
+  }
+}
+
+async function confirmDeleteTrip() {
+  document.getElementById("trip-picker-menu").classList.add("hidden");
+  if (!TRIP_ID) return;
+  if (!confirm(`Delete "${TRIP.name}"? This is permanent — all check-ins, photos, journal entries are removed.`)) return;
+  try {
+    await apiCall(`/trips/${TRIP_ID}`, { method: "DELETE" });
+    localStorage.removeItem("tc_trip_id");
+    showSnack("Trip deleted");
+    await bootApp();
+  } catch (e) { showSnack("Delete failed: " + e.message); }
 }
 
 const DAY_STATUS = (n) => {
@@ -494,6 +695,17 @@ function setTab(name) {
    PLAN tab rendering
    ════════════════════════════════════════════ */
 function renderPlan() {
+  // Trip overview
+  document.getElementById("trip-overview-name").textContent = TRIP.name;
+  const meta = document.getElementById("trip-overview-meta");
+  const lines = [];
+  lines.push(`<p>📅 <b>${TRIP.dates}</b></p>`);
+  if (HOTEL.name) lines.push(`<p>🏨 ${HOTEL.name}${HOTEL.address ? ` — ${HOTEL.address}` : ""}</p>`);
+  if (TRIP.season) lines.push(`<p>🌡️ ${TRIP.season}</p>`);
+  if (TRIP.style) lines.push(`<p>🎯 Style: ${TRIP.style}</p>`);
+  if (TRIP.source_url) lines.push(`<p>📺 <b>Source:</b> <a href="${TRIP.source_url}" target="_blank" class="text-blue-700 hover:underline">${TRIP.source_url}</a></p>`);
+  meta.innerHTML = lines.join("");
+
   // Bookings
   const bl = document.getElementById("booking-list");
   bl.innerHTML = TRIP.bookings.map(b => `
@@ -993,38 +1205,137 @@ async function handleLoginSubmit(ev) {
   const password = document.getElementById("login-password").value;
   const mode = document.getElementById("login-mode").value;
   const errEl = document.getElementById("login-error");
+  const infoEl = document.getElementById("login-info");
   errEl.textContent = "";
+  infoEl.classList.add("hidden");
   try {
-    if (mode === "signup") await signup(email, password);
-    else await login(email, password);
-    hideLogin();
-    await bootApp();
+    if (mode === "signup") {
+      await signup(email, password);
+      hideLogin();
+      await bootApp();
+    } else if (mode === "forgot") {
+      await fetch(API_BASE + "/auth/forgot", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      infoEl.textContent = "If that email is registered, we sent a reset link.";
+      infoEl.classList.remove("hidden");
+    } else if (mode === "reset") {
+      const token = document.getElementById("login-mode").dataset.token;
+      const res = await fetch(API_BASE + "/auth/reset", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, new_password: password }),
+      });
+      if (!res.ok) throw new Error((await res.json()).detail || "reset failed");
+      infoEl.textContent = "Password reset. You can log in now.";
+      infoEl.classList.remove("hidden");
+      setLoginMode("login");
+    } else {
+      await login(email, password);
+      hideLogin();
+      await bootApp();
+    }
   } catch (e) {
     errEl.textContent = e.message;
   }
 }
 
-function toggleLoginMode() {
-  const mode = document.getElementById("login-mode");
+function setLoginMode(mode, token) {
+  const modeEl = document.getElementById("login-mode");
   const btn = document.getElementById("login-submit");
   const link = document.getElementById("login-toggle");
-  if (mode.value === "login") {
-    mode.value = "signup";
+  const forgot = document.getElementById("login-forgot");
+  const pwRow = document.getElementById("login-password-row");
+  const pw = document.getElementById("login-password");
+  modeEl.value = mode;
+  modeEl.dataset.token = token || "";
+  document.getElementById("login-error").textContent = "";
+  if (mode === "signup") {
     btn.textContent = "Create account";
     link.textContent = "have an account? log in";
+    forgot.style.display = "none";
+    pwRow.style.display = ""; pw.required = true;
+  } else if (mode === "forgot") {
+    btn.textContent = "Send reset link";
+    link.textContent = "back to log in";
+    forgot.style.display = "none";
+    pwRow.style.display = "none"; pw.required = false;
+  } else if (mode === "reset") {
+    btn.textContent = "Set new password";
+    link.textContent = "back to log in";
+    forgot.style.display = "none";
+    pwRow.style.display = ""; pw.required = true; pw.value = ""; pw.placeholder = "new password";
   } else {
-    mode.value = "login";
+    modeEl.value = "login";
     btn.textContent = "Log in";
     link.textContent = "no account? sign up";
+    forgot.style.display = "";
+    pwRow.style.display = ""; pw.required = true;
   }
+}
+
+function toggleLoginMode() {
+  const cur = document.getElementById("login-mode").value;
+  if (cur === "login") setLoginMode("signup");
+  else setLoginMode("login");
+}
+
+async function handleVerifyTokenFromURL() {
+  const params = new URLSearchParams(location.search);
+  const verifyTok = params.get("verify");
+  const resetTok = params.get("reset");
+  if (verifyTok) {
+    try {
+      const res = await fetch(API_BASE + "/auth/verify", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: verifyTok }),
+      });
+      if (res.ok) showSnack("✅ Email verified");
+      else showSnack("Verify link invalid or expired");
+    } catch (e) { showSnack("Verify failed: " + e.message); }
+    history.replaceState({}, "", "/");
+  }
+  if (resetTok) {
+    showLogin();
+    setLoginMode("reset", resetTok);
+    history.replaceState({}, "", "/");
+  }
+}
+
+async function resendVerify() {
+  try {
+    await apiCall("/auth/resend-verification", { method: "POST", body: "{}" });
+    showSnack("📧 Verification email resent");
+  } catch (e) { showSnack("Resend failed: " + e.message); }
+}
+
+function updateVerifyBanner(user) {
+  const banner = document.getElementById("verify-banner");
+  if (!user || user.email_verified_at) {
+    banner.classList.add("hidden");
+    return;
+  }
+  document.getElementById("verify-banner-email").textContent = user.email;
+  banner.classList.remove("hidden");
 }
 
 async function bootApp() {
   try {
-    await loadTrip();
+    const user = await apiCall("/auth/me");
+    updateVerifyBanner(user);
+    const detail = await loadTrip();
     document.querySelector("header h1").textContent = "Tour Companion";
-    document.querySelector("header p.text-xs").textContent =
-      `${API_USER_EMAIL || ""} · ${TRIP.name}`;
+    renderTripPicker();
+    if (!detail || !TRIP) {
+      document.getElementById("plan-days").innerHTML =
+        '<div class="bg-white rounded-xl p-8 text-center text-slate-500">' +
+        '<p class="mb-2 text-lg">📭 No trips yet</p>' +
+        '<p class="text-sm mb-4">Create your first trip to get started.</p>' +
+        '<button onclick="openNewTripModal()" class="bg-blue-700 hover:bg-blue-800 text-white font-bold py-2 px-4 rounded">＋ New trip</button>' +
+        '<button onclick="openIngestModal()" class="ml-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2 px-4 rounded">🤖 Generate from URL</button>' +
+        '</div>';
+      return;
+    }
     renderPlan();
     renderTour();
     renderMemory();
@@ -1037,6 +1348,7 @@ async function bootApp() {
    Init
    ════════════════════════════════════════════ */
 async function init() {
+  await handleVerifyTokenFromURL();
   if (!API_TOKEN) { showLogin(); return; }
   try {
     await apiCall("/auth/me");  // validates token
