@@ -83,6 +83,26 @@ Demo creds (auto-seeded on first boot):
 | GET  | `/api/trips/{id}/streetfood` | query: `band`, `near_lat`, `near_lng`, `limit` — returns ranked picks |
 | POST | `/api/plan/ingest` | tour-planner skill integration (stub) |
 
+## Database migrations
+
+Schema changes go through Alembic. Use `./migrate.sh` (wraps alembic + injects dev env defaults so you don't need to remember `DATABASE_URL=…`).
+
+```
+cd server
+./migrate.sh revision --autogenerate -m "describe change"   # create migration
+# review the generated file in alembic/versions/, then:
+./migrate.sh upgrade head                                   # apply locally
+./migrate.sh current                                        # show current head
+./migrate.sh history                                        # log
+./migrate.sh downgrade -1                                   # roll back one
+```
+
+To run against Postgres (e.g. inside compose), prefix with `DATABASE_URL=…`. The wrapper only sets the SQLite default if you don't already have one.
+
+Migrations apply automatically on server boot (FastAPI lifespan calls `alembic upgrade head` before serving). Idempotent — second boot is a no-op.
+
+For Postgres / multi-replica: add an advisory lock to `_run_migrations` or run migrations in a separate deploy step before scaling out.
+
 ## What's still TODO for true production
 
 - Real `tour-planner` skill integration in `/api/plan/ingest` (currently a no-op stub returning a job ID).
