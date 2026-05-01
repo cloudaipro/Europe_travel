@@ -1,11 +1,11 @@
 ---
 name: tour-planner
-description: Plan multi-day travel itineraries from user-provided source materials (YouTube playlists, lists of URLs, uploaded PDFs/docs, or named destinations) and produce a polished primary itinerary plus optional companion documents (food guide, packing list, phrasebook, budget tracker). Use this skill whenever the user wants to plan a trip, build a travel itinerary, organize a tour, or prepare a vacation — especially when they reference source materials like "this playlist", "these videos", or "this guide", give a destination plus duration ("3 days in Budapest", "a week in Tokyo"), or ask for travel documents. The skill applies a research-grounded methodology — geographic clustering, anchor + filler pacing, energy-curve sequencing, per-stop transit/washroom/food layering, closure validation, and asset localization — that produces itineraries usable on a phone in the rain. Trigger this even when the user only says "plan my trip" without explicitly asking for a "skill" or "tour planner".
+description: Plan multi-day travel itineraries from user-provided source materials (YouTube playlists, lists of URLs, uploaded PDFs/docs, or named destinations) and produce a polished primary itinerary plus optional companion documents (food guide, packing list, phrasebook, budget tracker, and printable Google Maps route PDFs). Use this skill whenever the user wants to plan a trip, build a travel itinerary, organize a tour, or prepare a vacation — especially when they reference source materials like "this playlist", "these videos", or "this guide", give a destination plus duration ("3 days in Budapest", "a week in Tokyo"), or ask for travel documents. The skill applies a research-grounded methodology — geographic clustering, anchor + filler pacing, energy-curve sequencing, per-stop transit/washroom/food layering, closure validation, and asset localization — that produces itineraries usable on a phone in the rain. Trigger this even when the user only says "plan my trip" without explicitly asking for a "skill" or "tour planner".
 ---
 
 # Tour Planner
 
-A research-grounded travel-itinerary builder. Given source material (a playlist, URLs, uploads) and trip parameters (dates, style, group), it produces a phone-readable itinerary plus optional companion documents.
+A research-grounded travel-itinerary builder. Given source material (a playlist, URLs, uploads) and trip parameters (dates, style, group), it produces a phone-readable itinerary plus optional companion documents and printable per-day Google Maps route PDFs.
 
 This skill is designed to be invoked once per trip. The same workflow applies whether the user gives a YouTube playlist, a list of bookmarked URLs, a single destination name, or a stack of uploaded PDFs.
 
@@ -20,7 +20,7 @@ Trigger on any of these signals (do not wait for the user to name "tour planner"
 - "Help me prepare for my trip"
 - "Make me a travel document for ___"
 
-## The 6-phase workflow
+## The 7-phase workflow
 
 Run these phases in order. Each phase has a small reference file with the detail you need. Read the reference inline when you reach that phase — don't try to memorize everything upfront.
 
@@ -48,7 +48,7 @@ The four canonical questions, adapt phrasing per destination:
 1. **When are they going?** Season-aware planning matters: cherry blossoms, Christmas markets, Aug 20 St. Stephen's Day, monsoon, off-season museum hour reductions.
 2. **What style of trip?** Classic highlights / foodie / quirky-hidden / mixed. This determines anchor selection.
 3. **Pace and day-trip openness?** Slow vs balanced vs intense, and whether they want to leave the base city for a day.
-4. **Output format?** Markdown / DOCX / both / chat-only. Pin this early so you don't rebuild later.
+4. **Output format + route generation?** Markdown / DOCX / both / chat-only, *and* a yes/no on generating Google Maps routes + printable PDFs (one per day). Pin this early so you don't rebuild later. Default to "yes, generate routes" for any file-based output unless the user opts out.
 
 Skip questions whose answers are already in the conversation. Don't ask for budget unless the user signaled they care — tier hints (budget tips alongside premium options) cover most cases.
 
@@ -135,6 +135,33 @@ For each companion doc's exact structure, see [references/companion-docs.md](ref
 
 **Cross-linking** — the itinerary references companion docs; companion docs back-link to the itinerary. Use relative paths.
 
+
+### Phase 7 — Route generation (opt-in)
+
+If the user opted into route generation in Phase 2, build one printable PDF per day plus a routes index. This phase runs after the primary itinerary and companion docs are written and saved.
+
+What gets produced:
+
+- A `routes/` subfolder inside the trip folder
+- One `Day_N_<DayName>_<Date>_route.pdf` per day, each one page, containing the day's stops list with addresses, mode + distance/time estimate, the live Google Maps directions URL, and a QR code that decodes to that URL
+- A `routes_index.json` that summarizes the per-day URLs + PDF filenames (the markdown itinerary's "Route maps" section reads this)
+
+Workflow at a glance:
+
+1. **Build per-day stop lists.** Re-read your itinerary, extract 4–8 named waypoints per day. Skip sub-actions and minor fillers. For each stop record name, address, and a search query Google Maps will resolve unambiguously (include the city/town name when ambiguous — Google will pick the wrong city otherwise).
+2. **Construct the directions URLs.** `https://www.google.com/maps/dir/<urlencoded>/<urlencoded>/.../?travelmode=walking|transit|driving`
+3. **(Optional) Open in Claude in Chrome.** If the connector is available, open each route in a tab. Screenshot to verify Google didn't misresolve a stop. **You cannot save routes to the user's Google account on their behalf** — privacy boundary. Tell the user to click share → "Send directions to your phone" themselves.
+4. **Run the bundled PDF builder:** `python3 scripts/build_route_pdfs.py <output_dir> <routes_json>`. Pass it a JSON file with the day list (schema in the script's docstring).
+5. **Cross-link.** Insert a "Route maps" table near the top of the primary itinerary (after the at-a-glance, before practical basics) listing each day's live URL + local PDF.
+
+Skip Phase 7 entirely if:
+
+- The user opted out
+- Output mode is chat-only (nowhere to save PDFs)
+- The trip is a single day with one venue (no routing needed)
+
+For the full step-by-step including pitfalls (wrong-city autocomplete, the 10-waypoint cap, cross-river zigzag), see [references/route-generation.md](references/route-generation.md).
+
 ## Output structure
 
 The user's workspace folder should end up with this layout:
@@ -146,9 +173,14 @@ trip_folder/
 ├── phrasebook.md                        # if applicable
 ├── packing_list.md                      # if applicable
 ├── budget.md                            # if applicable
-└── images/
-    ├── 01_*.jpg                         # one per major stop
-    └── food_*.jpg                       # if food guide produced
+├── images/
+│   ├── 01_*.jpg                         # one per major stop
+│   └── food_*.jpg                       # if food guide produced
+└── routes/                              # if route generation opted in
+    ├── Day_1_<name>_route.pdf
+    ├── Day_2_<name>_route.pdf
+    ├── ...
+    └── routes_index.json
 ```
 
 Save the primary itinerary first, then companion docs, then download all images last (so the doc structure is reviewable even if downloads fail).
@@ -171,8 +203,10 @@ When you reach a phase that needs depth, read the corresponding reference file:
 - [references/methodology.md](references/methodology.md) — Phase 3: pacing math, clustering, anchor scoring (research-grounded)
 - [references/per-stop-template.md](references/per-stop-template.md) — Phase 5: the exact stop block format with examples
 - [references/companion-docs.md](references/companion-docs.md) — Phase 6: food guide, phrasebook, packing list, budget templates
+- [references/route-generation.md](references/route-generation.md) — Phase 7: Google Maps route URLs, Chrome verification, PDF generation
 
 Bundled scripts:
 
 - [scripts/extract_youtube_playlist.py](scripts/extract_youtube_playlist.py) — playlist URL → JSON list of videos
 - [scripts/fetch_images_pexels.py](scripts/fetch_images_pexels.py) — landmark name → downloaded JPEG in your images folder
+- [scripts/build_route_pdfs.py](scripts/build_route_pdfs.py) — routes JSON → one PDF per day with stops, URL, and QR code, plus a routes_index.json

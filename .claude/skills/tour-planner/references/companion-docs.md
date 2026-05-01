@@ -11,8 +11,9 @@ The primary itinerary is the spine. Companion docs add depth without bloating th
 | `packing_list.md` | User asked, or "first international trip" / "what should I bring" mentioned | Repeat traveler / weekend trip |
 | `budget.md` | User signaled budget concern explicitly | User signaled premium / luxury |
 | `map_summary.md` | Always — append at the bottom of the main itinerary, not a separate file | n/a |
+| `routes/` (folder of PDFs) | User opted into route generation in Phase 2; trip is multi-day with file-based output | User opted out, chat-only output, single-venue trip |
 
-Always **offer** before creating beyond food.md. Don't surprise the user with five files.
+Always **offer** before creating beyond food.md. Don't surprise the user with five files. Route generation is governed by its own elicitation answer (see Phase 2 / Question 4) and its own workflow document — see [route-generation.md](route-generation.md).
 
 ## food.md — Cuisine guide
 

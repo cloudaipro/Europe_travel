@@ -33,14 +33,23 @@ Two related decisions in one question:
 
 For trips ≥ 3 days, day trips become more viable. For 2-day trips, generally keep them in the city.
 
-### Question 4 — Output format
+### Question 4 — Output format & route generation
 
-Pin this early so you don't rebuild later. Options:
+Two decisions in one question. Pin these early so you don't rebuild later.
+
+**Format** (pick one):
 
 - **Markdown file** with addresses, maps, images (Recommended for most users)
 - **DOCX / Word document** (printable, formal)
-- **Both**
+- **Both Markdown and DOCX**
 - **Just here in chat** (rare — only if user is at a desktop and won't reopen later)
+
+**Generate route?** (yes/no — second part of the same question):
+
+- **Yes — Google Maps routes + printable PDFs (one per day)** — produces a `routes/` folder with one PDF per day containing the stops, the live Google Maps URL, walk/transit estimate, and a QR code so the user can tap-to-navigate from a printed copy. If Claude in Chrome is connected, the skill also opens each route in a tab for review (and the user can sign in to save to their Google account).
+- **No — skip routes** — only when the user has explicitly said they don't want them, or output is chat-only.
+
+Default to **Yes** for any file-based output unless the user signals otherwise — routes are cheap to add and high value. If output is chat-only, skip routes (nowhere to save the PDFs).
 
 ## Secondary questions — only if the trigger is hot
 
@@ -82,11 +91,12 @@ A Budapest 3-day prompt without other context. A clean batched ask:
 >   • Danube Bend (Szentendre)
 >   • Lake Balaton / Tihany
 >
-> Q4 — How should I deliver the itinerary?
->   • Markdown file [Recommended]
+> Q4 — How should I deliver the itinerary, and should I generate Google Maps routes?
+>   • Markdown + Google Maps routes & PDFs [Recommended]
+>   • Markdown only
 >   • Word document (.docx)
->   • Both
->   • Just here in chat
+>   • Both formats + routes
+>   (then confirm: generate routes? Yes / No — default Yes for file outputs)
 
 After these answers, plan immediately. Don't come back and ask about restaurants — pick from the destination's well-known list and let the user adjust later.
 

@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tour Companion — Budapest Demo</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
+  .tab-active { background: #1a3a52; color: white; }
+  .tab-inactive { background: #f1f5f9; color: #475569; }
+  .stop-card { transition: all 0.2s ease-in-out; }
+  .stop-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+  .day-pill { transition: all 0.15s; }
+  .checked { background: #d4edda; border-color: #28a745 !important; }
+  .current { background: #fff3cd; border-color: #ffc107 !important; box-shadow: 0 0 0 3px rgba(255,193,7,0.25); }
+  .upcoming { background: #f8f9fa; border-color: #dee2e6 !important; opacity: 0.75; }
+  #journey-map { height: 400px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .photo-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; cursor: pointer; transition: transform 0.15s; }
+  .photo-grid img:hover { transform: scale(1.04); }
+  .voice-note-active { background: #ef4444; animation: pulse 1.2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  .modal-backdrop { background: rgba(0,0,0,0.5); }
+  .scroll-hide::-webkit-scrollbar { display: none; }
+  .leaflet-container { font-family: inherit; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<!-- ───────────────── Header ───────────────── -->
+<header class="bg-gradient-to-r from-slate-800 to-blue-900 text-white shadow-lg sticky top-0 z-30">
+  <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <span class="text-2xl">🧭</span>
+      <div>
+        <h1 class="text-lg font-bold leading-tight">Tour Companion</h1>
+        <p class="text-xs text-blue-200 leading-tight">Budapest demo · May 22–26, 2026</p>
+      </div>
+    </div>
+    <nav class="flex gap-1 bg-slate-900/30 rounded-lg p-1">
+      <button id="tab-plan-btn" onclick="setTab('plan')"
+        class="px-4 py-1.5 rounded-md text-sm font-medium tab-active">📋 Plan</button>
+      <button id="tab-tour-btn" onclick="setTab('tour')"
+        class="px-4 py-1.5 rounded-md text-sm font-medium tab-inactive">🧭 Tour</button>
+      <button id="tab-memory-btn" onclick="setTab('memory')"
+        class="px-4 py-1.5 rounded-md text-sm font-medium tab-inactive">📔 Memory</button>
+    </nav>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-4 py-6">
+
+  <!-- ─────────────── PLAN TAB ─────────────── -->
+  <section id="tab-plan" class="block">
+    <div class="grid lg:grid-cols-3 gap-6">
+
+      <!-- Trip card + day list -->
+      <div class="lg:col-span-2 space-y-4">
+
+        <!-- Trip overview -->
+        <div class="bg-white rounded-xl shadow p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-2xl font-bold text-slate-800">Budapest 5 Days · Spring 2026</h2>
+            <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-1 rounded">Planning ✓</span>
+          </div>
+          <div class="text-sm text-slate-600 space-y-1">
+            <p>📅 <b>Friday May 22 → Tuesday May 26</b> (departure Wed May 27, 05:55 AM)</p>
+            <p>🏨 Astoria (1088 Budapest)</p>
+            <p>🌡️ Late spring: 18–25 °C, sunset ≈ 20:30</p>
+            <p>📺 <b>Source:</b> YouTube playlist (50 videos: <i>Budapest / Hungary Travel Guide</i>)</p>
+          </div>
+        </div>
+
+        <!-- Booking checklist -->
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <h3 class="font-bold text-amber-900 mb-2">⚠️ Booking required (do this before arrival)</h3>
+          <ul id="booking-list" class="space-y-1.5 text-sm"></ul>
+        </div>
+
+        <!-- Days accordion -->
+        <h3 class="font-bold text-slate-700 text-lg mt-4">Day-by-Day Itinerary</h3>
+        <div id="plan-days" class="space-y-3"></div>
+      </div>
+
+      <!-- Sidebar -->
+      <aside class="space-y-4">
+        <div class="bg-white rounded-xl shadow p-5">
+          <h3 class="font-bold text-slate-700 mb-2">📚 Companion docs</h3>
+          <div id="companion-list" class="space-y-1.5 text-sm"></div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow p-5">
+          <h3 class="font-bold text-slate-700 mb-2">🗺 Route maps (PDFs)</h3>
+          <div id="route-list" class="space-y-1.5 text-sm"></div>
+        </div>
+
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <h3 class="font-bold text-blue-900 text-sm mb-1">💡 Pro tip</h3>
+          <p class="text-xs text-blue-800 leading-relaxed">
+            Tap a stop to expand its full block — address, hours, tickets, transit, washroom, and food
+            options. This is the source-of-truth your in-tour view will use.</p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow p-5">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="font-bold text-slate-700">🍴 Local street food</h3>
+            <button onclick="openModal('streetfood-all')" class="text-xs text-blue-700 hover:underline">See all →</button>
+          </div>
+          <p class="text-xs text-slate-500 mb-2">Picks scored for <b>local price</b> vs tourist trap. Curated from local-blog + review mining.</p>
+          <div id="streetfood-plan" class="space-y-1.5 text-xs"></div>
+        </div>
+      </aside>
+
+    </div>
+  </section>
+
+  <!-- ─────────────── TOUR TAB ─────────────── -->
+  <section id="tab-tour" class="hidden">
+
+    <!-- Day strip -->
+    <div class="bg-white rounded-xl shadow p-4 mb-4">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-bold text-slate-700">Your trip today</h3>
+        <span class="text-xs text-slate-500" id="tour-status-summary"></span>
+      </div>
+      <div id="day-strip" class="flex gap-2 overflow-x-auto scroll-hide pb-1"></div>
+    </div>
+
+    <!-- Today's plan -->
+    <div class="grid lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2 space-y-3" id="tour-stops"></div>
+
+      <aside class="space-y-3">
+        <div class="bg-white rounded-xl shadow p-4">
+          <h3 class="font-bold text-slate-700 mb-2 text-sm">⚡ Quick actions</h3>
+          <div class="grid grid-cols-2 gap-2">
+            <button onclick="openModal('cheapeats')" class="flex flex-col items-center gap-1 p-3 bg-rose-50 hover:bg-rose-100 rounded-lg text-xs font-medium border border-rose-200">
+              <span class="text-xl">🍴</span>Cheap eats
+            </button>
+            <button onclick="openModal('phrasebook')" class="flex flex-col items-center gap-1 p-3 bg-slate-50 hover:bg-slate-100 rounded-lg text-xs font-medium">
+              <span class="text-xl">🗣️</span>Phrasebook
+            </button>
+            <button onclick="openModal('washroom')" class="flex flex-col items-center gap-1 p-3 bg-slate-50 hover:bg-slate-100 rounded-lg text-xs font-medium">
+              <span class="text-xl">🚻</span>Washroom
+            </button>
+            <button onclick="openModal('currency')" class="flex flex-col items-center gap-1 p-3 bg-slate-50 hover:bg-slate-100 rounded-lg text-xs font-medium">
+              <span class="text-xl">💱</span>Currency
+            </button>
+            <button onclick="openModal('weather')" class="flex flex-col items-center gap-1 p-3 bg-slate-50 hover:bg-slate-100 rounded-lg text-xs font-medium">
+              <span class="text-xl">☂️</span>Weather
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+          <h3 class="font-bold text-emerald-900 text-sm mb-1">📡 Offline ready</h3>
+          <p class="text-xs text-emerald-800 leading-relaxed">
+            Today's full itinerary is cached. Even on 5% battery and no signal, you have stops,
+            addresses, transit notes, and the phrasebook.</p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow p-4">
+          <h3 class="font-bold text-slate-700 text-sm mb-2">📊 Today so far</h3>
+          <div id="tour-stats" class="text-xs text-slate-700 space-y-1"></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ─────────────── MEMORY TAB ─────────────── -->
+  <section id="tab-memory" class="hidden">
+    <div class="grid lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2 space-y-4">
+
+        <!-- Map -->
+        <div class="bg-white rounded-xl shadow p-4">
+          <h3 class="font-bold text-slate-700 mb-2">🗺 Your journey</h3>
+          <div id="journey-map"></div>
+          <p class="text-xs text-slate-500 mt-2"><span id="memory-stats">…</span></p>
+        </div>
+
+        <!-- Daily wrap cards -->
+        <h3 class="font-bold text-slate-700 text-lg">Daily wrap</h3>
+        <div id="memory-days" class="space-y-3"></div>
+      </div>
+
+      <aside class="space-y-4">
+        <div class="bg-white rounded-xl shadow p-5">
+          <h3 class="font-bold text-slate-700 mb-2">✏️ Journal</h3>
+          <p class="text-xs text-slate-500 mb-2">Long-form notes for this trip — auto-saved to memory.</p>
+          <textarea id="journal" class="w-full h-40 p-3 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-300 focus:border-blue-400"
+            placeholder="What stood out today? What surprised you? Anything you want to remember…"></textarea>
+        </div>
+
+        <div class="bg-white rounded-xl shadow p-5">
+          <h3 class="font-bold text-slate-700 mb-2">📷 Photo highlights</h3>
+          <div id="photo-grid" class="grid grid-cols-3 gap-1.5 photo-grid"></div>
+        </div>
+
+        <button onclick="openModal('book')"
+          class="w-full bg-gradient-to-r from-rose-500 to-orange-500 text-white font-bold py-3 rounded-xl shadow hover:shadow-lg transition">
+          📕 Print to hardcover book
+        </button>
+      </aside>
+    </div>
+  </section>
+</main>
+
+<!-- ─────────── Modal scaffold ─────────── -->
+<div id="modal" class="fixed inset-0 hidden items-center justify-center z-50 modal-backdrop p-4">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+    <div class="flex justify-between items-center p-5 border-b border-slate-200">
+      <h3 id="modal-title" class="font-bold text-slate-800"></h3>
+      <button onclick="closeModal()" class="text-slate-400 hover:text-slate-700 text-2xl leading-none">&times;</button>
+    </div>
+    <div id="modal-body" class="p-5"></div>
+  </div>
+</div>
+
+<!-- ─────────── Snackbar ─────────── -->
+<div id="snackbar" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-5 py-3 rounded-full shadow-2xl text-sm hidden z-50"></div>
+
+<script>
+/* ════════════════════════════════════════════
+   Budapest 5-day demo data
+   ════════════════════════════════════════════ */
+const HOTEL = { name: "Astoria (hotel)", lat: 47.4929, lng: 19.0586, address: "1088 Budapest, Kossuth Lajos u. 19–21" };
+
+const TRIP = {
+  name: "Budapest 5 Days · Spring 2026",
+  dates: "May 22–26, 2026",
+  source_url: "https://youtube.com/playlist?list=PLtV2zB28YXqiyU5iLzzXJNNWn_VRhDrIl",
+
+  bookings: [
+    { label: "Hungarian Parliament tour — Sat 09:00 English", url: "https://www.jegymester.hu/parlament", done: true },
+    { label: "Hospital in the Rock — Sun ~14:00", url: "https://www.sziklakorhaz.eu/", done: true },
+    { label: "Legenda sunset cruise — Fri 20:30", url: "https://www.legenda.hu/", done: true },
+    { label: "Farewell dinner Tue — Borkonyha or Halászbástya", url: "#", done: false }
+  ],
+
+  companion_docs: [
+    { name: "🍲 Food guide", file: "../Budapest_5_Day/food.md" },
+    { name: "🗣 Phrasebook", file: "../Budapest_5_Day/phrasebook.md" },
+    { name: "🚻 Washroom finder", file: "../Budapest_5_Day/washrooms.md" },
+    { name: "📋 Full itinerary", file: "../Budapest_5_Day/Budapest_5_Day_Itinerary.md" }
+  ],
+
+  routes: [
+    { day: 1, label: "Day 1 · Pest icons + cruise",
+      pdf: "../Budapest_5_Day/routes/Day_1_Friday_May22_route.pdf",
+      url: "https://www.google.com/maps/dir/Astoria,+Budapest/Bors+Gastro+Bar,+Budapest/Shoes+on+the+Danube+Bank,+Budapest/St.+Stephen's+Basilica,+Budapest/Vigad%C3%B3+t%C3%A9r,+Budapest/?travelmode=walking" },
+    { day: 2, label: "Day 2 · Parliament → Heroes → Bath",
+      pdf: "../Budapest_5_Day/routes/Day_2_Saturday_May23_route.pdf",
+      url: "https://www.google.com/maps/dir/Astoria,+Budapest/Hungarian+Parliament+Building,+Budapest/Oktogon,+Budapest/Heroes'+Square,+Budapest/Sz%C3%A9chenyi+Thermal+Bath,+Budapest/?travelmode=transit" },
+    { day: 3, label: "Day 3 · Buda Castle + Gellért",
+      pdf: "../Budapest_5_Day/routes/Day_3_Sunday_May24_route.pdf",
+      url: "https://www.google.com/maps/dir/Astoria,+Budapest/Buda+Castle/Fisherman's+Bastion/Hospital+in+the+Rock/Citadel/Szimpla+Kert/?travelmode=transit" },
+    { day: 4, label: "Day 4 · Market + Margaret Island",
+      pdf: "../Budapest_5_Day/routes/Day_4_Monday_May25_route.pdf",
+      url: "https://www.google.com/maps/dir/Astoria,+Budapest/Great+Market+Hall/Hungarian+National+Museum/Vigad%C3%B3+t%C3%A9r/Margaret+Island/?travelmode=transit" },
+    { day: 5, label: "Day 5 · Szentendre walking loop",
+      pdf: "../Budapest_5_Day/routes/Day_5_Tuesday_May26_route.pdf",
+      url: "https://www.google.com/maps/dir/Szentendre,+2000+Hungary/Marzipan+Museum/F%C5%91+t%C3%A9r/Blagovestenska+Church/Templom+t%C3%A9r/Belgrade+cathedral/Margit+Kov%C3%A1cs+Ceramic+Museum/?travelmode=walking" }
+  ],
+
+  /* ────────────────────────────────────────────
+     Street-food enrichment (curated MVP).
+     Each vendor scored for "local-ness" — production version
+     would call Google Places + LLM-score reviews. Sources:
+     Hungary Unlocked, sunshineseeker, triptobudapest 2026.
+     locality_score: 0=tourist trap, 1=hyper-local
+     price_band: local | mid | tourist
+     ──────────────────────────────────────────── */
+  street_food: [
+    { id:"florian-langos", name:"Flórián tér underpass lángos", category:"langos",
+      lat:47.5400, lng:19.0411, address:"Flórián tér underpass, 1033 Óbuda",
+      price_band:"local", price_huf:"1,200–1,800", locality_score:0.95,
+      why:"Cash-only stall in metro underpass. Hungarian-only menu. Construction-worker lunch crowd.",
+      hours:"Mon–Sat 06:00–14:00" },
+    { id:"karavan", name:"Street Food Karaván", category:"food_court",
+      lat:47.4972, lng:19.0626, address:"Kazinczy u. 18, 1075 Budapest",
+      price_band:"mid", price_huf:"1,800–2,500", locality_score:0.72,
+      why:"Card-friendly food-truck court in Jewish Quarter. Touristy at night but locals come for late lunch. Lángos here ~500–800 HUF.",
+      hours:"Daily 12:00–02:00" },
+    { id:"frici-papa", name:"Frici Papa Kifőzdéje", category:"kifozde",
+      lat:47.5042, lng:19.0653, address:"Király u. 55, 1077 Budapest",
+      price_band:"local", price_huf:"2,000–3,500 (set menu)", locality_score:0.92,
+      why:"Old-school worker's canteen (kifőzde). Hungarian-only menu, cafeteria trays, daily 'Napi Menü'. Office lunch crowd.",
+      hours:"Mon–Fri 11:30–22:00" },
+    { id:"langos-land", name:"Lángos Land (Fény tér market)", category:"langos",
+      lat:47.5106, lng:19.0259, address:"Fény u. 12, 1024 Budapest (Mammut II side)",
+      price_band:"local", price_huf:"1,200–1,800", locality_score:0.88,
+      why:"Inside Buda's Fény tér market hall. Locals eat standing up next to the stall. Cash + card.",
+      hours:"Mon–Sat 06:00–18:00" },
+    { id:"bors", name:"Bors GasztroBár", category:"soup_baguette",
+      lat:47.4969, lng:19.0606, address:"Kazinczy u. 10, 1075 Budapest",
+      price_band:"mid", price_huf:"1,800–2,500", locality_score:0.78,
+      why:"Tiny 4-seat soup + baguette spot. Long queue of locals at lunch. Daily-changing soups, lamb baguette is the move.",
+      hours:"Mon–Sat 11:30–20:30" },
+    { id:"belvarosi-disznotoros", name:"Belvárosi Disznótoros", category:"butcher",
+      lat:47.4968, lng:19.0567, address:"Király u. 1/D, 1075 Budapest",
+      price_band:"local", price_huf:"2,500–3,500", locality_score:0.83,
+      why:"Stand-up butcher counter. Point at the sausage/blood-pudding/krumpli. Nagy Tamás-style traditional, no tourist menu.",
+      hours:"Mon–Sat 09:00–20:00" },
+    { id:"bangla", name:"Bangla Bufé Premium", category:"international",
+      lat:47.4986, lng:19.0648, address:"Akácfa u. 40, 1073 Budapest",
+      price_band:"local", price_huf:"1,500–1,900 (full meal)", locality_score:0.86,
+      why:"Bangladeshi curry buffet, point-and-pick. Non-tourist crowd. Vegetarian options under 1,500 HUF.",
+      hours:"Mon–Sun 11:00–22:00" },
+    { id:"kato-neni", name:"Kató Néni Finomságai (kürtős)", category:"kurtos",
+      lat:47.5012, lng:19.0553, address:"Október 6. u. 22, 1051 Budapest",
+      price_band:"mid", price_huf:"1,800–2,500", locality_score:0.65,
+      why:"Honest kürtőskalács stall away from Váci tourist drag. Baked on the spot — always insist on warm/fresh.",
+      hours:"Daily 10:00–20:00" },
+    { id:"molnars-kurtos", name:"Molnár's Kürtőskalács", category:"kurtos",
+      lat:47.4928, lng:19.0533, address:"Váci u. 31, 1052 Budapest",
+      price_band:"tourist", price_huf:"2,200–2,800", locality_score:0.45,
+      why:"Historic 1922 spot but on tourist-trap Váci utca. Quality is real, price ~30% above neighborhood spots.",
+      hours:"Daily 10:00–22:00" },
+    { id:"strudel-house", name:"First Strudel House of Pest", category:"strudel",
+      lat:47.5008, lng:19.0556, address:"Október 6. u. 22, 1051 Budapest",
+      price_band:"local", price_huf:"1,200–1,800", locality_score:0.74,
+      why:"Mom-and-pop strudel bakery. Apricot, poppy seed, túró (curd cheese). Mostly walk-in regulars.",
+      hours:"Daily 10:00–19:00" },
+    { id:"market-langos", name:"Lángos Sarok (Great Market Hall upstairs)", category:"langos",
+      lat:47.4870, lng:19.0584, address:"Vámház krt. 1-3 (1st floor), 1093 Budapest",
+      price_band:"tourist", price_huf:"2,000–4,000", locality_score:0.35,
+      why:"Tourist-priced. Avoid the 'gourmet bolognese' versions at 4,000 HUF. Plain cheese + sour cream is the only fair bet.",
+      hours:"Mon 06:00–17:00; Tue–Fri 06:00–18:00; Sat 06:00–15:00; Sun closed" },
+    { id:"retro-langos", name:"Retro Lángos Budapest", category:"langos",
+      lat:47.5031, lng:19.0563, address:"Bajcsy-Zsilinszky út 22, 1051 Budapest",
+      price_band:"tourist", price_huf:"1,500–4,000", locality_score:0.40,
+      why:"Heavily marketed to tourists. Loaded versions hit 4,000 HUF — same dough as a 1,200 HUF stall in Óbuda.",
+      hours:"Daily 11:00–22:00" },
+    { id:"pesti-disznó", name:"Pesti Disznó", category:"sausage_pub",
+      lat:47.5034, lng:19.0608, address:"Nagymező u. 19, 1065 Budapest",
+      price_band:"mid", price_huf:"3,500–5,500", locality_score:0.70,
+      why:"Mangalica pork specialist. Pre-theatre crowd from the Operetta. Card-friendly.",
+      hours:"Mon–Sat 12:00–24:00" },
+    { id:"karavan-gyros", name:"Karaván gyros truck", category:"gyros",
+      lat:47.4974, lng:19.0628, address:"Kazinczy u. 18 (inside Karaván)",
+      price_band:"mid", price_huf:"1,800–2,500", locality_score:0.68,
+      why:"Late-night gyros from a converted truck. Open till 02:00 — popular post-Szimpla.",
+      hours:"Daily 12:00–02:00" },
+    { id:"pantlika", name:"Pántlika Bisztró", category:"park_bistro",
+      lat:47.5169, lng:19.0820, address:"Hermina út, Városliget, 1146 Budapest",
+      price_band:"mid", price_huf:"2,500–3,500", locality_score:0.70,
+      why:"Retro pavilion in City Park near Széchenyi. Goulash + fried fish at honest prices despite the tourist neighborhood.",
+      hours:"Daily 11:00–23:00" }
+  ],
+
+  days: [
+    { n: 1, date: "Fri 22 May", theme: "Arrival → Pest Icons → Sunset Cruise", mode: "Walking",
+      stops: [
+        { name: "Astoria (hotel check-in)", time: "13:30", lat: 47.4929, lng: 19.0586,
+          address: "1088 Budapest", note: "Drop bags, freshen up" },
+        { name: "Bors GasztroBár (lunch)", time: "14:30", lat: 47.4969, lng: 19.0606,
+          address: "Kazinczy u. 10, 1075 Budapest", hours: "Daily 11:30–22:00",
+          tickets: "Soup + baguette ~1,800 HUF", food: ["Beef pho 1,800 HUF", "Lamb baguette 2,200 HUF"] },
+        { name: "Shoes on the Danube Bank", time: "16:00", lat: 47.5039, lng: 19.0448,
+          address: "Id. Antall József rkp., 1054 Budapest", hours: "24/7", tickets: "Free",
+          intro: "Sixty pairs of cast-iron shoes — memorial to Jews shot at the river's edge in 1944–45.",
+          highlights: ["Read the bronze plaque at the south end", "Continue south to Chain Bridge"],
+          transit: "M2 → Kossuth Lajos tér, walk 5 min south",
+          washroom: "Marriott lobby (Apáczai Csere János u. 4) — order an espresso",
+          food: ["Spinoza Café (Dob u. 15) — chicken paprikash"] },
+        { name: "St. Stephen's Basilica + dome", time: "17:00", lat: 47.5006, lng: 19.0539,
+          address: "Szent István tér 1, 1051 Budapest", hours: "Mon–Sat 9:00–17:45, Sun 13:00–17:45",
+          tickets: "Combined ticket ~3,200 HUF (basilica + treasury + dome)",
+          intro: "Hungary's largest church — domed at exactly 96 m to match the Parliament. Holds the mummified right hand of King Stephen I.",
+          highlights: ["Drop a 200 HUF coin to light the Holy Right relic", "Climb 364 stairs (or take elevator + 42)", "3-min walk to Liberty Square dancing fountain"],
+          transit: "Walk 8 min south down Október 6 utca",
+          washroom: "Free WC inside basilica with dome ticket; otherwise Sas utca paid WC 300 HUF",
+          food: ["First Strudel House of Pest (Október 6 u. 22)", "Stand 25 Bistro Michelin Bib"] },
+        { name: "Vigadó tér · Legenda cruise pier", time: "20:00", lat: 47.4955, lng: 19.0494,
+          address: "Vigadó tér, 1051 Budapest", hours: "Cruise departs 20:30",
+          tickets: "Sunset cocktail cruise 5,500 HUF (book online)",
+          intro: "70-minute Danube night cruise with the entire skyline gilded by night lights.",
+          highlights: ["Get a riverside seat on the upper deck", "Drink included in the ticket", "Best Parliament photos at blue hour ~21:00"],
+          transit: "Walk 10 min west on Deák Ferenc utca",
+          washroom: "On board, deck level",
+          food: ["Light dinner before — Pesti Disznó (Nagymező u. 19)"] }
+      ]
+    },
+    { n: 2, date: "Sat 23 May", theme: "Parliament → Andrássy → Heroes Sq → Széchenyi Bath", mode: "Transit + walking",
+      stops: [
+        { name: "Hungarian Parliament tour", time: "09:00", lat: 47.5072, lng: 19.0457,
+          address: "Kossuth Lajos tér 1-3, 1055 Budapest", hours: "Daily 8:00–18:00",
+          tickets: "10,000 HUF (booked)",
+          intro: "Third-largest parliament in the world. 691 rooms, 88 statues, the Holy Crown of Hungary on display.",
+          highlights: ["Arrive 30 min early for the changing of the guard", "Best photo spot: across the river at Batthyány tér", "Don't miss Shoes on the Danube nearby"],
+          transit: "M2 (red) → Kossuth Lajos tér; exit lifts you under the building",
+          washroom: "Free WC inside Visitor Centre with tour ticket",
+          food: ["Buja Disznók (Hold u. 13) — langos breakfast 6 min south"] },
+        { name: "Walk Andrássy Avenue → Oktogon", time: "10:30", lat: 47.5054, lng: 19.0637,
+          address: "Andrássy út, 1067 Budapest", hours: "n/a",
+          intro: "UNESCO-listed grand boulevard. 19th-century palaces, the Opera House, embassies.",
+          highlights: ["Pass the Opera House for façade photos", "Try Művész Kávéház (Andrássy út 29) for opera-day cake set", "Continue past Oktogon to the Octagon café cluster"],
+          transit: "Walk 2 km north-east — straight line",
+          washroom: "Művész Kávéház customer WC",
+          food: ["Klassz (Andrássy út 41) — modern Hungarian no reservations"] },
+        { name: "Lunch at Bock Bisztró", time: "12:30", lat: 47.5079, lng: 19.0635,
+          address: "Erzsébet krt. 43-49, 1073 Budapest", hours: "11:30–23:00",
+          tickets: "Mains ~5,500 HUF",
+          food: ["Mangalica chops", "Grandma's chicken paprikash with nokedli"] },
+        { name: "Heroes' Square + City Park", time: "14:00", lat: 47.5149, lng: 19.0779,
+          address: "Hősök tere, 1146 Budapest", hours: "24/7", tickets: "Free",
+          intro: "The grandest square in Budapest — Millennium Monument with seven Magyar chieftains on horseback.",
+          highlights: ["Vajdahunyad Castle a 5-min walk into City Park", "Boating lake rentals in spring", "Time Wheel — one of the world's largest hourglasses"],
+          transit: "M1 (yellow line) from Oktogon → Hősök tere",
+          washroom: "Free WC in Museum of Fine Arts (with ticket); paid 300 HUF at Vajdahunyad ticket office",
+          food: ["Bagolyvár (Állatkerti krt. 2) — Owl Castle by Gundel"] },
+        { name: "House of Music Hungary", time: "15:00", lat: 47.5132, lng: 19.0836,
+          address: "Olof Palme stny. 3, 1146 Budapest", hours: "Tue–Sun 10:00–18:00",
+          tickets: "~3,500 HUF",
+          intro: "2022 Sou Fujimoto-designed concert hall + sound museum. Stunning canopy roof.",
+          highlights: ["Walk under the perforated golden canopy", "Sound dome on the lower floor"] },
+        { name: "Széchenyi Thermal Bath", time: "16:30", lat: 47.5187, lng: 19.0824,
+          address: "Állatkerti krt. 9-11, 1146 Budapest", hours: "Daily 7:00–19:00 (last entry 18:00)",
+          tickets: "10,500 HUF weekday with cabin",
+          intro: "Picture-postcard yellow neo-Baroque bath complex — 18 pools, three huge outdoor pools open year-round.",
+          highlights: ["Go around 17:00 to bathe through golden hour", "Outdoor whirlpool current spins you in a circle", "Bring 2× 200 HUF coins for the locker"],
+          transit: "5-min walk from House of Music",
+          washroom: "Inside the bath complex",
+          food: ["Pántlika Bisztró in the park", "Robinson lake-side restaurant"] }
+      ]
+    },
+    { n: 3, date: "Sun 24 May", theme: "Buda Castle → Bastion → Hospital in the Rock → Gellért Hill", mode: "Transit + walking",
+      stops: [
+        { name: "Buda Castle (Royal Palace)", time: "09:30", lat: 47.4962, lng: 19.0395,
+          address: "Szent György tér 2, 1014 Budapest", hours: "Grounds 24/7; museums 10:00–18:00",
+          tickets: "Free grounds; museums ~3,800 HUF",
+          intro: "Castle Hill cobbled streets and palaces — the President's residence and changing of the guard at 12:00.",
+          highlights: ["Bus 16 from Deák tér — free with travelcard", "Walk Tóth Árpád sétány on the western rampart", "Look for the bronze turul bird above the funicular landing"],
+          transit: "Bus 16 from Deák Ferenc tér (5 min)",
+          washroom: "Free WCs in palace courtyard between Wing C and D",
+          food: ["Walzer Café (Táncsics Mihály u. 12) — strudel"] },
+        { name: "Matthias Church + Fisherman's Bastion", time: "10:30", lat: 47.5020, lng: 19.0344,
+          address: "Szentháromság tér, 1014 Budapest", hours: "Bastion 24/7; upper terraces 9:00–19:00 (1,500 HUF)",
+          tickets: "Bastion upper 1,500 HUF; church 2,500 HUF",
+          intro: "Seven white neo-Romanesque turrets over the Danube + the diamond-tile-roof Matthias Church where Hungarian kings were crowned.",
+          highlights: ["Free trick: enter before 9:00 or after 19:00", "Best photo angle: lower turret looking up", "Bell tower climb extra 1,500 HUF"],
+          transit: "Walk 8 min north on Tárnok utca",
+          washroom: "Paid WC 300 HUF at Szentháromság tér",
+          food: ["Café Pierrot (Fortuna u. 14) — historic courtyard café"] },
+        { name: "Hospital in the Rock", time: "14:00", lat: 47.5008, lng: 19.0314,
+          address: "Lovas út 4/c, 1012 Budapest", hours: "Daily 10:00–19:00, hourly tours",
+          tickets: "7,000 HUF (booked, English tour)",
+          intro: "Beneath Castle Hill lies a 10-km cave network. WWII secret hospital, Cold War nuclear bunker.",
+          highlights: ["Constant 14 °C — bring a light jacket", "Photography NOT allowed", "60-min guided tour, English"],
+          transit: "5-min walk west on Lovas út",
+          washroom: "Free WC inside lobby",
+          food: ["Anjuna Café (Lovas út 41) — sandwiches + panoramic terrace"] },
+        { name: "Gellért Hill + Citadella sunset", time: "17:30", lat: 47.4869, lng: 19.0460,
+          address: "Citadella sétány, 1118 Budapest", hours: "24/7", tickets: "Free",
+          intro: "14-m bronze Liberty Statue on the summit, panoramic views of both Buda and Pest.",
+          highlights: ["25-min hike up switchback paths", "Cave Church (Sziklatemplom) on the way ~700 HUF", "Stay for sunset"],
+          transit: "Walk down to Clark Ádám tér + bus 8E/110 to Szent Gellért tér",
+          washroom: "No public WC on summit — go before climbing",
+          food: ["Hadik Kávéház (Bartók Béla út 36) at the base"] },
+        { name: "Szimpla Kert (ruin bar)", time: "21:00", lat: 47.4975, lng: 19.0628,
+          address: "Kazinczy u. 14, 1075 Budapest", hours: "Daily 12:00–04:00",
+          tickets: "Free entry; drinks ~1,800 HUF",
+          intro: "The original ruin pub — a maze of mismatched furniture, a Trabant car turned booth, live music nightly.",
+          highlights: ["Famously decorated WCs — visit even just for the photo", "Karaván food court next door open till 02:00", "Sunday morning farmers' market 9:00–14:00"],
+          transit: "Tram 47/49 across Liberty Bridge then walk into Jewish Quarter",
+          food: ["Karaván Street Food (Kazinczy u. 18) — late-night gyros + langos"] }
+      ]
+    },
+    { n: 4, date: "Mon 25 May", theme: "Central Market → Palace District → Tram 2 → Margaret Island", mode: "Walking + Tram 2",
+      stops: [
+        { name: "Great Market Hall", time: "09:30", lat: 47.4870, lng: 19.0584,
+          address: "Vámház körút 1-3, 1093 Budapest", hours: "Mon 06:00–17:00, Tue–Fri 06:00–18:00, Sat 06:00–15:00; Sun closed",
+          tickets: "Free entry",
+          intro: "Neo-Gothic 1897 market — three floors of paprika, salami, Tokaji, and souvenirs.",
+          highlights: ["Lángos at upstairs corner — 2,000 HUF", "Buy paprika tins + Tokaji Aszú for souvenirs", "Skip ground-floor 'tourist goulash' — upstairs is better"],
+          transit: "Tram 47/49 → Fővám tér",
+          washroom: "Paid 250 HUF in basement — bring coins",
+          food: ["Lángos Sarok upstairs", "Fakanál Étterem sit-down Hungarian canteen"] },
+        { name: "Palace District (Józsefváros) walk", time: "11:00", lat: 47.4904, lng: 19.0651,
+          address: "Múzeum krt., Pollack Mihály tér, Reviczky u., 1088 Budapest", hours: "n/a",
+          intro: "Your hotel's neighborhood — Hungarian National Museum + 19th-century palaces. Mostly closed Mondays so admire from outside.",
+          highlights: ["Hungarian National Museum classical façade (closed Mon)", "Palace of the Italian Cultural Institute", "Wenckheim Palace (now the FSZEK library)"],
+          transit: "10-min walk south from Astoria",
+          washroom: "FSZEK library (with reader card) or any nearby café"},
+        { name: "Tram 2 — scenic riverside", time: "14:30", lat: 47.4955, lng: 19.0494,
+          address: "Vigadó tér Tram 2 stop, 1051 Budapest", hours: "Trams every 5–10 min",
+          tickets: "Included in 96-hour travelcard",
+          intro: "National Geographic-rated 'world's most scenic tramline' — runs the entire Pest embankment with Buda views.",
+          highlights: ["Best window seats: right side facing the river", "Get off at Margit híd to cross into Margaret Island", "Round trip in ~30 min"] },
+        { name: "Margaret Island musical fountain", time: "18:30", lat: 47.5290, lng: 19.0478,
+          address: "Margitsziget, 1138 Budapest", hours: "Choreographed shows every hour",
+          tickets: "Free",
+          intro: "2.5 km car-free island — locals' weekend escape. Cherry blossoms in late spring.",
+          highlights: ["Rent a Bringóhintó pedal cart 4,000 HUF/h", "Walking loop: musical fountain → Dominican convent ruins → Japanese Garden", "Mini zoo with deer and peacocks"],
+          transit: "Tram 4/6 stops mid-bridge at Margitsziget",
+          washroom: "Free public WCs along the central path",
+          food: ["Holdudvar — restaurant + open-air bar"] }
+      ]
+    },
+    { n: 5, date: "Tue 26 May", theme: "Szentendre Day Trip + Farewell Dinner", mode: "HÉV + walking",
+      stops: [
+        { name: "Szentendre HÉV station", time: "09:40", lat: 47.6608, lng: 19.0755,
+          address: "Szentendre, 2000 Hungary", hours: "n/a",
+          tickets: "HÉV supplement 750 HUF each way (in addition to travelcard)",
+          intro: "End of HÉV H5 line from Batthyány tér. Welcome to Szentendre — Serbian-flavoured riverside artist's town.",
+          transit: "HÉV H5 from Batthyány tér (40 min)",
+          washroom: "Paid 200 HUF inside station" },
+        { name: "Marzipan Museum & Café", time: "10:00", lat: 47.6664, lng: 19.0765,
+          address: "Dumtsa Jenő u. 14, 2000 Szentendre", hours: "Daily 10:00–18:00",
+          tickets: "1,200 HUF",
+          intro: "Quirky museum of life-size marzipan sculptures (Princess Diana, Mickey Mouse, the Hungarian crown).",
+          highlights: ["Quick 20-min visit", "Café out front sells marzipan ice cream"]},
+        { name: "Fő tér (Main Square)", time: "10:30", lat: 47.6677, lng: 19.0757,
+          address: "Fő tér, 2000 Szentendre", hours: "n/a",
+          tickets: "Free",
+          intro: "Heart of Szentendre — pastel baroque facades, the 1763 Plague Cross, Serbian Orthodox church.",
+          highlights: ["Photograph the cobbled square from the eastern corner", "Pop into Galéria Orange for ceramics", "Coffee at Palmetta Café"]},
+        { name: "Templom-domb (Church Hill)", time: "11:30", lat: 47.6681, lng: 19.0754,
+          address: "Templom tér, 2000 Szentendre", hours: "24/7", tickets: "Free",
+          intro: "Hilltop panorama over the old town and the Danube. Catholic Church of St John the Baptist at the summit.",
+          highlights: ["Best wide-angle view of the town in this whole trip", "5-min climb up cobbled steps"]},
+        { name: "Lánchíd Söröző (lunch on Fő tér)", time: "13:00", lat: 47.6677, lng: 19.0758,
+          address: "Fő tér, 2000 Szentendre", hours: "Daily 11:00–22:00",
+          tickets: "Mains ~3,500 HUF",
+          intro: "Riverbank tavern serving honest Hungarian classics. The fish stew is the regional specialty.",
+          food: ["Halászlé (river-fish stew) 3,200 HUF", "Schnitzel + chips 3,800 HUF", "Tokaji Furmint by the glass"]},
+        { name: "Margit Kovács Ceramic Museum", time: "14:30", lat: 47.6677, lng: 19.0771,
+          address: "Vastagh György u. 1, 2000 Szentendre", hours: "Tue–Sun 10:00–18:00",
+          tickets: "1,800 HUF",
+          intro: "Hungary's most famous 20th-century ceramicist. Whimsical figurines, biblical narratives, peasant life.",
+          highlights: ["~75 min visit", "Most pieces are kissable-small — a love letter rather than monumental art"]},
+        { name: "Farewell dinner at Borkonyha", time: "20:00", lat: 47.5009, lng: 19.0537,
+          address: "Sas u. 3, 1051 Budapest", hours: "Mon–Sat 12:00–24:00; closed Sun",
+          tickets: "Tasting menu ~32,000 HUF (booked)",
+          intro: "1-Michelin-star wine restaurant near the Basilica. Hungarian wines + modern bistro classics. Reservations essential.",
+          highlights: ["Order the duck liver with poppy seed", "Tokaji Aszú flight pairing", "Walk back to Astoria via the Basilica + Liberty Sq"]}
+      ]
+    }
+  ]
+};
+
+/* ════════════════════════════════════════════
+   Mocked in-tour & memory state
+   For the demo, Day 1 + Day 2 are "completed" with sample photos;
+   Day 3 is "in progress" (current); Day 4 + 5 are "upcoming"
+   ════════════════════════════════════════════ */
+const STATE = {
+  current_day: 3,
+  current_stop_index: { 3: 1 },  // on Day 3, stop index 1 = Matthias Church + Bastion is the active stop
+  check_ins: {
+    1: [0, 1, 2, 3, 4],  // all of Day 1 done
+    2: [0, 1, 2, 3, 4, 5],  // all of Day 2 done
+    3: [0]   // Day 3: only first stop done
+  },
+  stop_photos: {
+    "1-2": ["../Budapest_5_Day/images/05_new_york_cafe.jpg"],
+    "1-3": ["../Budapest_5_Day/images/02_basilica.jpg"],
+    "1-4": ["../Budapest_5_Day/images/06_chain_bridge.jpg"],
+    "2-0": ["../Budapest_5_Day/images/01_parliament.jpg"],
+    "2-3": ["../Budapest_5_Day/images/14_heroes_square.jpg"],
+    "2-5": ["../Budapest_5_Day/images/16_szechenyi_bath.jpg"],
+    "3-0": ["../Budapest_5_Day/images/07_buda_castle.jpg"]
+  },
+  voice_notes: {
+    "1-3": "Crossed the Chain Bridge at sunset. The Parliament across the river — unbelievable.",
+    "2-0": "Took the Parliament tour at 9. Crown room is small but the guard ceremony was moving.",
+    "2-5": "Széchenyi after sunset. The outdoor pools steamed in the cool air."
+  },
+  journal: "Friday: arrived stretched but pumped. Bors GasztroBár hit the spot — that lamb baguette. Saturday: Parliament tour was a highlight. Sunday morning now and we're heading up to Buda Castle.",
+  badges: { "1-2": "🌅 sunset", "2-5": "♨️ thermal" }
+};
+
+const DAY_STATUS = (n) => {
+  if (n < STATE.current_day) return "done";
+  if (n === STATE.current_day) return "current";
+  return "upcoming";
+};
+
+/* ════════════════════════════════════════════
+   Street-food helpers
+   ════════════════════════════════════════════ */
+function haversineKm(a, b) {
+  const R = 6371, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const x = Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+function walkMinutes(km) { return Math.round(km * 12.5); /* ~80 m/min */ }
+function bandClass(b) {
+  return b === "local"   ? "bg-emerald-100 text-emerald-800"
+       : b === "tourist" ? "bg-rose-100 text-rose-800"
+       : "bg-amber-100 text-amber-800";
+}
+function bandLabel(b) {
+  return b === "local" ? "💚 local price" : b === "tourist" ? "🚩 tourist price" : "🟡 mid-range";
+}
+function localityBar(score) {
+  const w = Math.round(score * 100);
+  const color = score >= 0.75 ? "bg-emerald-500" : score >= 0.5 ? "bg-amber-500" : "bg-rose-500";
+  return `<div class="w-20 h-1.5 bg-slate-200 rounded-full overflow-hidden"><div class="${color} h-full" style="width:${w}%"></div></div>`;
+}
+/* Get the active reference point — current stop on tour, else hotel */
+function activeAnchor() {
+  const day = TRIP.days[STATE.current_day - 1];
+  if (!day) return HOTEL;
+  const idx = STATE.current_stop_index[day.n] ?? 0;
+  const s = day.stops[idx] || day.stops[0];
+  return s && s.lat ? s : HOTEL;
+}
+/* Rank by combined locality + proximity */
+function rankStreetFood(anchor, opts = {}) {
+  const wantBand = opts.bandFilter; // null = all
+  return TRIP.street_food
+    .filter(f => !wantBand || f.price_band === wantBand)
+    .map(f => {
+      const km = haversineKm(anchor, f);
+      const proximity = Math.max(0, 1 - km / 8);  // 8km = no boost
+      const score = 0.65 * f.locality_score + 0.35 * proximity;
+      return { ...f, km, walk: walkMinutes(km), score };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+function renderStreetFoodPlan() {
+  const container = document.getElementById("streetfood-plan");
+  if (!container) return;
+  const top = rankStreetFood(HOTEL).slice(0, 5);
+  container.innerHTML = top.map(f => `
+    <div class="flex items-start gap-2 p-2 rounded hover:bg-slate-50 cursor-pointer" onclick="openStreetFoodDetail('${f.id}')">
+      <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${bandClass(f.price_band)} whitespace-nowrap">${bandLabel(f.price_band)}</span>
+      <div class="flex-1 min-w-0">
+        <div class="font-medium text-slate-800 truncate">${f.name}</div>
+        <div class="text-[11px] text-slate-500">${f.price_huf} HUF · ${f.walk}-min walk from hotel</div>
+      </div>
+    </div>
+  `).join("");
+}
+
+/* ════════════════════════════════════════════
+   Tab switching
+   ════════════════════════════════════════════ */
+function setTab(name) {
+  ["plan", "tour", "memory"].forEach(t => {
+    const sec = document.getElementById("tab-" + t);
+    const btn = document.getElementById("tab-" + t + "-btn");
+    const active = (t === name);
+    sec.classList.toggle("hidden", !active);
+    btn.classList.toggle("tab-active", active);
+    btn.classList.toggle("tab-inactive", !active);
+  });
+  if (name === "memory") setTimeout(initMap, 50);
+}
+
+/* ════════════════════════════════════════════
+   PLAN tab rendering
+   ════════════════════════════════════════════ */
+function renderPlan() {
+  // Bookings
+  const bl = document.getElementById("booking-list");
+  bl.innerHTML = TRIP.bookings.map(b => `
+    <li class="flex items-start gap-2">
+      <span class="${b.done ? 'text-emerald-600' : 'text-amber-600'} font-bold">
+        ${b.done ? '✓' : '○'}
+      </span>
+      <a href="${b.url}" target="_blank" class="${b.done ? 'line-through text-slate-500' : 'text-slate-800 hover:text-blue-700'} flex-1">${b.label}</a>
+    </li>
+  `).join("");
+
+  // Companion docs
+  const cl = document.getElementById("companion-list");
+  cl.innerHTML = TRIP.companion_docs.map(c => `
+    <a href="${c.file}" target="_blank" class="block px-3 py-2 bg-slate-50 hover:bg-slate-100 rounded text-slate-700 hover:text-blue-700">${c.name}</a>
+  `).join("");
+
+  // Routes
+  const rl = document.getElementById("route-list");
+  rl.innerHTML = TRIP.routes.map(r => `
+    <div class="flex items-center justify-between px-3 py-2 bg-slate-50 hover:bg-slate-100 rounded">
+      <span class="text-slate-700 text-xs">${r.label}</span>
+      <span class="flex gap-2">
+        <a href="${r.url}" target="_blank" title="Open in Google Maps" class="text-blue-700 hover:underline text-xs">🗺</a>
+        <a href="${r.pdf}" target="_blank" title="Open PDF" class="text-rose-700 hover:underline text-xs">📄</a>
+      </span>
+    </div>
+  `).join("");
+
+  // Street food picks
+  renderStreetFoodPlan();
+
+  // Days
+  const dd = document.getElementById("plan-days");
+  dd.innerHTML = TRIP.days.map(d => `
+    <details class="bg-white rounded-xl shadow group" ${d.n === 1 ? "open" : ""}>
+      <summary class="cursor-pointer p-4 flex items-center gap-3 hover:bg-slate-50 rounded-xl">
+        <span class="text-2xl font-bold text-blue-700">${d.n}</span>
+        <div class="flex-1">
+          <div class="font-bold text-slate-800">${d.date}</div>
+          <div class="text-xs text-slate-500">${d.theme}</div>
+        </div>
+        <span class="text-xs text-slate-400 hidden sm:inline">${d.mode} · ${d.stops.length} stops</span>
+        <span class="text-slate-400 group-open:rotate-90 transition">▶</span>
+      </summary>
+      <div class="border-t border-slate-100 p-4 space-y-2">
+        ${d.stops.map((s, i) => `
+          <details class="border border-slate-200 rounded-lg stop-card bg-slate-50/50">
+            <summary class="cursor-pointer p-3 flex items-center gap-3 text-sm">
+              <span class="font-mono text-xs text-blue-600 w-12">${s.time}</span>
+              <span class="font-medium flex-1">${s.name}</span>
+              <span class="text-xs text-slate-400">${s.address ? s.address.split(",")[0] : ""}</span>
+            </summary>
+            <div class="px-4 pb-3 pt-1 text-xs text-slate-700 space-y-1.5">
+              ${s.address ? `<p>📍 <b>Address</b> · ${s.address}</p>` : ""}
+              ${s.hours ? `<p>🕐 <b>Hours</b> · ${s.hours}</p>` : ""}
+              ${s.tickets ? `<p>🎟 <b>Tickets</b> · ${s.tickets}</p>` : ""}
+              ${s.intro ? `<p class="text-slate-600 italic mt-2">${s.intro}</p>` : ""}
+              ${s.highlights ? `<div class="mt-1.5"><b>✨ Highlights</b><ul class="list-disc list-inside text-slate-600">${s.highlights.map(h => `<li>${h}</li>`).join("")}</ul></div>` : ""}
+              ${s.transit ? `<p class="mt-1.5">🚇 <b>Get there</b> · ${s.transit}</p>` : ""}
+              ${s.washroom ? `<p>🚻 <b>Washroom</b> · ${s.washroom}</p>` : ""}
+              ${s.food ? `<div>🍽 <b>Quick bite</b> · ${s.food.join(" · ")}</div>` : ""}
+              <p class="pt-2"><a href="https://maps.google.com/?q=${encodeURIComponent(s.name + " Budapest")}" target="_blank" class="text-blue-600 hover:underline">Open in Google Maps →</a></p>
+            </div>
+          </details>
+        `).join("")}
+      </div>
+    </details>
+  `).join("");
+}
+
+/* ════════════════════════════════════════════
+   TOUR tab rendering
+   ════════════════════════════════════════════ */
+function renderTour() {
+  // Day strip
+  const ds = document.getElementById("day-strip");
+  ds.innerHTML = TRIP.days.map(d => {
+    const status = DAY_STATUS(d.n);
+    const cls = status === "done" ? "checked" : status === "current" ? "current" : "upcoming";
+    const icon = status === "done" ? "✓" : status === "current" ? "●" : "⌛";
+    return `
+      <button onclick="STATE.current_day=${d.n}; renderTour();" class="day-pill ${cls} flex flex-col items-center min-w-[110px] px-3 py-2 rounded-lg border-2 hover:opacity-100">
+        <span class="text-xs font-bold">${icon} Day ${d.n}</span>
+        <span class="text-[10px] text-slate-600 mt-0.5">${d.date}</span>
+      </button>
+    `;
+  }).join("");
+
+  document.getElementById("tour-status-summary").textContent =
+    `Day ${STATE.current_day} of 5 · ${TRIP.days[STATE.current_day-1].theme}`;
+
+  // Today's stops
+  const day = TRIP.days[STATE.current_day - 1];
+  const dayCheckins = STATE.check_ins[day.n] || [];
+  const ts = document.getElementById("tour-stops");
+  ts.innerHTML = day.stops.map((s, i) => {
+    const checked = dayCheckins.includes(i);
+    const photos = STATE.stop_photos[`${day.n}-${i}`] || [];
+    const note = STATE.voice_notes[`${day.n}-${i}`];
+    const isCurrent = (DAY_STATUS(day.n) === "current") && (i === (STATE.current_stop_index[day.n] || 0));
+    const tsCls = checked ? "border-emerald-300 bg-emerald-50" : isCurrent ? "border-amber-300 bg-amber-50 ring-2 ring-amber-100" : "border-slate-200 bg-white";
+    return `
+      <div class="rounded-xl shadow-sm border-2 p-4 stop-card ${tsCls}">
+        <div class="flex items-start gap-3">
+          <div class="font-mono text-xs text-blue-700 w-12 pt-0.5">${s.time}</div>
+          <div class="flex-1">
+            <h4 class="font-bold text-slate-800 leading-tight">${s.name} ${checked ? "✓" : isCurrent ? "● now" : ""}</h4>
+            ${s.address ? `<p class="text-xs text-slate-500">${s.address}</p>` : ""}
+            ${s.transit ? `<p class="text-xs text-slate-600 mt-1">🚇 ${s.transit}</p>` : ""}
+            ${note ? `<p class="text-xs italic text-slate-700 mt-2 bg-slate-100 p-2 rounded">🎤 “${note}”</p>` : ""}
+            ${photos.length ? `<div class="flex gap-1 mt-2">${photos.map(p => `<img src="${p}" class="w-16 h-16 object-cover rounded" onerror="this.style.display='none'">`).join("")}</div>` : ""}
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-slate-100">
+          <a href="https://maps.google.com/?q=${encodeURIComponent(s.name + ' Budapest')}" target="_blank" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded font-medium">🧭 Navigate</a>
+          ${!checked ? `<button onclick="checkIn(${day.n}, ${i})" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-1.5 rounded font-medium">📍 Check in</button>` : ""}
+          <button onclick="addPhoto(${day.n}, ${i})" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs px-3 py-1.5 rounded font-medium">📷 Photo</button>
+          <button onclick="recordVoice(${day.n}, ${i})" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs px-3 py-1.5 rounded font-medium">🎤 Voice note</button>
+          ${s.tickets ? `<span class="text-xs text-slate-500 ml-auto self-center">🎟 ${s.tickets}</span>` : ""}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  // Stats
+  const totalCheckins = Object.values(STATE.check_ins).flat().length;
+  const totalPhotos = Object.values(STATE.stop_photos).flat().length;
+  const totalNotes = Object.keys(STATE.voice_notes).length;
+  const totalStops = TRIP.days.reduce((s, d) => s + d.stops.length, 0);
+  document.getElementById("tour-stats").innerHTML = `
+    <p>📍 <b>${totalCheckins}</b> / ${totalStops} stops checked in</p>
+    <p>📷 <b>${totalPhotos}</b> photos taken</p>
+    <p>🎤 <b>${totalNotes}</b> voice notes</p>
+    <p>🚶 <b>~${(totalCheckins * 1.2).toFixed(1)} km</b> walked today</p>
+  `;
+}
+
+function checkIn(day, idx) {
+  if (!STATE.check_ins[day]) STATE.check_ins[day] = [];
+  if (!STATE.check_ins[day].includes(idx)) STATE.check_ins[day].push(idx);
+  STATE.current_stop_index[day] = idx + 1;
+  showSnack("📍 Checked in!  GPS + timestamp recorded");
+  renderTour();
+  renderMemory();
+}
+
+function addPhoto(day, idx) {
+  const key = `${day}-${idx}`;
+  // pick a "random" landmark photo for the demo
+  const candidates = [
+    "../Budapest_5_Day/images/04_vaci_street.jpg",
+    "../Budapest_5_Day/images/12_margaret_island.jpg",
+    "../Budapest_5_Day/images/13_house_of_terror.jpg",
+    "../Budapest_5_Day/images/15_nyugati_mcdonalds.jpg"
+  ];
+  if (!STATE.stop_photos[key]) STATE.stop_photos[key] = [];
+  STATE.stop_photos[key].push(candidates[STATE.stop_photos[key].length % candidates.length]);
+  showSnack("📷 Photo added (demo).  Auto-tagged to this stop");
+  renderTour();
+  renderMemory();
+}
+
+function recordVoice(day, idx) {
+  const key = `${day}-${idx}`;
+  const sampleNotes = [
+    "Wow, this place is something else. The light right now…",
+    "Heading to the next stop, the queue moved quick.",
+    "Lunch was excellent — must remember to write up the dish name.",
+    "Met a local who told us a great story about this place."
+  ];
+  STATE.voice_notes[key] = sampleNotes[Math.floor(Math.random()*sampleNotes.length)];
+  showSnack("🎤 30-sec voice note saved.  Transcribed & tagged");
+  renderTour();
+  renderMemory();
+}
+
+/* ════════════════════════════════════════════
+   MEMORY tab rendering
+   ════════════════════════════════════════════ */
+let mapInstance = null;
+function initMap() {
+  if (mapInstance) { mapInstance.invalidateSize(); return; }
+  mapInstance = L.map("journey-map", { scrollWheelZoom: false }).setView([47.4979, 19.0402], 12);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; OpenStreetMap',
+    maxZoom: 19
+  }).addTo(mapInstance);
+
+  // Draw points + line for visited stops
+  const visitedCoords = [];
+  TRIP.days.forEach(d => {
+    const checkins = STATE.check_ins[d.n] || [];
+    checkins.forEach(idx => {
+      const s = d.stops[idx];
+      if (s.lat && s.lng) {
+        visitedCoords.push([s.lat, s.lng]);
+        const marker = L.circleMarker([s.lat, s.lng], {
+          radius: 7, fillColor: "#1a3a52", color: "white", weight: 2, fillOpacity: 0.9
+        }).addTo(mapInstance);
+        marker.bindPopup(`<b>Day ${d.n}</b> · ${s.time}<br>${s.name}`);
+      }
+    });
+  });
+  if (visitedCoords.length >= 2) {
+    L.polyline(visitedCoords, { color: "#dc2626", weight: 3, dashArray: "6, 5", opacity: 0.7 }).addTo(mapInstance);
+  }
+  if (visitedCoords.length) {
+    mapInstance.fitBounds(L.latLngBounds(visitedCoords).pad(0.15));
+  }
+}
+
+function renderMemory() {
+  const totalCheckins = Object.values(STATE.check_ins).flat().length;
+  const totalPhotos = Object.values(STATE.stop_photos).flat().length;
+  const totalNotes = Object.keys(STATE.voice_notes).length;
+  document.getElementById("memory-stats").innerHTML =
+    `<b>${totalCheckins}</b> stops · <b>${totalPhotos}</b> photos · <b>${totalNotes}</b> voice notes · journey-line drawn from check-ins`;
+
+  // Daily wrap cards (only completed days)
+  const md = document.getElementById("memory-days");
+  md.innerHTML = TRIP.days.filter(d => DAY_STATUS(d.n) === "done").map(d => {
+    const checkins = STATE.check_ins[d.n] || [];
+    const photos = checkins.flatMap(i => STATE.stop_photos[`${d.n}-${i}`] || []);
+    return `
+      <div class="bg-white rounded-xl shadow-sm p-4">
+        <div class="flex items-baseline justify-between mb-2">
+          <h4 class="font-bold text-slate-800">Day ${d.n} · ${d.date}</h4>
+          <span class="text-xs text-slate-500">${checkins.length} stops · ${photos.length} photos</span>
+        </div>
+        <p class="text-xs text-slate-600 italic mb-2">${d.theme}</p>
+        ${photos.length ? `<div class="grid grid-cols-4 gap-1.5 mb-2">${photos.slice(0,8).map(p => `<img src="${p}" class="w-full aspect-square object-cover rounded" onerror="this.style.display='none'">`).join("")}</div>` : ""}
+        <details class="text-xs text-slate-700">
+          <summary class="cursor-pointer text-blue-700 hover:underline">Show stop-by-stop notes</summary>
+          <div class="mt-2 space-y-1.5 pl-2 border-l-2 border-slate-200">
+            ${checkins.map(i => {
+              const s = d.stops[i];
+              const note = STATE.voice_notes[`${d.n}-${i}`];
+              return `<div class="text-slate-700"><b>${s.time}</b> ${s.name}${note ? `<p class="italic text-slate-500 mt-0.5">"${note}"</p>` : ""}</div>`;
+            }).join("")}
+          </div>
+        </details>
+      </div>
+    `;
+  }).join("") || `<p class="text-sm text-slate-500 italic">No completed days yet — your daily wraps appear here as you check in.</p>`;
+
+  // Photo grid (last 9)
+  const allPhotos = Object.values(STATE.stop_photos).flat().slice(0, 9);
+  const pg = document.getElementById("photo-grid");
+  pg.innerHTML = allPhotos.map(p => `<img src="${p}" onerror="this.style.display='none'">`).join("") ||
+    `<p class="text-xs text-slate-500 col-span-3">Photos appear here as you take them in the Tour tab.</p>`;
+
+  // Journal
+  const j = document.getElementById("journal");
+  if (j && !j._bound) {
+    j.value = STATE.journal;
+    j.addEventListener("input", () => { STATE.journal = j.value; });
+    j._bound = true;
+  }
+}
+
+/* ════════════════════════════════════════════
+   Modals + snackbar
+   ════════════════════════════════════════════ */
+function openModal(kind) {
+  // Dynamic street-food modals — compute body live
+  if (kind === "cheapeats" || kind === "streetfood-all") {
+    return openStreetFoodModal(kind);
+  }
+  const titles = {
+    phrasebook: "🗣 Pocket phrasebook",
+    washroom: "🚻 Nearest washrooms",
+    currency: "💱 Currency converter",
+    weather: "☂️ Weather today",
+    book: "📕 Print to hardcover book"
+  };
+  const bodies = {
+    phrasebook: `
+      <ul class="text-sm space-y-2">
+        <li><b>Hello</b> — <i>Szia</i> · "see-ah" 🔊</li>
+        <li><b>Thank you</b> — <i>Köszönöm</i> · "kuh-suh-nuhm" 🔊</li>
+        <li><b>The bill, please</b> — <i>A számlát, kérem</i> · "ah saam-laat keh-rem" 🔊</li>
+        <li><b>Tap water, please</b> — <i>Csapvíz, kérem</i> · "chap-veez keh-rem" 🔊</li>
+        <li><b>Where is the bathroom?</b> — <i>Hol van a mosdó?</i> · "hol von oh mosh-doh" 🔊</li>
+        <li><b>Cheers!</b> — <i>Egészségedre!</i> · "egg-aess-shay-ged-reh" 🔊</li>
+      </ul>
+      <p class="text-xs text-slate-500 mt-3">Tap 🔊 to play TTS audio (production version).</p>`,
+    washroom: `
+      <p class="text-sm text-slate-700 mb-3">Within 5 minutes of your current stop:</p>
+      <ul class="text-sm space-y-2">
+        <li>🚻 <b>Marriott lobby</b> · 3 min walk · free with espresso purchase</li>
+        <li>🚻 <b>Vörösmarty tér Metro M1</b> · 4 min · free</li>
+        <li>🚻 <b>Vigadó concert hall lobby</b> · 5 min · free during business hrs</li>
+        <li>🚻 <b>Public WC Vigadó tér</b> · 2 min · paid 200 HUF</li>
+      </ul>`,
+    currency: `
+      <div class="text-sm space-y-2">
+        <div class="flex items-center gap-2"><span class="font-mono w-20">100 USD</span> = <b>~36,500 HUF</b></div>
+        <div class="flex items-center gap-2"><span class="font-mono w-20">100 EUR</span> = <b>~39,800 HUF</b></div>
+        <div class="flex items-center gap-2"><span class="font-mono w-20">100 CAD</span> = <b>~26,400 HUF</b></div>
+        <p class="text-xs text-slate-500 pt-2 border-t mt-3">Rates from the European Central Bank. Avoid Euronet ATMs (high fees).</p>
+      </div>`,
+    weather: `
+      <p class="text-sm text-slate-700">📅 Sunday May 24, 2026, Budapest</p>
+      <div class="text-3xl font-bold mt-2">21°C · ☀️ Sunny</div>
+      <p class="text-sm text-slate-500 mt-1">Sunset 20:30 · 0% rain · UV 6 (high)</p>
+      <ul class="text-xs text-slate-600 mt-3 space-y-1">
+        <li>Bring sunscreen for the Gellért hike</li>
+        <li>Light layer for after sunset</li>
+        <li>No umbrella needed</li>
+      </ul>`,
+    book: `
+      <p class="text-sm text-slate-700 mb-3">Generate a 28-page hardcover book of your trip, $39.99.</p>
+      <ul class="text-xs text-slate-600 list-disc list-inside space-y-1 mb-4">
+        <li>Auto-laid out from your photos and journal</li>
+        <li>Front cover: trip map; chapters: one per day</li>
+        <li>Includes voice-note transcripts as captions</li>
+        <li>Ships in 7–10 business days</li>
+      </ul>
+      <button onclick="closeModal();showSnack('📕 Book preview generated (demo).')" class="w-full bg-rose-500 text-white py-2 rounded-lg font-bold hover:bg-rose-600">Generate preview</button>`
+  };
+  document.getElementById("modal-title").textContent = titles[kind] || "";
+  document.getElementById("modal-body").innerHTML = bodies[kind] || "";
+  document.getElementById("modal").classList.remove("hidden");
+  document.getElementById("modal").classList.add("flex");
+}
+function closeModal() {
+  document.getElementById("modal").classList.add("hidden");
+  document.getElementById("modal").classList.remove("flex");
+}
+
+function openStreetFoodModal(kind) {
+  const anchor = activeAnchor();
+  const isAll = kind === "streetfood-all";
+  const ranked = rankStreetFood(anchor);
+  const list = isAll ? ranked : ranked.filter(f => f.price_band !== "tourist").slice(0, 5);
+
+  const anchorLabel = anchor === HOTEL || !anchor.name ? "Astoria (hotel)" : anchor.name;
+  const subtitle = isAll
+    ? `${ranked.length} curated picks across Budapest. Sorted by locality + proximity to <b>${anchorLabel}</b>.`
+    : `Top ${list.length} <b>local-priced</b> bites near you (anchor: <b>${anchorLabel}</b>). Tourist-priced spots hidden.`;
+
+  const items = list.map(f => `
+    <div class="border border-slate-200 rounded-lg p-3 hover:bg-slate-50">
+      <div class="flex items-start justify-between gap-2 mb-1">
+        <div class="flex-1 min-w-0">
+          <div class="font-bold text-slate-800 leading-tight">${f.name}</div>
+          <div class="text-xs text-slate-500">${f.address}</div>
+        </div>
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold ${bandClass(f.price_band)} whitespace-nowrap">${bandLabel(f.price_band)}</span>
+      </div>
+      <div class="flex items-center gap-2 text-xs text-slate-700 mt-1">
+        <span class="font-mono">${f.price_huf} HUF</span>
+        <span class="text-slate-400">·</span>
+        <span>🚶 ${f.walk} min (${f.km.toFixed(1)} km)</span>
+        <span class="text-slate-400">·</span>
+        ${localityBar(f.locality_score)}
+        <span class="text-[10px] text-slate-500">${(f.locality_score*100|0)}%</span>
+      </div>
+      <p class="text-xs text-slate-600 italic mt-1.5">${f.why}</p>
+      <div class="text-[11px] text-slate-500 mt-1">🕐 ${f.hours || "—"}</div>
+      <div class="flex gap-2 mt-2">
+        <a href="https://maps.google.com/?q=${encodeURIComponent(f.name + ' Budapest')}" target="_blank"
+           class="text-blue-600 hover:underline text-xs">🧭 Navigate</a>
+      </div>
+    </div>
+  `).join("");
+
+  const filterBar = isAll ? `
+    <div class="flex gap-2 mb-3 text-xs">
+      <button onclick="filterStreetFood(event,null)" class="filter-pill px-2 py-1 rounded bg-slate-800 text-white">All</button>
+      <button onclick="filterStreetFood(event,'local')" class="filter-pill px-2 py-1 rounded bg-emerald-100 text-emerald-800">Local</button>
+      <button onclick="filterStreetFood(event,'mid')" class="filter-pill px-2 py-1 rounded bg-amber-100 text-amber-800">Mid</button>
+      <button onclick="filterStreetFood(event,'tourist')" class="filter-pill px-2 py-1 rounded bg-rose-100 text-rose-800">Tourist</button>
+    </div>` : "";
+
+  document.getElementById("modal-title").textContent = isAll ? "🍴 All street-food picks" : "🍴 Cheap eats near you";
+  document.getElementById("modal-body").innerHTML =
+    `<p class="text-xs text-slate-500 mb-3">${subtitle}</p>${filterBar}<div id="streetfood-list" class="space-y-2">${items}</div>`;
+  document.getElementById("modal").classList.remove("hidden");
+  document.getElementById("modal").classList.add("flex");
+}
+
+function filterStreetFood(ev, band) {
+  document.querySelectorAll(".filter-pill").forEach(p => p.classList.remove("ring-2","ring-blue-400"));
+  if (ev && ev.currentTarget) ev.currentTarget.classList.add("ring-2","ring-blue-400");
+  const anchor = activeAnchor();
+  const filtered = rankStreetFood(anchor, { bandFilter: band });
+  const list = document.getElementById("streetfood-list");
+  if (!list) return;
+  list.innerHTML = filtered.map(f => `
+    <div class="border border-slate-200 rounded-lg p-3 hover:bg-slate-50">
+      <div class="flex items-start justify-between gap-2 mb-1">
+        <div class="flex-1 min-w-0">
+          <div class="font-bold text-slate-800 leading-tight">${f.name}</div>
+          <div class="text-xs text-slate-500">${f.address}</div>
+        </div>
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold ${bandClass(f.price_band)} whitespace-nowrap">${bandLabel(f.price_band)}</span>
+      </div>
+      <div class="flex items-center gap-2 text-xs text-slate-700 mt-1">
+        <span class="font-mono">${f.price_huf} HUF</span>
+        <span class="text-slate-400">·</span>
+        <span>🚶 ${f.walk} min</span>
+        <span class="text-slate-400">·</span>
+        ${localityBar(f.locality_score)}
+      </div>
+      <p class="text-xs text-slate-600 italic mt-1.5">${f.why}</p>
+    </div>
+  `).join("");
+}
+
+function openStreetFoodDetail(id) {
+  const f = TRIP.street_food.find(x => x.id === id);
+  if (!f) return;
+  const anchor = activeAnchor();
+  const km = haversineKm(anchor, f);
+  document.getElementById("modal-title").textContent = `🍴 ${f.name}`;
+  document.getElementById("modal-body").innerHTML = `
+    <span class="inline-block px-2 py-0.5 rounded text-xs font-bold ${bandClass(f.price_band)} mb-2">${bandLabel(f.price_band)}</span>
+    <p class="text-sm text-slate-700 mb-1">📍 ${f.address}</p>
+    <p class="text-sm text-slate-700 mb-1">💰 <b>${f.price_huf} HUF</b></p>
+    <p class="text-sm text-slate-700 mb-1">🕐 ${f.hours || "—"}</p>
+    <p class="text-sm text-slate-700 mb-1">🚶 ${walkMinutes(km)} min (${km.toFixed(1)} km from current location)</p>
+    <div class="flex items-center gap-2 mt-2 mb-3">
+      <span class="text-xs text-slate-500">Local-ness</span>
+      ${localityBar(f.locality_score)}
+      <span class="text-xs font-bold">${(f.locality_score*100|0)}%</span>
+    </div>
+    <p class="text-sm text-slate-700 italic mb-3 p-3 bg-slate-50 rounded">${f.why}</p>
+    <a href="https://maps.google.com/?q=${encodeURIComponent(f.name + ' Budapest')}" target="_blank"
+       class="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white py-2 rounded font-bold">🧭 Open in Google Maps</a>
+  `;
+  document.getElementById("modal").classList.remove("hidden");
+  document.getElementById("modal").classList.add("flex");
+}
+
+let snackTimer;
+function showSnack(msg) {
+  const s = document.getElementById("snackbar");
+  s.textContent = msg;
+  s.classList.remove("hidden");
+  clearTimeout(snackTimer);
+  snackTimer = setTimeout(() => s.classList.add("hidden"), 2400);
+}
+
+/* ════════════════════════════════════════════
+   Boot
+   ════════════════════════════════════════════ */
+renderPlan();
+renderTour();
+renderMemory();
+</script>
+
+</body>
+</html>
