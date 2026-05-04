@@ -111,6 +111,7 @@ class StreetFoodOut(BaseModel):
     locality_score: float
     why: str
     hours: str
+    photo_url: str | None
 
 
 class TripSummary(BaseModel):

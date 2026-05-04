@@ -216,6 +216,13 @@
       <div class="absolute top-4 left-0 right-0 z-[1000] flex justify-center pointer-events-none">
         <div id="plan-day-tabs" class="flex gap-1 bg-white/90 backdrop-blur-sm rounded-full shadow-lg border border-white/40 px-2 py-1.5 pointer-events-auto overflow-x-auto scroll-hide" style="max-width:90%"></div>
       </div>
+      <!-- Floating food toggle — top right -->
+      <div class="absolute top-4 right-4 z-[1000]">
+        <button id="plan-food-toggle" onclick="togglePlanFood()"
+          class="flex items-center gap-1.5 bg-white/90 backdrop-blur-sm rounded-full shadow-lg border border-white/40 px-3 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 transition">
+          🍴 <span id="plan-food-toggle-label">Street food</span>
+        </button>
+      </div>
       <!-- Floating hero card — bottom left -->
       <div id="plan-hero-card" class="absolute bottom-6 left-4 z-[1000]"></div>
     </div>
@@ -409,7 +416,7 @@ function adaptTrip(api) {
     street_food: api.street_food.map(f => ({
       id: f.slug, name: f.name, category: f.category, lat: f.lat, lng: f.lng, address: f.address,
       price_band: f.price_band, price_huf: f.price_huf, locality_score: f.locality_score,
-      why: f.why, hours: f.hours,
+      why: f.why, hours: f.hours, photo_url: f.photo_url || null,
     })),
   };
   STATE = {
@@ -737,6 +744,8 @@ function selectPlanDay(n) {
 /* ── Plan day route map ── */
 let planMap = null;
 let _planMapLayers = [];
+let _planFoodVisible = false;
+let _planFoodLayers = [];
 
 function renderPlanDayMap(n) {
   const day = TRIP.days.find(d => d.n === n);
@@ -800,6 +809,83 @@ function renderPlanDayMap(n) {
     if (coords.length === 1) planMap.setView(coords[0], 15);
     else planMap.fitBounds(L.latLngBounds(coords).pad(0.18));
   }, 30);
+}
+
+function togglePlanFood() {
+  _planFoodVisible = !_planFoodVisible;
+  const btn = document.getElementById("plan-food-toggle");
+  const lbl = document.getElementById("plan-food-toggle-label");
+  if (btn) {
+    btn.style.background = _planFoodVisible ? "rgba(245,158,11,.92)" : "rgba(255,255,255,.9)";
+    btn.style.color = _planFoodVisible ? "#fff" : "";
+    btn.style.borderColor = _planFoodVisible ? "rgba(245,158,11,.5)" : "";
+  }
+  if (lbl) lbl.textContent = _planFoodVisible ? "Hide food" : "Street food";
+  if (_planFoodVisible) {
+    renderPlanFoodMarkers();
+  } else {
+    _planFoodLayers.forEach(l => l.remove());
+    _planFoodLayers = [];
+  }
+}
+
+function _foodImageKw(f) {
+  const raw = ((f.category || "") + " " + (f.name || "")).toLowerCase().replace(/_/g, " ");
+  if (/chimney|kürtős|kurtos/.test(raw))           return "chimney+cake";
+  if (/lángos|langos/.test(raw))                   return "fried+dough";
+  if (/strudel|rétes|retes/.test(raw))             return "strudel";
+  if (/soup|broth|goulash|gulyás/.test(raw))       return "soup";
+  if (/sausage|wurst|kolbász|hot.?dog/.test(raw))  return "sausage";
+  if (/burger|smash/.test(raw))                    return "burger";
+  if (/pizza/.test(raw))                           return "pizza";
+  if (/ramen|noodle/.test(raw))                    return "ramen";
+  if (/kebab|shawarma|gyros/.test(raw))            return "kebab";
+  if (/baguette|sandwich|sub/.test(raw))           return "sandwich";
+  if (/dumpling|gyoza|pierogi/.test(raw))          return "dumpling";
+  if (/taco|burrito|wrap/.test(raw))               return "taco";
+  if (/fish|seafood|halászlé/.test(raw))           return "fish+food";
+  if (/gelato|ice.?cream|fagylalt/.test(raw))      return "ice+cream";
+  if (/cake|pastry|bakery|sütemény/.test(raw))     return "pastry";
+  if (/coffee|espresso/.test(raw))                 return "coffee";
+  if (/bar|pub|beer|sör/.test(raw))                return "beer";
+  if (/market|vásár|hall/.test(raw))               return "food+market";
+  return "street+food";
+}
+
+function renderPlanFoodMarkers() {
+  if (!planMap || !TRIP) return;
+  _planFoodLayers.forEach(l => l.remove());
+  _planFoodLayers = [];
+  TRIP.street_food.forEach(f => {
+    if (!f.lat || !f.lng) return;
+    const color = f.price_band === "local" ? "#10b981" : f.price_band === "tourist" ? "#ef4444" : "#f59e0b";
+    const icon = L.divIcon({
+      className: "",
+      html: `<div style="width:22px;height:22px;background:${color};border:2px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;box-shadow:0 2px 6px rgba(0,0,0,.3)">🍴</div>`,
+      iconSize: [22, 22], iconAnchor: [11, 11]
+    });
+    const kw = _foodImageKw(f);
+    const lock = Array.from(f.id || f.name).reduce((a, c) => (a * 31 + c.charCodeAt(0)) & 0xFFF, 0);
+    const imgUrl = f.photo_url || `https://loremflickr.com/72/72/${kw}?lock=${lock}`;
+    const catLabel = (f.category || "").replace(/_/g, " ");
+    const popup = `
+      <div style="font-size:12px;width:230px">
+        <div style="display:flex;gap:9px;align-items:flex-start">
+          <img src="${imgUrl}"
+               style="width:72px;height:72px;object-fit:cover;border-radius:8px;flex-shrink:0;background:#e2e8f0">
+          <div style="flex:1;min-width:0">
+            <b style="font-size:12px;line-height:1.35;display:block">${f.name}</b>
+            <span style="color:#64748b;font-size:11px">${catLabel}</span><br>
+            <span style="color:${color};font-weight:700;font-size:13px">${f.price_huf} HUF</span>
+            ${f.hours ? `<br><span style="color:#64748b;font-size:10px">🕐 ${f.hours}</span>` : ""}
+          </div>
+        </div>
+        ${f.address ? `<div style="color:#94a3b8;font-size:10px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📍 ${f.address.split(",")[0]}</div>` : ""}
+        <a href="https://maps.google.com/?q=${encodeURIComponent(f.name + ' Budapest')}" target="_blank"
+           style="display:block;color:#3b82f6;font-size:11px;font-weight:600;margin-top:6px">Open in Maps →</a>
+      </div>`;
+    _planFoodLayers.push(L.marker([f.lat, f.lng], { icon }).addTo(planMap).bindPopup(popup));
+  });
 }
 
 function _stopCategory(s) {

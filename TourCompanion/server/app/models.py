@@ -192,5 +192,6 @@ class StreetFood(Base):
     locality_score: Mapped[float] = mapped_column(Float, default=0.0)
     why: Mapped[str] = mapped_column(Text, default="")
     hours: Mapped[str] = mapped_column(String(200), default="")
+    photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True, default=None)
 
     trip: Mapped[Trip] = relationship(back_populates="street_food")
