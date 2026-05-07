@@ -1,3 +1,7 @@
 misc_temp/
 .DS_Store
 TourCompanion/server/.venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd

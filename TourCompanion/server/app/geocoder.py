@@ -84,11 +84,25 @@ def build_queries(name: str, address: str) -> list[str]:
     return [q for q in cands if not (q in seen or seen.add(q))]
 
 
-def geocode_query(query: str) -> tuple[float, float] | None:
-    """Return (lat, lng) for a free-form query, or None on miss/error."""
-    params = urllib.parse.urlencode({
-        "q": query, "format": "json", "limit": 1, "addressdetails": 0,
-    })
+def geocode_query(
+    query: str,
+    viewbox: tuple[float, float, float, float] | None = None,
+    bounded: bool = False,
+) -> tuple[float, float] | None:
+    """Return (lat, lng) for a free-form query, or None on miss/error.
+
+    `viewbox` is `(lng_min, lat_min, lng_max, lat_max)` — a preferred bounding
+    box for results. With `bounded=True`, results outside the box are excluded
+    entirely (Nominatim's `bounded=1` flag), which is how we disambiguate
+    common cafe/restaurant names that exist in multiple cities.
+    """
+    qs = {"q": query, "format": "json", "limit": 1, "addressdetails": 0}
+    if viewbox:
+        # Nominatim viewbox: x1,y1,x2,y2 (any two opposite corners; lon,lat).
+        qs["viewbox"] = f"{viewbox[0]},{viewbox[1]},{viewbox[2]},{viewbox[3]}"
+    if bounded:
+        qs["bounded"] = 1
+    params = urllib.parse.urlencode(qs)
     req = urllib.request.Request(
         f"{NOMINATIM_URL}?{params}",
         headers={"User-Agent": USER_AGENT, "Accept-Language": "en"},
@@ -102,6 +116,17 @@ def geocode_query(query: str) -> tuple[float, float] | None:
     if not data:
         return None
     return float(data[0]["lat"]), float(data[0]["lon"])
+
+
+def _viewbox_around(lat: float, lng: float, delta_deg: float) -> tuple[float, float, float, float]:
+    """Build a (lon_min, lat_min, lon_max, lat_max) box centered on lat/lng."""
+    return (lng - delta_deg, lat - delta_deg, lng + delta_deg, lat + delta_deg)
+
+
+# Tight box around a known-good seed coord — small corrections only.
+SEED_VIEWBOX_DELTA_DEG = 0.05    # ≈ 5 km north/south, 3–4 km east/west at Vienna's latitude
+# Wider box around destination anchor — covers day-trips like Wachau (~80 km from Vienna).
+ANCHOR_VIEWBOX_DELTA_DEG = 1.0   # ≈ 110 km radius
 
 
 def _has_real_seed(s: Stop) -> bool:
@@ -147,9 +172,25 @@ def geocode_stops(
         if not queries:
             skipped += 1
             continue
+
+        # Pick a search bias for this stop:
+        # - real seed coord  → tight box around the seed (small corrections only)
+        # - no seed but trip has destination anchor → wider box around anchor
+        # - neither → unconstrained worldwide search (drift / anchor checks
+        #   will reject obviously-wrong results below)
+        has_seed = _has_real_seed(s)
+        viewbox: tuple[float, float, float, float] | None = None
+        bounded = False
+        if has_seed:
+            viewbox = _viewbox_around(s.lat, s.lng, SEED_VIEWBOX_DELTA_DEG)
+            bounded = True
+        elif destination_anchor is not None:
+            viewbox = _viewbox_around(*destination_anchor, ANCHOR_VIEWBOX_DELTA_DEG)
+            bounded = True
+
         result: tuple[float, float] | None = None
         for q in queries:
-            result = geocode_query(q)
+            result = geocode_query(q, viewbox=viewbox, bounded=bounded)
             if result:
                 break
             time.sleep(SLEEP_SEC)
@@ -158,7 +199,6 @@ def geocode_stops(
             missed += 1
             continue
         new_lat, new_lng = result
-        has_seed = _has_real_seed(s)
         if has_seed and haversine_km(s.lat, s.lng, new_lat, new_lng) > max_drift_km:
             rejected += 1
             log.info("rejected geocode for %r — drift > %.0f km", s.name, max_drift_km)
