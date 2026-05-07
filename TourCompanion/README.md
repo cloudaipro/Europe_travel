@@ -11,29 +11,36 @@ TourCompanion/
     ├── Dockerfile
     ├── requirements.txt
     ├── run_local.sh            # one-shot: venv + deps + uvicorn (SQLite, no Docker)
-    ├── migrate.sh               # alembic wrapper (injects dev DATABASE_URL default)
+    ├── migrate.sh              # alembic wrapper (injects dev DATABASE_URL default)
     ├── alembic.ini
-    ├── alembic/                 # migrations
+    ├── alembic/                # migrations
     │   ├── env.py
     │   └── versions/*.py
+    ├── scripts/
+    │   └── backfill_geocodes.py  # ad-hoc Nominatim re-geocode of existing trips
     ├── app/
     │   ├── main.py             # FastAPI app + lifespan + static mounts
     │   ├── config.py           # pydantic-settings
     │   ├── db.py               # SQLAlchemy engine + session
-    │   ├── models.py           # User, Trip, Day, Stop, CheckIn, Photo, VoiceNote, StreetFood, Booking, CompanionDoc, RouteAsset
+    │   ├── models.py           # User, EmailToken, Trip, Day, Stop, CheckIn, Photo, VoiceNote, StreetFood, Booking, CompanionDoc, RouteAsset, IngestJob
     │   ├── schemas.py          # Pydantic IO
     │   ├── auth.py             # bcrypt + JWT
-    │   ├── seed.py             # demo user + Budapest trip seed
-    │   ├── seed_data/budapest.py
+    │   ├── mailer.py           # email-token sender (verify / reset)
+    │   ├── planner.py          # Anthropic-backed itinerary generator (mock fallback)
+    │   ├── geocoder.py         # Nominatim wrapper + drift / destination-anchor safety
+    │   ├── seed.py             # demo user + auto-loads every seed_data module
+    │   ├── seed_data/
+    │   │   ├── budapest.py        # 5-day demo with check-ins/photos/voice notes
+    │   │   └── vienna_budapest.py # 10-day Vienna+Budapest trip (no progress yet)
     │   └── routes/
-    │       ├── auth.py         # /api/auth/{signup,login,login-json,me}
+    │       ├── auth.py         # /api/auth/{signup,login,login-json,me,verify,resend-verification,forgot,reset}
     │       ├── trips.py        # /api/trips CRUD
     │       ├── tour.py         # /api/stops/{id}/{checkin,photos,photos-link,voice}
     │       ├── journal.py      # /api/trips/{id}/journal PUT
     │       ├── streetfood.py   # /api/trips/{id}/streetfood (with proximity rank)
-    │       └── plan.py         # /api/plan/ingest (tour-planner skill stub)
+    │       └── plan.py         # /api/plan/ingest (auto-geocodes new trips in background)
     └── frontend/
-        └── index.html          # SPA — calls /api, login screen, JWT in localStorage
+        └── index.html          # SPA — Plan/Tour/Memory tabs, Leaflet map, JWT in localStorage
 ```
 
 ## Run it
@@ -68,6 +75,8 @@ Demo creds (auto-seeded on first boot):
 - **Email:** `demo@tourcompanion.app`
 - **Password:** `demo1234`
 
+Two trips are auto-created for the demo user — a 5-day Budapest trip with progress (check-ins, photos, voice notes for Days 1–3) and a 10-day Vienna+Budapest trip in pre-departure state.
+
 ## API surface
 
 | Method | Path | Notes |
@@ -76,6 +85,10 @@ Demo creds (auto-seeded on first boot):
 | POST | `/api/auth/login` | OAuth2 form (username=email, password) |
 | POST | `/api/auth/login-json` | json variant |
 | GET  | `/api/auth/me` | current user |
+| POST | `/api/auth/verify` | confirm email-verification token |
+| POST | `/api/auth/resend-verification` | re-send verification email |
+| POST | `/api/auth/forgot` | request password-reset token |
+| POST | `/api/auth/reset` | redeem reset token + set new password |
 | GET  | `/api/trips` | list user's trips |
 | POST | `/api/trips` | create trip |
 | GET  | `/api/trips/{id}` | full trip detail (days, stops, bookings, routes, street_food, journal) |
@@ -86,7 +99,46 @@ Demo creds (auto-seeded on first boot):
 | POST | `/api/stops/{id}/voice` | json `{transcript}` |
 | PUT  | `/api/trips/{id}/journal` | json `{journal}` |
 | GET  | `/api/trips/{id}/streetfood` | query: `band`, `near_lat`, `near_lng`, `limit` — returns ranked picks |
-| POST | `/api/plan/ingest` | tour-planner skill integration (stub) |
+| POST | `/api/plan/ingest` | generate a new trip from `{destination, days, source_url, style}`. Persists synchronously, **schedules a background geocode** so stop coordinates resolve to real-world places after the response is sent. |
+| GET  | `/api/plan/jobs/{id}` | inspect ingest-job status (queued/running/done/failed) |
+
+## Frontend
+
+Single-page app at `server/frontend/index.html`. Three tabs:
+
+- **Plan** — full-canvas Leaflet map + itinerary panel. Click a stop card → map flies to that stop and a popup opens. Click a marker → list scrolls + opens that card. Auto-closes the previously-open card. Day pills show check-in progress as a `(checked/total)` badge. Keyboard: `↑↓`/`jk` step stops, `←→` step day, `Esc` deselect.
+- **Tour** — in-the-field check-in / photo / voice-note interface, day-pill progress strip, sidebar with phrasebook / washroom / currency / weather / cheap-eats modals.
+- **Memory** — color-coded journey map (one color per day, separate polylines), daily-wrap cards. Click a marker → fly to that day's bounds + flash card. Click a day card → same.
+
+The trip-picker dropdown in the header switches between trips for the current user; the selection persists in localStorage. The "🤖 Generate from URL…" entry triggers `/api/plan/ingest`.
+
+The `gmapsUrl(stop)` helper builds a Google Maps URL using the **search action API** with precedence `name + address` > `name + destination` > `lat/lng`. This way Google's geocoder lands on the correct Place page even when our stored coordinates are slightly off.
+
+## Geocoding — how stop coordinates stay accurate
+
+Third-party itinerary planners (and our `planner.py` mock) often produce approximate or placeholder lat/lng. The map markers and walk-time connectors depend on accurate coords, so the server geocodes stops via OpenStreetMap **Nominatim** and rewrites their `lat`/`lng` in the DB.
+
+Two paths into it:
+
+1. **Automatic** — `POST /api/plan/ingest` schedules `geocode_trip_async(trip.id)` via FastAPI `BackgroundTasks`. The endpoint returns immediately with a `trip_id`; coordinates resolve over the next 30–60s in the background.
+2. **Ad-hoc** — `python -m scripts.backfill_geocodes` for fixing trips that pre-date this feature, or for force-refreshing existing rows.
+
+Two safety nets reject implausible results:
+
+- **Drift check** — when a stop already has a real seed coord, the geocoded result must be within 50 km. (Catches arte Hotel Wien Stadthalle landing 500m off — accepted; rejects Berlin/Singapore-class mishits.)
+- **Destination anchor** — when a stop has placeholder `(0,0)` or `None`, the trip's `destination` field is itself geocoded, and stop results must be within 250 km of that anchor. (Catches "Mock stop 3" → Idaho when we're really planning Vienna.)
+
+The cleaning logic strips parentheticals (`(check-in)`, non-Latin annotations like `(莫扎特之家)`), leading verbs (`Lunch at`, `Walk through`, `Tour of`), and trailing qualifiers (`tour`, `visit`, `entry`). Multi-form fallback queries: `name, city` → `name` → `name, address` → `address` only.
+
+Respects Nominatim's 1 req/sec usage policy via a 1.1s sleep between calls and identifies the client via a descriptive User-Agent header.
+
+```bash
+cd server
+.venv/bin/python -m scripts.backfill_geocodes              # fill missing only
+.venv/bin/python -m scripts.backfill_geocodes --force      # rewrite every row
+.venv/bin/python -m scripts.backfill_geocodes --dry-run    # preview
+.venv/bin/python -m scripts.backfill_geocodes --limit 8    # try a few first
+```
 
 ## Database migrations
 
@@ -112,10 +164,9 @@ For Postgres / multi-replica: add an advisory lock to `_run_migrations` or run m
 
 ## What's still TODO for true production
 
-- Real `tour-planner` skill integration in `/api/plan/ingest` (currently a no-op stub returning a job ID).
 - Image upload via multipart is wired; replace local volume with S3/R2 for prod.
-- Email/password reset flow.
-- Alembic migrations (currently `Base.metadata.create_all` on lifespan — fine for dev, swap for migrations before any schema change in prod).
 - Rate limiting + CSRF for the cookie-based variant if we move off bearer tokens.
 - HTTPS termination (handled by Fly.io / Render / nginx in front).
-- Multi-trip UI in the frontend (API supports it; frontend currently picks the first trip).
+- Mobile responsive layout — Plan tab's 38% right panel doesn't gracefully fall back to a one-pane phone view yet.
+- Geocoder runs synchronously in a background task on the same uvicorn process. For high ingest volume, push to a queue (Celery/RQ) so a stuck Nominatim request can't tie up a worker.
+- Anthropic-driven `/api/plan/ingest` returns 8 stops/day; tune the prompt for quality + diversity once we have real users.

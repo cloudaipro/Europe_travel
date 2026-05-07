@@ -123,6 +123,25 @@
   .plan-stop-card summary { list-style: none; }
   .plan-stop-card summary::-webkit-details-marker { display: none; }
   .plan-stop-card[open] .expand-icon { transform: rotate(45deg); }
+  .plan-stop-card.is-selected { border-color: #f59e0b !important; box-shadow: 0 4px 16px rgba(245,158,11,.18); background: #fffbeb; }
+  .plan-stop-card.is-selected > summary { border-left: 3px solid #f59e0b; }
+  /* Animate ONLY the inner chip. Leaflet drives transforms on the outer
+     .plan-stop-marker during pan/zoom — any transition there makes markers
+     lag behind the map. */
+  .plan-stop-marker > div { transition: transform .18s ease, box-shadow .18s ease; transform-origin: center center; }
+  .plan-stop-marker.is-selected > div { box-shadow: 0 0 0 4px rgba(245,158,11,.45), 0 4px 14px rgba(245,158,11,.4); transform: scale(1.18); }
+  .plan-stop-marker.is-selected { z-index: 1000 !important; }
+  .memory-day-card { transition: box-shadow .15s, transform .15s; }
+  .memory-day-card:hover { box-shadow: 0 6px 20px rgba(0,0,0,.06); transform: translateY(-1px); }
+  .memory-day-card.memory-flash { animation: memFlash 1.1s ease; }
+  @keyframes memFlash {
+    0%   { background: #fff; box-shadow: 0 0 0 0 rgba(245,158,11,.0); }
+    25%  { background: #fffbeb; box-shadow: 0 0 0 6px rgba(245,158,11,.25); }
+    100% { background: #fff; box-shadow: 0 0 0 0 rgba(245,158,11,.0); }
+  }
+  @media (hover: hover) {
+    .plan-stop-marker.is-hover > div { transform: scale(1.12); box-shadow: 0 0 0 3px rgba(59,130,246,.3); }
+  }
   #plan-day-map { position: absolute; inset: 0; }
 </style>
 </head>
@@ -353,6 +372,7 @@ let TRIP_ID = null;
 let API_TOKEN = localStorage.getItem("tc_token") || null;
 let API_USER_EMAIL = localStorage.getItem("tc_email") || null;
 let selectedPlanDay = 1;
+let selectedStopIdx = null;
 let currentSidebarTab = "docs";
 let currentPlanTab = "itinerary";
 
@@ -399,7 +419,7 @@ function adaptTrip(api) {
   HOTEL = { name: api.hotel_name || "(hotel)", lat: api.hotel_lat || 0, lng: api.hotel_lng || 0, address: api.hotel_address || "" };
   const dateRange = `${api.start_date} → ${api.end_date}`;
   TRIP = {
-    name: api.name, dates: dateRange, source_url: api.source_url,
+    name: api.name, destination: api.destination || "", dates: dateRange, source_url: api.source_url,
     bookings: api.bookings.map(b => ({ id: b.id, label: b.label, url: b.url || "#", done: b.done })),
     companion_docs: api.companion_docs.map(c => ({ name: c.name, file: c.file_path })),
     routes: api.routes.map(r => ({ day: r.day_n, label: r.label, pdf: r.pdf_path, url: r.map_url })),
@@ -601,6 +621,32 @@ function haversineKm(a, b) {
   return 2 * R * Math.asin(Math.sqrt(x));
 }
 function walkMinutes(km) { return Math.round(km * 12.5); }
+/* Build a Google Maps URL using the Maps URL "search" action.
+   Precedence is name+address > name+destination > lat/lng:
+     1. Text "NAME, ADDRESS" lets Google's geocoder resolve to the canonical
+        Place (most accurate). The address carries the city, so an ambiguous
+        name like "Austrian Parliament" is disambiguated.
+     2. With no address, fall back to "NAME, DESTINATION".
+     3. Coordinates are a last resort — third-party planner data is often
+        off by hundreds of meters and would land on the wrong pin.
+   Spec: https://developers.google.com/maps/documentation/urls/get-started#search-action */
+function gmapsUrl(item) {
+  if (!item) return "https://maps.google.com/";
+  const name = (item.name || "").trim();
+  const address = (item.address || "").trim();
+  if (name && address) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${name}, ${address}`)}`;
+  }
+  if (name) {
+    const dest = (TRIP && TRIP.destination) ? TRIP.destination : "";
+    const q = dest ? `${name}, ${dest}` : name;
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+  }
+  if (item.lat && item.lng) {
+    return `https://www.google.com/maps/search/?api=1&query=${item.lat},${item.lng}`;
+  }
+  return "https://maps.google.com/";
+}
 function bandClass(b) {
   return b === "local" ? "bg-emerald-100 text-emerald-800" : b === "tourist" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800";
 }
@@ -725,15 +771,21 @@ function renderPlanDayTabs() {
   if (!el) return;
   el.innerHTML = TRIP.days.map(d => {
     const shortDate = d.date.split(" ").slice(0, 2).join(" ");
+    const checked = ((STATE && STATE.check_ins[d.n]) || []).length;
+    const total = d.stops.length;
+    const badge = checked > 0
+      ? `<span style="font-size:9px;margin-left:5px;padding:1px 5px;border-radius:6px;background:${checked === total ? '#10b981' : 'rgba(245,158,11,.85)'};color:#fff;font-weight:700">${checked}/${total}</span>`
+      : "";
     return `
       <button onclick="selectPlanDay(${d.n})" class="plan-day-pill ${d.n === selectedPlanDay ? "active" : ""}">
-        <span style="font-size:10px;opacity:.65;margin-right:4px">D${d.n}</span>${shortDate}
+        <span style="font-size:10px;opacity:.65;margin-right:4px">D${d.n}</span>${shortDate}${badge}
       </button>`;
   }).join("");
 }
 
 function selectPlanDay(n) {
   selectedPlanDay = n;
+  selectedStopIdx = null;
   renderPlanDayTabs();
   renderPlanDayMap(n);
   renderPlanDayHeader(n);
@@ -741,9 +793,52 @@ function selectPlanDay(n) {
   if (currentPlanTab === "itinerary") renderPlanDayContent(n);
 }
 
+/* Pulse marker on list-card hover. Skipped on touch via media query in CSS. */
+function hoverStop(idx, on) {
+  const entry = _planStopMarkers.find(m => m.idx === idx);
+  if (!entry) return;
+  const el = entry.marker.getElement();
+  if (el) el.classList.toggle("is-hover", !!on);
+}
+
+/* Keyboard nav — only active when Plan tab visible and focus isn't in an input/textarea/modal. */
+document.addEventListener("keydown", (ev) => {
+  const planVisible = !document.getElementById("tab-plan")?.classList.contains("hidden");
+  if (!planVisible || !TRIP) return;
+  const modalOpen = !document.getElementById("modal")?.classList.contains("hidden");
+  if (modalOpen) return;
+  const t = ev.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+
+  const day = TRIP.days.find(d => d.n === selectedPlanDay);
+  if (!day) return;
+  const last = day.stops.length - 1;
+
+  if (ev.key === "ArrowDown" || ev.key === "j") {
+    ev.preventDefault();
+    const next = selectedStopIdx == null ? 0 : Math.min(selectedStopIdx + 1, last);
+    selectStop(next, "key");
+  } else if (ev.key === "ArrowUp" || ev.key === "k") {
+    ev.preventDefault();
+    const prev = selectedStopIdx == null ? last : Math.max(selectedStopIdx - 1, 0);
+    selectStop(prev, "key");
+  } else if (ev.key === "ArrowRight") {
+    ev.preventDefault();
+    const idx = TRIP.days.findIndex(d => d.n === selectedPlanDay);
+    if (idx < TRIP.days.length - 1) selectPlanDay(TRIP.days[idx + 1].n);
+  } else if (ev.key === "ArrowLeft") {
+    ev.preventDefault();
+    const idx = TRIP.days.findIndex(d => d.n === selectedPlanDay);
+    if (idx > 0) selectPlanDay(TRIP.days[idx - 1].n);
+  } else if (ev.key === "Escape") {
+    if (selectedStopIdx != null) { ev.preventDefault(); _setSelectedStop(null); }
+  }
+});
+
 /* ── Plan day route map ── */
 let planMap = null;
 let _planMapLayers = [];
+let _planStopMarkers = []; // [{ idx, marker, latlng }]
 let _planFoodVisible = false;
 let _planFoodLayers = [];
 
@@ -761,15 +856,17 @@ function renderPlanDayMap(n) {
   } else {
     _planMapLayers.forEach(l => l.remove());
     _planMapLayers = [];
+    _planStopMarkers = [];
   }
 
-  const stops = day.stops.filter(s => s.lat && s.lng);
-  if (stops.length === 0) {
+  // Index by day-stop position so it lines up with list cards.
+  const geoStops = day.stops.map((s, idx) => ({ s, idx })).filter(o => o.s.lat && o.s.lng);
+  if (geoStops.length === 0) {
     setTimeout(() => { planMap.invalidateSize(); planMap.setView([47.4979, 19.0402], 13); }, 60);
     return;
   }
 
-  const coords = stops.map(s => [s.lat, s.lng]);
+  const coords = geoStops.map(o => [o.s.lat, o.s.lng]);
 
   // Hotel marker
   if (HOTEL.lat && HOTEL.lng) {
@@ -781,20 +878,21 @@ function renderPlanDayMap(n) {
     _planMapLayers.push(L.marker([HOTEL.lat, HOTEL.lng], { icon: hIcon }).addTo(planMap).bindPopup(`<b>${HOTEL.name}</b>`));
   }
 
-  // Numbered stop markers
-  stops.forEach((s, i) => {
-    const isFirst = i === 0, isLast = i === stops.length - 1;
+  // Numbered stop markers — wired for click + hover sync
+  geoStops.forEach(({ s, idx }, geoIdx) => {
+    const isFirst = geoIdx === 0, isLast = geoIdx === geoStops.length - 1;
     const bg = isFirst ? "#1d4ed8" : isLast ? "#7c3aed" : "#1d4ed8";
     const icon = L.divIcon({
-      className: "",
-      html: `<div style="width:28px;height:28px;background:${bg};border:2.5px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;box-shadow:0 2px 8px rgba(0,0,0,.3)">${i+1}</div>`,
+      className: "plan-stop-marker",
+      html: `<div style="width:28px;height:28px;background:${bg};border:2.5px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;box-shadow:0 2px 8px rgba(0,0,0,.3)">${geoIdx+1}</div>`,
       iconSize: [28, 28], iconAnchor: [14, 14]
     });
-    _planMapLayers.push(
-      L.marker([s.lat, s.lng], { icon })
-        .addTo(planMap)
-        .bindPopup(`<b style="font-size:12px">${s.time} · ${s.name}</b>${s.address ? `<br><span style="color:#64748b;font-size:11px">${s.address.split(",")[0]}</span>` : ""}`)
-    );
+    const marker = L.marker([s.lat, s.lng], { icon })
+      .addTo(planMap)
+      .bindPopup(`<b style="font-size:12px">${s.time} · ${s.name}</b>${s.address ? `<br><span style="color:#64748b;font-size:11px">${s.address.split(",")[0]}</span>` : ""}`);
+    marker.on("click", () => selectStop(idx, "map"));
+    _planMapLayers.push(marker);
+    _planStopMarkers.push({ idx, marker, latlng: [s.lat, s.lng] });
   });
 
   // Route polyline
@@ -809,6 +907,67 @@ function renderPlanDayMap(n) {
     if (coords.length === 1) planMap.setView(coords[0], 15);
     else planMap.fitBounds(L.latLngBounds(coords).pad(0.18));
   }, 30);
+}
+
+/* Mark a stop as selected on both map + list and pan/scroll into view.
+   `source` is "map" | "list" | "key". For "list" the native <details> toggle
+   already manages open/close, so we skip forcing card.open here. */
+function selectStop(idx, source) {
+  _setSelectedStop(idx);
+  if (idx == null) return;
+
+  const day = TRIP.days.find(d => d.n === selectedPlanDay);
+  if (!day) return;
+  const stop = day.stops[idx];
+  if (!stop) return;
+
+  // Map side
+  const entry = _planStopMarkers.find(m => m.idx === idx);
+  if (entry && planMap) {
+    const targetZoom = Math.max(planMap.getZoom() || 15, 16);
+    planMap.flyTo(entry.latlng, targetZoom, { duration: 0.55 });
+    if (source === "list" || source === "key") {
+      setTimeout(() => entry.marker.openPopup(), 580);
+    }
+  }
+
+  // List side — only force open + scroll for map/key sources
+  const card = document.querySelector(`.plan-stop-card[data-stop-idx="${idx}"]`);
+  if (card && (source === "map" || source === "key")) {
+    if (!card.open) card.open = true;
+    requestAnimationFrame(() => card.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+  }
+}
+
+/* Manage <details> open state ourselves — preventDefault disables native toggle
+   so a single click is always deterministic. Clicking a *different* stop
+   closes any other open card, opens + selects the new one. Clicking the
+   *same* selected stop toggles it closed (and deselects). */
+function _onStopSummaryClick(idx, ev) {
+  if (ev) ev.preventDefault();
+  const card = document.querySelector(`.plan-stop-card[data-stop-idx="${idx}"]`);
+  if (!card) return;
+  if (selectedStopIdx === idx) {
+    card.open = !card.open;
+    if (!card.open) _setSelectedStop(null);
+    return;
+  }
+  document.querySelectorAll(".plan-stop-card[open]").forEach(c => { if (c !== card) c.open = false; });
+  card.open = true;
+  selectStop(idx, "list");
+}
+
+function _setSelectedStop(idx) {
+  selectedStopIdx = idx;
+  document.querySelectorAll(".plan-stop-card.is-selected").forEach(c => c.classList.remove("is-selected"));
+  _planStopMarkers.forEach(m => {
+    const el = m.marker.getElement();
+    if (el) el.classList.toggle("is-selected", m.idx === idx);
+  });
+  if (idx != null) {
+    const card = document.querySelector(`.plan-stop-card[data-stop-idx="${idx}"]`);
+    if (card) card.classList.add("is-selected");
+  }
 }
 
 function togglePlanFood() {
@@ -881,7 +1040,7 @@ function renderPlanFoodMarkers() {
           </div>
         </div>
         ${f.address ? `<div style="color:#94a3b8;font-size:10px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📍 ${f.address.split(",")[0]}</div>` : ""}
-        <a href="https://maps.google.com/?q=${encodeURIComponent(f.name + ' Budapest')}" target="_blank"
+        <a href="${gmapsUrl(f)}" target="_blank"
            style="display:block;color:#3b82f6;font-size:11px;font-weight:600;margin-top:6px">Open in Maps →</a>
       </div>`;
     _planFoodLayers.push(L.marker([f.lat, f.lng], { icon }).addTo(planMap).bindPopup(popup));
@@ -917,8 +1076,10 @@ function renderPlanDayContent(n) {
     const snip = s.intro || (s.highlights && s.highlights.length ? s.highlights[0] : "");
 
     pieces.push(`
-      <details class="plan-stop-card mx-3 mb-1 bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-        <summary class="cursor-pointer px-3 py-3 flex items-start gap-2.5 select-none hover:bg-slate-50/70">
+      <details class="plan-stop-card mx-3 mb-1 bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden ${i === selectedStopIdx ? 'is-selected' : ''}" data-stop-idx="${i}"
+        onmouseenter="hoverStop(${i}, true)" onmouseleave="hoverStop(${i}, false)">
+        <summary class="cursor-pointer px-3 py-3 flex items-start gap-2.5 select-none hover:bg-slate-50/70"
+          onclick="_onStopSummaryClick(${i}, event)">
           <div class="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">${i+1}</div>
           <img src="https://picsum.photos/seed/${thumbSeed}/64/64"
                class="w-14 h-14 rounded-lg object-cover flex-shrink-0 bg-slate-100" loading="lazy">
@@ -946,7 +1107,7 @@ function renderPlanDayContent(n) {
           ${s.washroom  ? `<p>🚻 <b class="text-slate-700">Washroom</b> · ${s.washroom}</p>` : ""}
           ${s.food && s.food.length ? `<p>🍽 <b class="text-slate-700">Quick bite</b> · ${s.food.join(" · ")}</p>` : ""}
           <p class="pt-1">
-            <a href="https://maps.google.com/?q=${encodeURIComponent(s.name + " Budapest")}" target="_blank"
+            <a href="${gmapsUrl(s)}" target="_blank"
               class="text-blue-600 hover:text-blue-800 font-medium">Open in Google Maps →</a>
           </p>
         </div>
@@ -955,10 +1116,19 @@ function renderPlanDayContent(n) {
     if (i < day.stops.length - 1) {
       const next = day.stops[i + 1];
       const raw = next.transit || "";
-      const connLabel = raw
-        ? raw.replace(/^[\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}🚇🚶🚌🚍✈️🏃‍♂️⚡]\s*/u, "").split("·").slice(0, 2).map(p => p.trim()).join(" · ")
-        : "~15 min walk";
-      const isWalk = raw.toLowerCase().includes("walk") || raw.includes("🚶") || !raw;
+      let connLabel;
+      let isWalk;
+      if (raw) {
+        connLabel = raw.replace(/^[\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}🚇🚶🚌🚍✈️🏃‍♂️⚡]\s*/u, "").split("·").slice(0, 2).map(p => p.trim()).join(" · ");
+        isWalk = raw.toLowerCase().includes("walk") || raw.includes("🚶");
+      } else if (s.lat && s.lng && next.lat && next.lng) {
+        const km = haversineKm(s, next);
+        connLabel = `~${walkMinutes(km)} min · ${km.toFixed(1)} km`;
+        isWalk = true;
+      } else {
+        connLabel = "~15 min walk";
+        isWalk = true;
+      }
       pieces.push(`
         <div class="walk-connector mx-3 my-0.5">
           <div class="wc-line" style="margin-left:10px"></div>
@@ -995,13 +1165,14 @@ function setPlanPanelTab(tab) {
         const initials = stripped.split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase();
         const bg = badgeBg[i % badgeBg.length];
         const ext = (c.file || "").split(".").pop()?.toUpperCase() || "PDF";
-        return `<div class="flex items-center gap-2.5 px-1 py-2 rounded-xl hover:bg-slate-50 group cursor-pointer">
+        const safeName = c.name.replace(/'/g, "\\'");
+        const safeFile = (c.file || "").replace(/'/g, "\\'");
+        return `<div class="flex items-center gap-2.5 px-1 py-2 rounded-xl hover:bg-slate-50 group cursor-pointer" onclick="openCompanionDoc('${safeName}', '${safeFile}')">
           <div class="w-8 h-8 ${bg} rounded-lg flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">${initials}</div>
           <div class="flex-1 min-w-0">
             <div class="text-xs font-semibold text-slate-800 truncate leading-tight">${stripped}</div>
             <div class="text-[10px] text-slate-400 mt-0.5">${ext} · ${sampleSizes[i%sampleSizes.length]} · Added ${sampleDates[i%sampleDates.length]}</div>
           </div>
-          <a href="${c.file}" target="_blank" class="w-6 h-6 flex items-center justify-center rounded-md hover:bg-slate-200 text-slate-400 text-xs opacity-0 group-hover:opacity-100 flex-shrink-0">↗</a>
         </div>`;
       }).join("")}
       <div class="mt-3 pt-3 border-t border-slate-100">
@@ -1183,7 +1354,7 @@ function renderTour() {
           </div>
         </div>
         <div class="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-slate-100">
-          <a href="https://maps.google.com/?q=${encodeURIComponent(s.name + ' Budapest')}" target="_blank"
+          <a href="${gmapsUrl(s)}" target="_blank"
             class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-lg font-medium">🧭 Navigate</a>
           ${!checked ? `<button onclick="checkIn(${day.n}, ${i})"
             class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-1.5 rounded-lg font-medium">📍 Check in</button>` : ""}
@@ -1266,26 +1437,69 @@ async function recordVoice(day, idx) {
    MEMORY TAB rendering
    ════════════════════════════════════════════ */
 let mapInstance = null;
+let _memoryLayers = [];
+let _memoryDayCoords = {}; // { dayN: [[lat,lng],…] }
+
+const MEMORY_DAY_COLORS = [
+  "#1d4ed8","#7c3aed","#dc2626","#059669","#d97706",
+  "#0891b2","#db2777","#65a30d","#9333ea","#0ea5e9",
+];
+function memoryDayColor(n) { return MEMORY_DAY_COLORS[(n - 1) % MEMORY_DAY_COLORS.length]; }
+
 function initMap() {
-  if (mapInstance) { mapInstance.invalidateSize(); return; }
-  mapInstance = L.map("journey-map", { scrollWheelZoom: false }).setView([47.4979, 19.0402], 12);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "© OpenStreetMap", maxZoom: 19
-  }).addTo(mapInstance);
-  const visitedCoords = [];
+  if (!mapInstance) {
+    mapInstance = L.map("journey-map", { scrollWheelZoom: false }).setView([47.4979, 19.0402], 12);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap", maxZoom: 19
+    }).addTo(mapInstance);
+  } else {
+    _memoryLayers.forEach(l => l.remove());
+    _memoryLayers = [];
+  }
+  _memoryDayCoords = {};
+  const allCoords = [];
+
   TRIP.days.forEach(d => {
+    const dayCoords = [];
+    const color = memoryDayColor(d.n);
     (STATE.check_ins[d.n] || []).forEach(idx => {
       const s = d.stops[idx];
       if (s.lat && s.lng) {
-        visitedCoords.push([s.lat, s.lng]);
-        L.circleMarker([s.lat, s.lng], { radius: 7, fillColor: "#1d4ed8", color: "white", weight: 2, fillOpacity: 0.9 })
-          .addTo(mapInstance).bindPopup(`<b>Day ${d.n}</b> · ${s.time}<br>${s.name}`);
+        dayCoords.push([s.lat, s.lng]);
+        allCoords.push([s.lat, s.lng]);
+        const m = L.circleMarker([s.lat, s.lng], { radius: 7, fillColor: color, color: "white", weight: 2, fillOpacity: 0.9 })
+          .addTo(mapInstance).bindPopup(`<b style="color:${color}">Day ${d.n}</b> · ${s.time}<br>${s.name}`);
+        m.on("click", () => focusMemoryDay(d.n));
+        _memoryLayers.push(m);
       }
     });
+    if (dayCoords.length >= 2) {
+      _memoryLayers.push(
+        L.polyline(dayCoords, { color, weight: 3, dashArray: "6 5", opacity: 0.7 }).addTo(mapInstance)
+      );
+    }
+    _memoryDayCoords[d.n] = dayCoords;
   });
-  if (visitedCoords.length >= 2)
-    L.polyline(visitedCoords, { color: "#dc2626", weight: 3, dashArray: "6 5", opacity: 0.7 }).addTo(mapInstance);
-  if (visitedCoords.length) mapInstance.fitBounds(L.latLngBounds(visitedCoords).pad(0.15));
+
+  setTimeout(() => {
+    mapInstance.invalidateSize();
+    if (allCoords.length) mapInstance.fitBounds(L.latLngBounds(allCoords).pad(0.15));
+  }, 30);
+}
+
+/* Scroll the Memory daily-wrap card into view + flash, fit map to that day. */
+function focusMemoryDay(n) {
+  const card = document.querySelector(`.memory-day-card[data-day-n="${n}"]`);
+  if (card) {
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
+    card.classList.add("memory-flash");
+    setTimeout(() => card.classList.remove("memory-flash"), 1100);
+  }
+  const coords = _memoryDayCoords[n];
+  if (mapInstance && coords && coords.length) {
+    if (coords.length === 1) mapInstance.flyTo(coords[0], 15, { duration: 0.55 });
+    else mapInstance.flyToBounds(L.latLngBounds(coords).pad(0.25), { duration: 0.55 });
+  }
 }
 
 function renderMemory() {
@@ -1299,8 +1513,10 @@ function renderMemory() {
   md.innerHTML = TRIP.days.filter(d => DAY_STATUS(d.n) === "done").map(d => {
     const checkins = STATE.check_ins[d.n] || [];
     const photos = checkins.flatMap(i => STATE.stop_photos[`${d.n}-${i}`] || []);
+    const color = memoryDayColor(d.n);
     return `
-      <div class="bg-white rounded-2xl shadow-sm p-4">
+      <div class="memory-day-card bg-white rounded-2xl shadow-sm p-4 cursor-pointer transition" data-day-n="${d.n}"
+        onclick="focusMemoryDay(${d.n})" style="border-left: 4px solid ${color}">
         <div class="flex items-baseline justify-between mb-1">
           <h4 class="font-bold text-slate-800">Day ${d.n} · ${d.date}</h4>
           <span class="text-xs text-slate-400">${checkins.length} stops · ${photos.length} photos</span>
@@ -1344,8 +1560,27 @@ function renderMemory() {
 /* ════════════════════════════════════════════
    Modals
    ════════════════════════════════════════════ */
+/* Route a companion-doc click to a known modal. The seed-data file paths
+   often don't exist in dev — keyword match the doc name to existing modals
+   (phrasebook / washroom / food). For "Full itinerary" build a printable
+   day-by-day list from TRIP. As a last resort open the file in a new tab. */
+function openCompanionDoc(name, file) {
+  // External URLs (ChicTrip source, etc.) go directly to the source.
+  if (file && /^https?:\/\//.test(file)) { window.open(file, "_blank"); return; }
+  const n = (name || "").toLowerCase();
+  if (/phrase/.test(n))                          return openModal("phrasebook");
+  if (/washroom|toilet|bathroom/.test(n))        return openModal("washroom");
+  if (/food|eat|cuisine|cheap/.test(n))          return openModal("cheapeats");
+  if (/itinerary|schedule|day.by.day/.test(n))   return openModal("itinerary");
+  if (/currency|exchange/.test(n))               return openModal("currency");
+  if (/weather|forecast/.test(n))                return openModal("weather");
+  if (file) { window.open(file, "_blank"); return; }
+  showSnack("No preview available for this document.");
+}
+
 function openModal(kind) {
   if (kind === "cheapeats" || kind === "streetfood-all") return openStreetFoodModal(kind);
+  if (kind === "itinerary") return openItineraryModal();
   const titles = {
     phrasebook: "🗣 Pocket phrasebook", washroom: "🚻 Nearest washrooms",
     currency: "💱 Currency", weather: "☂️ Weather today", book: "📕 Print to hardcover book"
@@ -1405,6 +1640,39 @@ function closeModal() {
   document.getElementById("modal").classList.remove("flex");
 }
 
+function openItineraryModal() {
+  if (!TRIP) return;
+  const body = TRIP.days.map(d => {
+    const stopsHtml = d.stops.map((s, i) => `
+      <li class="flex gap-2 py-1 text-xs">
+        <span class="font-mono text-slate-400 w-12 flex-shrink-0">${s.time || ""}</span>
+        <span class="flex-1 min-w-0">
+          <span class="font-semibold text-slate-800">${s.name}</span>
+          ${s.address ? `<span class="block text-[10px] text-slate-400">📍 ${s.address.split(",").slice(0,2).join(",")}</span>` : ""}
+        </span>
+      </li>`).join("");
+    return `
+      <section class="border-b border-slate-100 pb-3 mb-3 last:border-b-0 last:mb-0">
+        <header class="flex items-baseline justify-between mb-1.5">
+          <h4 class="font-bold text-slate-800 text-sm">Day ${d.n} · ${d.date}</h4>
+          <span class="text-[10px] text-slate-400">${d.stops.length} stops</span>
+        </header>
+        ${d.theme ? `<p class="text-[11px] text-slate-500 italic mb-1.5">${d.theme}</p>` : ""}
+        <ul class="space-y-0.5">${stopsHtml}</ul>
+      </section>`;
+  }).join("");
+  document.getElementById("modal-title").textContent = `📋 ${TRIP.name}`;
+  document.getElementById("modal-body").innerHTML = `
+    <p class="text-xs text-slate-400 mb-3">${TRIP.dates || ""}${TRIP.destination ? " · " + TRIP.destination : ""}</p>
+    ${body}
+    <div class="mt-3 pt-3 border-t border-slate-100 flex gap-2">
+      <button onclick="window.print()" class="flex-1 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold py-2 rounded-lg">🖨 Print</button>
+      <button onclick="closeModal()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2 rounded-lg">Close</button>
+    </div>`;
+  document.getElementById("modal").classList.remove("hidden");
+  document.getElementById("modal").classList.add("flex");
+}
+
 function openStreetFoodModal(kind) {
   const anchor = activeAnchor();
   const isAll  = kind === "streetfood-all";
@@ -1441,7 +1709,7 @@ function openStreetFoodModal(kind) {
         <span class="text-slate-400 text-[10px]">${(f.locality_score*100|0)}%</span>
       </div>
       <p class="text-xs text-slate-500 italic mt-1.5">${f.why}</p>
-      <a href="https://maps.google.com/?q=${encodeURIComponent(f.name + ' Budapest')}" target="_blank"
+      <a href="${gmapsUrl(f)}" target="_blank"
         class="text-blue-600 hover:underline text-xs mt-1.5 block">🧭 Navigate</a>
     </div>`).join("");
 
@@ -1492,7 +1760,7 @@ function openStreetFoodDetail(id) {
       <span class="text-xs font-bold">${(f.locality_score*100|0)}%</span>
     </div>
     <p class="text-sm italic mb-4 p-3 bg-slate-50 rounded-xl text-slate-600">${f.why}</p>
-    <a href="https://maps.google.com/?q=${encodeURIComponent(f.name + ' Budapest')}" target="_blank"
+    <a href="${gmapsUrl(f)}" target="_blank"
       class="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-bold">🧭 Open in Google Maps</a>`;
   document.getElementById("modal").classList.remove("hidden");
   document.getElementById("modal").classList.add("flex");

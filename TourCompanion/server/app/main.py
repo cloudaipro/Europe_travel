@@ -1,5 +1,11 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+# Surface app loggers (geocoder etc.) at INFO so background-task progress
+# is visible in dev. Uvicorn's own logger config still applies on top.
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig

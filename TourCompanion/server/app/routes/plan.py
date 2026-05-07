@@ -3,13 +3,14 @@ a Trip on success, returns the trip_id."""
 from datetime import date, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from .. import schemas
 from ..auth import CurrentUser
 from ..config import settings
 from ..db import get_db
+from ..geocoder import geocode_trip_async
 from ..limiter import limiter
 from ..models import Booking, Day, IngestJob, Stop, Trip
 from ..planner import plan_trip
@@ -100,6 +101,7 @@ def ingest(
     payload: schemas.IngestIn,
     user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
+    background: BackgroundTasks,
 ):
     """Synchronous ingest. Records an IngestJob for audit/visibility.
     Returns {job_id, trip_id, status} on success."""
@@ -125,6 +127,9 @@ def ingest(
         job.result_trip_id = trip.id
         job.finished_at = datetime.utcnow()
         db.commit()
+        # Refine each stop's lat/lng via Nominatim after we respond.
+        # Runs in the background so the user gets an immediate trip_id.
+        background.add_task(geocode_trip_async, trip.id)
         return {
             "job_id": str(job.id),
             "trip_id": trip.id,

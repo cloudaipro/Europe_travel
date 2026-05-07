@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tour Companion — Budapest Demo</title>
+<title>Tour Companion — Vienna + Budapest 10 Days</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
@@ -40,7 +40,7 @@
       <span class="text-2xl">🧭</span>
       <div>
         <h1 class="text-lg font-bold leading-tight">Tour Companion</h1>
-        <p class="text-xs text-blue-200 leading-tight">Budapest demo · May 22–26, 2026</p>
+        <p class="text-xs text-blue-200 leading-tight">Vienna + Budapest · May 17–27, 2026</p>
       </div>
     </div>
     <nav class="flex gap-1 bg-slate-900/30 rounded-lg p-1">
@@ -66,14 +66,14 @@
         <!-- Trip overview -->
         <div class="bg-white rounded-xl shadow p-5">
           <div class="flex items-center justify-between mb-3">
-            <h2 class="text-2xl font-bold text-slate-800">Budapest 5 Days · Spring 2026</h2>
+            <h2 class="text-2xl font-bold text-slate-800">Vienna + Budapest · 10 Days</h2>
             <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-1 rounded">Planning ✓</span>
           </div>
           <div class="text-sm text-slate-600 space-y-1">
-            <p>📅 <b>Friday May 22 → Tuesday May 26</b> (departure Wed May 27, 05:55 AM)</p>
-            <p>🏨 Astoria (1088 Budapest)</p>
-            <p>🌡️ Late spring: 18–25 °C, sunset ≈ 20:30</p>
-            <p>📺 <b>Source:</b> YouTube playlist (50 videos: <i>Budapest / Hungary Travel Guide</i>)</p>
+            <p>📅 <b>Sun May 17 (YVR depart) → Mon May 18 arrive Vienna → Wed May 27, 03:37 BUD depart</b></p>
+            <p>🏨 Vienna: arte Hotel Wien Stadthalle · Budapest: Extremly Central Balcony</p>
+            <p>🌡️ Late spring: 15–24 °C, sunset ≈ 20:30</p>
+            <p>📺 <b>Source:</b> ChicTrip planner (<a href="https://www.chictrip.com.tw/explore" target="_blank" class="text-blue-600 hover:underline">維也納 布達佩斯 10 日遊</a>)</p>
           </div>
         </div>
 
@@ -228,45 +228,64 @@
 
 <script>
 /* ════════════════════════════════════════════
-   Budapest 5-day demo data
+   Vienna + Budapest 10-day data (from ChicTrip)
    ════════════════════════════════════════════ */
-const HOTEL = { name: "Astoria (hotel)", lat: 47.4929, lng: 19.0586, address: "1088 Budapest, Kossuth Lajos u. 19–21" };
+const HOTEL = { name: "arte Hotel Wien Stadthalle", lat: 48.1985, lng: 16.3357, address: "Mariahilfer Str., 1150 Wien (Days 1–4)" };
+const HOTEL_BP = { name: "Extremly Central - Balcony", lat: 47.4990, lng: 19.0570, address: "Budapest (Days 5–10)" };
 
 const TRIP = {
-  name: "Budapest 5 Days · Spring 2026",
-  dates: "May 22–26, 2026",
-  source_url: "https://youtube.com/playlist?list=PLtV2zB28YXqiyU5iLzzXJNNWn_VRhDrIl",
+  name: "Vienna + Budapest · 10 Days · Spring 2026",
+  dates: "May 17–27, 2026",
+  source_url: "https://www.chictrip.com.tw/explore",
 
   bookings: [
-    { label: "Hungarian Parliament tour — Sat 09:00 English", url: "https://www.jegymester.hu/parlament", done: true },
-    { label: "Hospital in the Rock — Sun ~14:00", url: "https://www.sziklakorhaz.eu/", done: true },
-    { label: "Legenda sunset cruise — Fri 20:30", url: "https://www.legenda.hu/", done: true },
-    { label: "Farewell dinner Tue — Borkonyha or Halászbástya", url: "#", done: false }
+    { label: "Vancouver YVR → Vienna VIE flight — Sun May 17", url: "#", done: false },
+    { label: "Schönbrunn Palace tour — Day 2 (NT$2,185)", url: "https://www.schoenbrunn.at/", done: false },
+    { label: "Vienna Fiaker carriage tour — Day 1 (NT$1,204)", url: "https://www.fiaker.at/", done: false },
+    { label: "Kunsthistorisches Museum ticket — Day 1 (NT$812)", url: "https://www.khm.at/", done: false },
+    { label: "Vienna → Budapest train (ÖBB Railjet)", url: "https://www.oebb.at/", done: false },
+    { label: "Hungarian State Opera — Sat May 23 evening", url: "https://www.opera.hu/", done: false },
+    { label: "Europe eSIM (NT$69)", url: "https://www.chictrip.com.tw/", done: false },
+    { label: "Budapest BUD departure flight — Wed May 27, 03:37", url: "#", done: false }
   ],
 
   companion_docs: [
-    { name: "🍲 Food guide", file: "../Budapest_5_Day/food.md" },
-    { name: "🗣 Phrasebook", file: "../Budapest_5_Day/phrasebook.md" },
-    { name: "🚻 Washroom finder", file: "../Budapest_5_Day/washrooms.md" },
-    { name: "📋 Full itinerary", file: "../Budapest_5_Day/Budapest_5_Day_Itinerary.md" }
+    { name: "🇦🇹 Vienna source plan (ChicTrip)", file: "https://www.chictrip.com.tw/explore" },
+    { name: "🍲 Budapest food guide", file: "../Budapest_5_Day/food.md" },
+    { name: "🗣 Phrasebook (DE/HU)", file: "../Budapest_5_Day/phrasebook.md" },
+    { name: "🚻 Washroom finder", file: "../Budapest_5_Day/washrooms.md" }
   ],
 
   routes: [
-    { day: 1, label: "Day 1 · Pest icons + cruise",
-      pdf: "../Budapest_5_Day/routes/Day_1_Friday_May22_route.pdf",
-      url: "https://www.google.com/maps/dir/Astoria,+Budapest/Bors+Gastro+Bar,+Budapest/Shoes+on+the+Danube+Bank,+Budapest/St.+Stephen's+Basilica,+Budapest/Vigad%C3%B3+t%C3%A9r,+Budapest/?travelmode=walking" },
-    { day: 2, label: "Day 2 · Parliament → Heroes → Bath",
-      pdf: "../Budapest_5_Day/routes/Day_2_Saturday_May23_route.pdf",
-      url: "https://www.google.com/maps/dir/Astoria,+Budapest/Hungarian+Parliament+Building,+Budapest/Oktogon,+Budapest/Heroes'+Square,+Budapest/Sz%C3%A9chenyi+Thermal+Bath,+Budapest/?travelmode=transit" },
-    { day: 3, label: "Day 3 · Buda Castle + Gellért",
-      pdf: "../Budapest_5_Day/routes/Day_3_Sunday_May24_route.pdf",
-      url: "https://www.google.com/maps/dir/Astoria,+Budapest/Buda+Castle/Fisherman's+Bastion/Hospital+in+the+Rock/Citadel/Szimpla+Kert/?travelmode=transit" },
-    { day: 4, label: "Day 4 · Market + Margaret Island",
-      pdf: "../Budapest_5_Day/routes/Day_4_Monday_May25_route.pdf",
-      url: "https://www.google.com/maps/dir/Astoria,+Budapest/Great+Market+Hall/Hungarian+National+Museum/Vigad%C3%B3+t%C3%A9r/Margaret+Island/?travelmode=transit" },
-    { day: 5, label: "Day 5 · Szentendre walking loop",
-      pdf: "../Budapest_5_Day/routes/Day_5_Tuesday_May26_route.pdf",
-      url: "https://www.google.com/maps/dir/Szentendre,+2000+Hungary/Marzipan+Museum/F%C5%91+t%C3%A9r/Blagovestenska+Church/Templom+t%C3%A9r/Belgrade+cathedral/Margit+Kov%C3%A1cs+Ceramic+Museum/?travelmode=walking" }
+    { day: 1, label: "Day 1 · Vienna icons (Stephansdom + Hofburg)",
+      pdf: "#",
+      url: "https://www.google.com/maps/dir/Vienna+Airport/arte+Hotel+Wien+Stadthalle/Stephansdom/Hofburg+Wien/Kunsthistorisches+Museum/?travelmode=transit" },
+    { day: 2, label: "Day 2 · Schönbrunn + Naschmarkt + Opera",
+      pdf: "#",
+      url: "https://www.google.com/maps/dir/arte+Hotel+Wien+Stadthalle/Sch%C3%B6nbrunn+Palace/Naschmarkt/Karlskirche/Vienna+State+Opera/?travelmode=transit" },
+    { day: 3, label: "Day 3 · Hundertwasser + Kinsky + Franzensburg",
+      pdf: "#",
+      url: "https://www.google.com/maps/dir/arte+Hotel+Wien+Stadthalle/Justizpalast+Wien/Hundertwasserhaus/Palais+Kinsky/Franzensburg+Laxenburg/?travelmode=transit" },
+    { day: 4, label: "Day 4 · Wachau Valley loop",
+      pdf: "#",
+      url: "https://www.google.com/maps/dir/Klosterneuburg+Monastery/Krems+an+der+Donau/D%C3%BCrnstein/Aggstein+Castle/Melk+Abbey/St.+P%C3%B6lten/?travelmode=driving" },
+    { day: 5, label: "Day 5 · Budapest icons (Market → Parliament)",
+      pdf: "#",
+      url: "https://www.google.com/maps/dir/Great+Market+Hall+Budapest/Shoes+on+the+Danube/Chain+Bridge+Budapest/St.+Stephen's+Basilica+Budapest/Hungarian+Parliament/?travelmode=walking" },
+    { day: 6, label: "Day 6 · Synagogue → Heroes Sq → Opera",
+      pdf: "#",
+      url: "https://www.google.com/maps/dir/Ervin+Szab%C3%B3+Library/Doh%C3%A1ny+Street+Synagogue/New+York+Caf%C3%A9/Heroes+Square+Budapest/Budapest+Zoo/Hungarian+State+Opera/?travelmode=transit" },
+    { day: 7, label: "Day 7 · Buda Castle + Gellért + Szimpla",
+      pdf: "#",
+      url: "https://www.google.com/maps/dir/Fisherman's+Bastion/Matthias+Church+Budapest/Buda+Castle/Gell%C3%A9rt+Hill/Palatinus+Strand+Baths/Szimpla+Kert/?travelmode=transit" },
+    { day: 8, label: "Day 8 · Danube Bend (Esztergom → Szentendre)",
+      pdf: "#",
+      url: "https://www.google.com/maps/dir/Esztergom+Basilica/Visegr%C3%A1d+Castle/Szentendre/?travelmode=driving" },
+    { day: 9, label: "Day 9 · Budapest free day (TBD)",
+      pdf: "#", url: "#" },
+    { day: 10, label: "Day 10 · Departure → Liszt Ferenc Airport",
+      pdf: "#",
+      url: "https://www.google.com/maps/dir/Extremly+Central+Balcony+Budapest/Liszt+Ferenc+Airport+Terminal+2/?travelmode=transit" }
   ],
 
   /* ────────────────────────────────────────────
@@ -356,225 +375,207 @@ const TRIP = {
   ],
 
   days: [
-    { n: 1, date: "Fri 22 May", theme: "Arrival → Pest Icons → Sunset Cruise", mode: "Walking",
+    { n: 1, date: "Mon 18 May", theme: "Vienna arrival → Stephansdom + Hofburg loop", mode: "Walking",
       stops: [
-        { name: "Astoria (hotel check-in)", time: "13:30", lat: 47.4929, lng: 19.0586,
-          address: "1088 Budapest", note: "Drop bags, freshen up" },
-        { name: "Bors GasztroBár (lunch)", time: "14:30", lat: 47.4969, lng: 19.0606,
-          address: "Kazinczy u. 10, 1075 Budapest", hours: "Daily 11:30–22:00",
-          tickets: "Soup + baguette ~1,800 HUF", food: ["Beef pho 1,800 HUF", "Lamb baguette 2,200 HUF"] },
-        { name: "Shoes on the Danube Bank", time: "16:00", lat: 47.5039, lng: 19.0448,
-          address: "Id. Antall József rkp., 1054 Budapest", hours: "24/7", tickets: "Free",
-          intro: "Sixty pairs of cast-iron shoes — memorial to Jews shot at the river's edge in 1944–45.",
-          highlights: ["Read the bronze plaque at the south end", "Continue south to Chain Bridge"],
-          transit: "M2 → Kossuth Lajos tér, walk 5 min south",
-          washroom: "Marriott lobby (Apáczai Csere János u. 4) — order an espresso",
-          food: ["Spinoza Café (Dob u. 15) — chicken paprikash"] },
-        { name: "St. Stephen's Basilica + dome", time: "17:00", lat: 47.5006, lng: 19.0539,
-          address: "Szent István tér 1, 1051 Budapest", hours: "Mon–Sat 9:00–17:45, Sun 13:00–17:45",
-          tickets: "Combined ticket ~3,200 HUF (basilica + treasury + dome)",
-          intro: "Hungary's largest church — domed at exactly 96 m to match the Parliament. Holds the mummified right hand of King Stephen I.",
-          highlights: ["Drop a 200 HUF coin to light the Holy Right relic", "Climb 364 stairs (or take elevator + 42)", "3-min walk to Liberty Square dancing fountain"],
-          transit: "Walk 8 min south down Október 6 utca",
-          washroom: "Free WC inside basilica with dome ticket; otherwise Sas utca paid WC 300 HUF",
-          food: ["First Strudel House of Pest (Október 6 u. 22)", "Stand 25 Bistro Michelin Bib"] },
-        { name: "Vigadó tér · Legenda cruise pier", time: "20:00", lat: 47.4955, lng: 19.0494,
-          address: "Vigadó tér, 1051 Budapest", hours: "Cruise departs 20:30",
-          tickets: "Sunset cocktail cruise 5,500 HUF (book online)",
-          intro: "70-minute Danube night cruise with the entire skyline gilded by night lights.",
-          highlights: ["Get a riverside seat on the upper deck", "Drink included in the ticket", "Best Parliament photos at blue hour ~21:00"],
-          transit: "Walk 10 min west on Deák Ferenc utca",
-          washroom: "On board, deck level",
-          food: ["Light dinner before — Pesti Disznó (Nagymező u. 19)"] }
+        { name: "Vienna Airport (VIE)", time: "09:00", lat: 48.1102, lng: 16.5697,
+          address: "1300 Schwechat, Austria", note: "Pass through · CAT/S7 train to city ~30 min" },
+        { name: "arte Hotel Wien Stadthalle (check-in)", time: "10:00", lat: 48.1985, lng: 16.3357,
+          address: "Mariahilfer Str., 1150 Wien", note: "Drop bags · 20 min stay" },
+        { name: "Fenster Café", time: "10:49", lat: 48.2090, lng: 16.3700,
+          address: "Wien", note: "Stay 1 hr · brunch" },
+        { name: "Ankeruhr (Anker Clock 安可鐘)", time: "11:54", lat: 48.2110, lng: 16.3741,
+          address: "Hoher Markt 10–11, 1010 Wien", note: "Stay 1 hr · figures parade at noon" },
+        { name: "Mozarthaus Vienna (莫扎特之家)", time: "13:00", lat: 48.2087, lng: 16.3727,
+          address: "Domgasse 5, 1010 Wien", note: "Stay 1 hr" },
+        { name: "St. Stephen's Cathedral (Stephansdom)", time: "14:04", lat: 48.2084, lng: 16.3725,
+          address: "Stephansplatz 3, 1010 Wien", note: "Stay 1 hr · climb south tower (343 steps)" },
+        { name: "Plague Column (Pestsäule)", time: "15:09", lat: 48.2088, lng: 16.3700,
+          address: "Graben, 1010 Wien", note: "Stay 1 hr" },
+        { name: "Peterskirche (St Peter's)", time: "16:11", lat: 48.2096, lng: 16.3697,
+          address: "Petersplatz, 1010 Wien", note: "Stay 1 hr · free organ recitals 15:00" },
+        { name: "Café Demel", time: "17:15", lat: 48.2087, lng: 16.3667,
+          address: "Kohlmarkt 14, 1010 Wien", note: "Stay 1 hr · imperial Sachertorte" },
+        { name: "Austrian National Library (Prunksaal)", time: "18:20", lat: 48.2068, lng: 16.3661,
+          address: "Josefsplatz 1, 1010 Wien", note: "Stay 1 hr · check closes 18:00, reschedule earlier" },
+        { name: "Augustinerkirche", time: "19:23", lat: 48.2058, lng: 16.3669,
+          address: "Augustinerstraße 3, 1010 Wien", note: "Stay 1 hr · Habsburg hearts crypt" },
+        { name: "Heldenplatz", time: "20:32", lat: 48.2065, lng: 16.3635,
+          address: "Heldenplatz, 1010 Wien", note: "Stay 1 hr" },
+        { name: "Hofburg Palace", time: "21:35", lat: 48.2069, lng: 16.3650,
+          address: "Michaelerkuppel, 1010 Wien", note: "Stay 1 hr · Fiaker carriage tour deal NT$1,204" },
+        { name: "Kunsthistorisches Museum", time: "22:42", lat: 48.2038, lng: 16.3614,
+          address: "Maria-Theresien-Platz, 1010 Wien", note: "Stay 30 min · ticket NT$812 (closes 21:00 — move to morning)" },
+        { name: "Mozart Monument", time: "23:17", lat: 48.2052, lng: 16.3637,
+          address: "Burggarten, 1010 Wien", note: "Stay 30 min" },
+        { name: "Gasthaus Rebhuhn", time: "23:59", lat: 48.2098, lng: 16.3743,
+          address: "Berggasse 24, 1090 Wien", note: "Stay 1 hr · late dinner — verify open hours" }
       ]
     },
-    { n: 2, date: "Sat 23 May", theme: "Parliament → Andrássy → Heroes Sq → Széchenyi Bath", mode: "Transit + walking",
+    { n: 2, date: "Tue 19 May", theme: "Schönbrunn → Naschmarkt → Karlskirche → Opera", mode: "Transit + walking",
       stops: [
-        { name: "Hungarian Parliament tour", time: "09:00", lat: 47.5072, lng: 19.0457,
-          address: "Kossuth Lajos tér 1-3, 1055 Budapest", hours: "Daily 8:00–18:00",
-          tickets: "10,000 HUF (booked)",
-          intro: "Third-largest parliament in the world. 691 rooms, 88 statues, the Holy Crown of Hungary on display.",
-          highlights: ["Arrive 30 min early for the changing of the guard", "Best photo spot: across the river at Batthyány tér", "Don't miss Shoes on the Danube nearby"],
-          transit: "M2 (red) → Kossuth Lajos tér; exit lifts you under the building",
-          washroom: "Free WC inside Visitor Centre with tour ticket",
-          food: ["Buja Disznók (Hold u. 13) — langos breakfast 6 min south"] },
-        { name: "Walk Andrássy Avenue → Oktogon", time: "10:30", lat: 47.5054, lng: 19.0637,
-          address: "Andrássy út, 1067 Budapest", hours: "n/a",
-          intro: "UNESCO-listed grand boulevard. 19th-century palaces, the Opera House, embassies.",
-          highlights: ["Pass the Opera House for façade photos", "Try Művész Kávéház (Andrássy út 29) for opera-day cake set", "Continue past Oktogon to the Octagon café cluster"],
-          transit: "Walk 2 km north-east — straight line",
-          washroom: "Művész Kávéház customer WC",
-          food: ["Klassz (Andrássy út 41) — modern Hungarian no reservations"] },
-        { name: "Lunch at Bock Bisztró", time: "12:30", lat: 47.5079, lng: 19.0635,
-          address: "Erzsébet krt. 43-49, 1073 Budapest", hours: "11:30–23:00",
-          tickets: "Mains ~5,500 HUF",
-          food: ["Mangalica chops", "Grandma's chicken paprikash with nokedli"] },
-        { name: "Heroes' Square + City Park", time: "14:00", lat: 47.5149, lng: 19.0779,
-          address: "Hősök tere, 1146 Budapest", hours: "24/7", tickets: "Free",
-          intro: "The grandest square in Budapest — Millennium Monument with seven Magyar chieftains on horseback.",
-          highlights: ["Vajdahunyad Castle a 5-min walk into City Park", "Boating lake rentals in spring", "Time Wheel — one of the world's largest hourglasses"],
-          transit: "M1 (yellow line) from Oktogon → Hősök tere",
-          washroom: "Free WC in Museum of Fine Arts (with ticket); paid 300 HUF at Vajdahunyad ticket office",
-          food: ["Bagolyvár (Állatkerti krt. 2) — Owl Castle by Gundel"] },
-        { name: "House of Music Hungary", time: "15:00", lat: 47.5132, lng: 19.0836,
-          address: "Olof Palme stny. 3, 1146 Budapest", hours: "Tue–Sun 10:00–18:00",
-          tickets: "~3,500 HUF",
-          intro: "2022 Sou Fujimoto-designed concert hall + sound museum. Stunning canopy roof.",
-          highlights: ["Walk under the perforated golden canopy", "Sound dome on the lower floor"] },
-        { name: "Széchenyi Thermal Bath", time: "16:30", lat: 47.5187, lng: 19.0824,
-          address: "Állatkerti krt. 9-11, 1146 Budapest", hours: "Daily 7:00–19:00 (last entry 18:00)",
-          tickets: "10,500 HUF weekday with cabin",
-          intro: "Picture-postcard yellow neo-Baroque bath complex — 18 pools, three huge outdoor pools open year-round.",
-          highlights: ["Go around 17:00 to bathe through golden hour", "Outdoor whirlpool current spins you in a circle", "Bring 2× 200 HUF coins for the locker"],
-          transit: "5-min walk from House of Music",
-          washroom: "Inside the bath complex",
-          food: ["Pántlika Bisztró in the park", "Robinson lake-side restaurant"] }
+        { name: "arte Hotel Wien Stadthalle", time: "08:00", lat: 48.1985, lng: 16.3357,
+          address: "Mariahilfer Str., 1150 Wien", note: "Stay 1 hr · breakfast" },
+        { name: "Schönbrunn Palace (美泉宮)", time: "09:35", lat: 48.1845, lng: 16.3122,
+          address: "Schönbrunner Schloßstraße 47, 1130 Wien", note: "Stay 3 hr · tour deal NT$2,185 · book Grand Tour" },
+        { name: "Naschmarkt", time: "13:11", lat: 48.1986, lng: 16.3631,
+          address: "Naschmarkt, 1060 Wien", note: "Stay 1 hr · open-air market" },
+        { name: "Georg am Naschmarkt", time: "14:12", lat: 48.1986, lng: 16.3631,
+          address: "Naschmarkt 33, 1060 Wien", note: "Stay 10 min" },
+        { name: "Nordsee", time: "14:26", lat: 48.2089, lng: 16.3712,
+          address: "Kärntner Straße 25, 1010 Wien", note: "Stay 1 hr · seafood chain" },
+        { name: "Vienna Secession", time: "15:28", lat: 48.2007, lng: 16.3658,
+          address: "Friedrichstraße 12, 1010 Wien", note: "Stay 1 hr · Klimt Beethoven Frieze" },
+        { name: "Wien Museum (維也納博物館)", time: "16:36", lat: 48.1996, lng: 16.3712,
+          address: "Karlsplatz 8, 1040 Wien", note: "Stay 1 hr" },
+        { name: "Karlskirche (卡爾教堂)", time: "17:39", lat: 48.1985, lng: 16.3722,
+          address: "Karlsplatz, 1040 Wien", note: "Stay 1 hr · panoramic dome elevator" },
+        { name: "Alt Wien Kaffee", time: "18:50", lat: 48.2080, lng: 16.3760,
+          address: "Bäckerstraße 9, 1010 Wien", note: "Stay 1 hr" },
+        { name: "Vollpension", time: "19:52", lat: 48.1968, lng: 16.3720,
+          address: "Schleifmühlgasse 16, 1040 Wien", note: "Stay 1 hr · grandmas' cake café" },
+        { name: "Vienna State Opera", time: "21:04", lat: 48.2025, lng: 16.3691,
+          address: "Opernring 2, 1010 Wien", note: "Stay 1 hr · standing-room tickets €4–€10 same-day" },
+        { name: "Austrian Parliament", time: "22:14", lat: 48.2080, lng: 16.3585,
+          address: "Dr.-Karl-Renner-Ring 3, 1017 Wien", note: "Stay 1 hr · evening lit façade" },
+        { name: "arte Hotel Wien Stadthalle", time: "23:32", lat: 48.1985, lng: 16.3357,
+          address: "Mariahilfer Str., 1150 Wien", note: "Stay 1 hr · return" }
       ]
     },
-    { n: 3, date: "Sun 24 May", theme: "Buda Castle → Bastion → Hospital in the Rock → Gellért Hill", mode: "Transit + walking",
+    { n: 3, date: "Wed 20 May", theme: "Hundertwasser + Kinsky + Franzensburg (Laxenburg)", mode: "Transit + driving",
       stops: [
-        { name: "Buda Castle (Royal Palace)", time: "09:30", lat: 47.4962, lng: 19.0395,
-          address: "Szent György tér 2, 1014 Budapest", hours: "Grounds 24/7; museums 10:00–18:00",
-          tickets: "Free grounds; museums ~3,800 HUF",
-          intro: "Castle Hill cobbled streets and palaces — the President's residence and changing of the guard at 12:00.",
-          highlights: ["Bus 16 from Deák tér — free with travelcard", "Walk Tóth Árpád sétány on the western rampart", "Look for the bronze turul bird above the funicular landing"],
-          transit: "Bus 16 from Deák Ferenc tér (5 min)",
-          washroom: "Free WCs in palace courtyard between Wing C and D",
-          food: ["Walzer Café (Táncsics Mihály u. 12) — strudel"] },
-        { name: "Matthias Church + Fisherman's Bastion", time: "10:30", lat: 47.5020, lng: 19.0344,
-          address: "Szentháromság tér, 1014 Budapest", hours: "Bastion 24/7; upper terraces 9:00–19:00 (1,500 HUF)",
-          tickets: "Bastion upper 1,500 HUF; church 2,500 HUF",
-          intro: "Seven white neo-Romanesque turrets over the Danube + the diamond-tile-roof Matthias Church where Hungarian kings were crowned.",
-          highlights: ["Free trick: enter before 9:00 or after 19:00", "Best photo angle: lower turret looking up", "Bell tower climb extra 1,500 HUF"],
-          transit: "Walk 8 min north on Tárnok utca",
-          washroom: "Paid WC 300 HUF at Szentháromság tér",
-          food: ["Café Pierrot (Fortuna u. 14) — historic courtyard café"] },
-        { name: "Hospital in the Rock", time: "14:00", lat: 47.5008, lng: 19.0314,
-          address: "Lovas út 4/c, 1012 Budapest", hours: "Daily 10:00–19:00, hourly tours",
-          tickets: "7,000 HUF (booked, English tour)",
-          intro: "Beneath Castle Hill lies a 10-km cave network. WWII secret hospital, Cold War nuclear bunker.",
-          highlights: ["Constant 14 °C — bring a light jacket", "Photography NOT allowed", "60-min guided tour, English"],
-          transit: "5-min walk west on Lovas út",
-          washroom: "Free WC inside lobby",
-          food: ["Anjuna Café (Lovas út 41) — sandwiches + panoramic terrace"] },
-        { name: "Gellért Hill + Citadella sunset", time: "17:30", lat: 47.4869, lng: 19.0460,
-          address: "Citadella sétány, 1118 Budapest", hours: "24/7", tickets: "Free",
-          intro: "14-m bronze Liberty Statue on the summit, panoramic views of both Buda and Pest.",
-          highlights: ["25-min hike up switchback paths", "Cave Church (Sziklatemplom) on the way ~700 HUF", "Stay for sunset"],
-          transit: "Walk down to Clark Ádám tér + bus 8E/110 to Szent Gellért tér",
-          washroom: "No public WC on summit — go before climbing",
-          food: ["Hadik Kávéház (Bartók Béla út 36) at the base"] },
-        { name: "Szimpla Kert (ruin bar)", time: "21:00", lat: 47.4975, lng: 19.0628,
-          address: "Kazinczy u. 14, 1075 Budapest", hours: "Daily 12:00–04:00",
-          tickets: "Free entry; drinks ~1,800 HUF",
-          intro: "The original ruin pub — a maze of mismatched furniture, a Trabant car turned booth, live music nightly.",
-          highlights: ["Famously decorated WCs — visit even just for the photo", "Karaván food court next door open till 02:00", "Sunday morning farmers' market 9:00–14:00"],
-          transit: "Tram 47/49 across Liberty Bridge then walk into Jewish Quarter",
-          food: ["Karaván Street Food (Kazinczy u. 18) — late-night gyros + langos"] }
+        { name: "arte Hotel Wien Stadthalle", time: "08:00", lat: 48.1985, lng: 16.3357,
+          address: "Mariahilfer Str., 1150 Wien", note: "Stay 1 hr" },
+        { name: "Vienna Palace of Justice (Justizpalast)", time: "09:14", lat: 48.2090, lng: 16.3568,
+          address: "Schmerlingplatz 11, 1010 Wien", note: "Stay 1 hr · 5-floor atrium with caryatids" },
+        { name: "Hundertwasserhaus (百水公寓)", time: "10:36", lat: 48.2076, lng: 16.3940,
+          address: "Kegelgasse 36–38, 1030 Wien", note: "Stay 1 hr · only photo from outside" },
+        { name: "KunstHausWien (百水藝術村)", time: "11:38", lat: 48.2110, lng: 16.3914,
+          address: "Untere Weißgerberstraße 13, 1030 Wien", note: "Stay 1 hr · Hundertwasser museum" },
+        { name: "Palais Kinsky (金斯基宮)", time: "13:00", lat: 48.2110, lng: 16.3667,
+          address: "Freyung 4, 1010 Wien", note: "Stay 1 hr · baroque palace courtyard" },
+        { name: "Franzensburg (Laxenburg)", time: "15:31", lat: 48.0648, lng: 16.3589,
+          address: "Schlossplatz 1, 2361 Laxenburg", note: "Stay 1 hr · 91 min south by car/transit · island castle" },
+        { name: "arte Hotel Wien Stadthalle", time: "17:46", lat: 48.1985, lng: 16.3357,
+          address: "Mariahilfer Str., 1150 Wien", note: "Stay 1 hr · return" }
       ]
     },
-    { n: 4, date: "Mon 25 May", theme: "Central Market → Palace District → Tram 2 → Margaret Island", mode: "Walking + Tram 2",
+    { n: 4, date: "Thu 21 May", theme: "Wachau Valley · Klosterneuburg → Krems → Dürnstein → Aggstein → Melk", mode: "Driving (rental or guided)",
       stops: [
-        { name: "Great Market Hall", time: "09:30", lat: 47.4870, lng: 19.0584,
-          address: "Vámház körút 1-3, 1093 Budapest", hours: "Mon 06:00–17:00, Tue–Fri 06:00–18:00, Sat 06:00–15:00; Sun closed",
-          tickets: "Free entry",
-          intro: "Neo-Gothic 1897 market — three floors of paprika, salami, Tokaji, and souvenirs.",
-          highlights: ["Lángos at upstairs corner — 2,000 HUF", "Buy paprika tins + Tokaji Aszú for souvenirs", "Skip ground-floor 'tourist goulash' — upstairs is better"],
-          transit: "Tram 47/49 → Fővám tér",
-          washroom: "Paid 250 HUF in basement — bring coins",
-          food: ["Lángos Sarok upstairs", "Fakanál Étterem sit-down Hungarian canteen"] },
-        { name: "Palace District (Józsefváros) walk", time: "11:00", lat: 47.4904, lng: 19.0651,
-          address: "Múzeum krt., Pollack Mihály tér, Reviczky u., 1088 Budapest", hours: "n/a",
-          intro: "Your hotel's neighborhood — Hungarian National Museum + 19th-century palaces. Mostly closed Mondays so admire from outside.",
-          highlights: ["Hungarian National Museum classical façade (closed Mon)", "Palace of the Italian Cultural Institute", "Wenckheim Palace (now the FSZEK library)"],
-          transit: "10-min walk south from Astoria",
-          washroom: "FSZEK library (with reader card) or any nearby café"},
-        { name: "Tram 2 — scenic riverside", time: "14:30", lat: 47.4955, lng: 19.0494,
-          address: "Vigadó tér Tram 2 stop, 1051 Budapest", hours: "Trams every 5–10 min",
-          tickets: "Included in 96-hour travelcard",
-          intro: "National Geographic-rated 'world's most scenic tramline' — runs the entire Pest embankment with Buda views.",
-          highlights: ["Best window seats: right side facing the river", "Get off at Margit híd to cross into Margaret Island", "Round trip in ~30 min"] },
-        { name: "Margaret Island musical fountain", time: "18:30", lat: 47.5290, lng: 19.0478,
-          address: "Margitsziget, 1138 Budapest", hours: "Choreographed shows every hour",
-          tickets: "Free",
-          intro: "2.5 km car-free island — locals' weekend escape. Cherry blossoms in late spring.",
-          highlights: ["Rent a Bringóhintó pedal cart 4,000 HUF/h", "Walking loop: musical fountain → Dominican convent ruins → Japanese Garden", "Mini zoo with deer and peacocks"],
-          transit: "Tram 4/6 stops mid-bridge at Margitsziget",
-          washroom: "Free public WCs along the central path",
-          food: ["Holdudvar — restaurant + open-air bar"] }
+        { name: "arte Hotel Wien Stadthalle", time: "08:00", lat: 48.1985, lng: 16.3357,
+          address: "Mariahilfer Str., 1150 Wien", note: "Stay 1 hr · early start, pack lunch" },
+        { name: "Klosterneuburg Monastery", time: "09:24", lat: 48.3060, lng: 16.3257,
+          address: "Stiftspl. 1, 3400 Klosterneuburg", note: "Stay 1 hr · Verdun altarpiece" },
+        { name: "Krems an der Donau", time: "11:19", lat: 48.4097, lng: 15.6160,
+          address: "Krems an der Donau", note: "Stay 1 hr · UNESCO old town entrance" },
+        { name: "Dürnstein Parkplatz P3", time: "12:32", lat: 48.3979, lng: 15.5180,
+          address: "Dürnstein", note: "Stay 1 hr · blue church + Richard the Lionheart castle" },
+        { name: "Aggstein Castle (阿格斯泰因城堡)", time: "19:55", lat: 48.3093, lng: 15.4248,
+          address: "Aggstein 5, 3642 Aggsbach", note: "Stay 1 hr · ruined Danube cliff castle" },
+        { name: "Melk Abbey (梅爾克修道院)", time: "21:57", lat: 48.2280, lng: 15.3340,
+          address: "Abt-Berthold-Dietmayr-Straße 1, 3390 Melk", note: "Stay 1 hr · closes 17:30 — re-time to afternoon" },
+        { name: "St. Pölten Tourismus", time: "23:23", lat: 48.2058, lng: 15.6232,
+          address: "Rathauspl. 1, 3100 St. Pölten", note: "Stay 1 hr" },
+        { name: "arte Hotel Wien Stadthalle", time: "01:17 +1", lat: 48.1985, lng: 16.3357,
+          address: "Mariahilfer Str., 1150 Wien", note: "Stay 1 hr · late return — consider overnighting in Melk" }
       ]
     },
-    { n: 5, date: "Tue 26 May", theme: "Szentendre Day Trip + Farewell Dinner", mode: "HÉV + walking",
+    { n: 5, date: "Fri 22 May", theme: "Budapest icons · Market → Shoes → Chain Bridge → Basilica → Parliament", mode: "Walking",
       stops: [
-        { name: "Szentendre HÉV station", time: "09:40", lat: 47.6608, lng: 19.0755,
-          address: "Szentendre, 2000 Hungary", hours: "n/a",
-          tickets: "HÉV supplement 750 HUF each way (in addition to travelcard)",
-          intro: "End of HÉV H5 line from Batthyány tér. Welcome to Szentendre — Serbian-flavoured riverside artist's town.",
-          transit: "HÉV H5 from Batthyány tér (40 min)",
-          washroom: "Paid 200 HUF inside station" },
-        { name: "Marzipan Museum & Café", time: "10:00", lat: 47.6664, lng: 19.0765,
-          address: "Dumtsa Jenő u. 14, 2000 Szentendre", hours: "Daily 10:00–18:00",
-          tickets: "1,200 HUF",
-          intro: "Quirky museum of life-size marzipan sculptures (Princess Diana, Mickey Mouse, the Hungarian crown).",
-          highlights: ["Quick 20-min visit", "Café out front sells marzipan ice cream"]},
-        { name: "Fő tér (Main Square)", time: "10:30", lat: 47.6677, lng: 19.0757,
-          address: "Fő tér, 2000 Szentendre", hours: "n/a",
-          tickets: "Free",
-          intro: "Heart of Szentendre — pastel baroque facades, the 1763 Plague Cross, Serbian Orthodox church.",
-          highlights: ["Photograph the cobbled square from the eastern corner", "Pop into Galéria Orange for ceramics", "Coffee at Palmetta Café"]},
-        { name: "Templom-domb (Church Hill)", time: "11:30", lat: 47.6681, lng: 19.0754,
-          address: "Templom tér, 2000 Szentendre", hours: "24/7", tickets: "Free",
-          intro: "Hilltop panorama over the old town and the Danube. Catholic Church of St John the Baptist at the summit.",
-          highlights: ["Best wide-angle view of the town in this whole trip", "5-min climb up cobbled steps"]},
-        { name: "Lánchíd Söröző (lunch on Fő tér)", time: "13:00", lat: 47.6677, lng: 19.0758,
-          address: "Fő tér, 2000 Szentendre", hours: "Daily 11:00–22:00",
-          tickets: "Mains ~3,500 HUF",
-          intro: "Riverbank tavern serving honest Hungarian classics. The fish stew is the regional specialty.",
-          food: ["Halászlé (river-fish stew) 3,200 HUF", "Schnitzel + chips 3,800 HUF", "Tokaji Furmint by the glass"]},
-        { name: "Margit Kovács Ceramic Museum", time: "14:30", lat: 47.6677, lng: 19.0771,
-          address: "Vastagh György u. 1, 2000 Szentendre", hours: "Tue–Sun 10:00–18:00",
-          tickets: "1,800 HUF",
-          intro: "Hungary's most famous 20th-century ceramicist. Whimsical figurines, biblical narratives, peasant life.",
-          highlights: ["~75 min visit", "Most pieces are kissable-small — a love letter rather than monumental art"]},
-        { name: "Farewell dinner at Borkonyha", time: "20:00", lat: 47.5009, lng: 19.0537,
-          address: "Sas u. 3, 1051 Budapest", hours: "Mon–Sat 12:00–24:00; closed Sun",
-          tickets: "Tasting menu ~32,000 HUF (booked)",
-          intro: "1-Michelin-star wine restaurant near the Basilica. Hungarian wines + modern bistro classics. Reservations essential.",
-          highlights: ["Order the duck liver with poppy seed", "Tokaji Aszú flight pairing", "Walk back to Astoria via the Basilica + Liberty Sq"]}
+        { name: "Extremly Central - Balcony (BP hotel check-in)", time: "08:00", lat: 47.4990, lng: 19.0570,
+          address: "Budapest", note: "Stay 30 min · drop bags after Vienna→Budapest train" },
+        { name: "Belvárosi Disznótoros - Károlyi utca", time: "08:39", lat: 47.4912, lng: 19.0581,
+          address: "Károlyi u., 1053 Budapest", note: "Stay 1 hr · butcher counter — point at sausage" },
+        { name: "Great Market Hall (布達佩斯中央市場)", time: "09:48", lat: 47.4868, lng: 19.0586,
+          address: "Vámház krt. 1–3, 1093 Budapest", note: "Stay 1 hr · upstairs lángos, paprika souvenir" },
+        { name: "Shoes on the Danube Bank", time: "11:04", lat: 47.5039, lng: 19.0454,
+          address: "Id. Antall József rkp., 1054 Budapest", note: "Stay 1 hr · WWII memorial · 60 cast-iron pairs" },
+        { name: "Chain Bridge (Széchenyi Lánchíd 塞切尼鏈橋)", time: "12:15", lat: 47.4990, lng: 19.0440,
+          address: "Széchenyi Lánchíd, Budapest", note: "Stay 1 hr · iconic crossing" },
+        { name: "St. Stephen's Basilica", time: "13:28", lat: 47.5009, lng: 19.0537,
+          address: "Szent István tér 1, 1051 Budapest", note: "Stay 1 hr · climb dome 364 steps" },
+        { name: "Hungarian Parliament", time: "14:42", lat: 47.5072, lng: 19.0457,
+          address: "Kossuth Lajos tér 1–3, 1055 Budapest", note: "Stay 1 hr · book English tour ahead" },
+        { name: "Retek Mini", time: "15:56", lat: 47.5080, lng: 19.0250,
+          address: "Retek u., 1024 Budapest", note: "Stay 1 hr · Buda side bistro" }
+      ]
+    },
+    { n: 6, date: "Sat 23 May", theme: "Library + Synagogue + NY Café + Heroes Sq + Zoo + Opera", mode: "Transit + walking",
+      stops: [
+        { name: "Metropolitan Ervin Szabó Library", time: "08:00", lat: 47.4904, lng: 19.0651,
+          address: "Reviczky u. 1, 1088 Budapest", note: "Stay 1 hr · golden Wenckheim reading room" },
+        { name: "Dohány Street Synagogue", time: "09:11", lat: 47.4955, lng: 19.0610,
+          address: "Dohány u. 2, 1074 Budapest", note: "Stay 1 hr · largest synagogue in Europe" },
+        { name: "New York Café", time: "10:18", lat: 47.4969, lng: 19.0726,
+          address: "Erzsébet krt. 9–11, 1073 Budapest", note: "Stay 1 hr · expect queue · 'world's most beautiful café'" },
+        { name: "Heroes' Square (英雄廣場)", time: "11:39", lat: 47.5149, lng: 19.0779,
+          address: "Hősök tere, 1146 Budapest", note: "Stay 1 hr · Millennium Monument" },
+        { name: "Budapest Zoo & Botanical Garden", time: "12:49", lat: 47.5183, lng: 19.0736,
+          address: "Állatkerti krt. 6–12, 1146 Budapest", note: "Stay 1 hr · Art Nouveau pavilions" },
+        { name: "Hungarian State Opera", time: "18:00", lat: 47.5022, lng: 19.0586,
+          address: "Andrássy út 22, 1061 Budapest", note: "Stay 1 hr · catch evening show — book tickets" }
+      ]
+    },
+    { n: 7, date: "Sun 24 May", theme: "Buda Castle Hill + Gellért + Szimpla", mode: "Walking + bath",
+      stops: [
+        { name: "Fisherman's Bastion (漁人堡)", time: "08:00", lat: 47.5020, lng: 19.0344,
+          address: "Szentháromság tér, 1014 Budapest", note: "Stay 1 hr · arrive before 09:00 for free terrace" },
+        { name: "Matthias Church (馬加什教堂)", time: "09:02", lat: 47.5020, lng: 19.0339,
+          address: "Szentháromság tér 2, 1014 Budapest", note: "Stay 1 hr · diamond-tile roof" },
+        { name: "Labyrinth (Buda Castle)", time: "10:06", lat: 47.5008, lng: 19.0335,
+          address: "Úri u. 9, 1014 Budapest", note: "Stay 1 hr · cave network · constant 14°C" },
+        { name: "Hungarian National Gallery", time: "11:25", lat: 47.4969, lng: 19.0395,
+          address: "Szent György tér 2, 1014 Budapest", note: "Stay 1 hr · in Buda Castle wing" },
+        { name: "Buda Castle (布達城堡)", time: "12:25", lat: 47.4962, lng: 19.0395,
+          address: "Szent György tér 2, 1014 Budapest", note: "Stay 1 hr · grounds + courtyards" },
+        { name: "Gellért Hill (蓋勒特山)", time: "13:52", lat: 47.4869, lng: 19.0460,
+          address: "Citadella sétány, 1118 Budapest", note: "Stay 1 hr · Liberty Statue panorama" },
+        { name: "Palatinus Strand Baths", time: "15:35", lat: 47.5325, lng: 19.0455,
+          address: "Margitsziget, 1138 Budapest", note: "Stay 1 hr · island thermal — bring suit/cap" },
+        { name: "Szimpla Kert (ruin bar)", time: "17:03", lat: 47.4975, lng: 19.0628,
+          address: "Kazinczy u. 14, 1075 Budapest", note: "Stay 1 hr · iconic ruin pub · Karaván food court next door" }
+      ]
+    },
+    { n: 8, date: "Mon 25 May", theme: "Danube Bend · Esztergom → Visegrád → Szentendre", mode: "Driving / HÉV",
+      stops: [
+        { name: "Esztergom Basilica (埃斯泰爾戈姆聖殿)", time: "08:00", lat: 47.7967, lng: 18.7355,
+          address: "Szent István tér 1, 2500 Esztergom", note: "Stay 1 hr · largest church in Hungary · dome views" },
+        { name: "Visegrád Castle - Citadel", time: "11:17", lat: 47.7826, lng: 18.9740,
+          address: "Várhegy, 2025 Visegrád", note: "Stay 1 hr · 137 min transit east · Danube bend lookout" },
+        { name: "Renaissance Restaurant (Visegrád)", time: "13:30", lat: 47.7849, lng: 18.9748,
+          address: "Fő u. 11, 2025 Visegrád", note: "Stay 1 hr · medieval-themed lunch" },
+        { name: "Szentendre Main Square (Fő tér)", time: "15:17", lat: 47.6677, lng: 19.0757,
+          address: "Fő tér, 2000 Szentendre", note: "Stay 1 hr · Serbian-flavored old town · take HÉV H5 back to BP" }
+      ]
+    },
+    { n: 9, date: "Tue 26 May", theme: "Free day · not yet planned (ChicTrip empty)", mode: "Flex",
+      stops: [
+        { name: "Free day · TBD", time: "—", lat: 47.4990, lng: 19.0570,
+          address: "Budapest", note: "ChicTrip note: 還沒有排這天的行程呦. Suggestions: Széchenyi Bath, Margaret Island bike, Andrássy walk, Lake Balaton day trip, House of Terror." }
+      ]
+    },
+    { n: 10, date: "Wed 27 May", theme: "Departure → Liszt Ferenc Airport", mode: "Transit",
+      stops: [
+        { name: "Extremly Central - Balcony (check-out)", time: "03:00", lat: 47.4990, lng: 19.0570,
+          address: "Budapest", note: "Leave 03:00 · pre-book taxi or 100E airport bus" },
+        { name: "Liszt Ferenc Airport Terminal 2", time: "03:37", lat: 47.4329, lng: 19.2613,
+          address: "BUD Airport, 1185 Budapest", note: "Stay 1 hr · 37 min transit · check 3-hr-prior gate close" }
       ]
     }
   ]
 };
 
+
 /* ════════════════════════════════════════════
-   Mocked in-tour & memory state
-   For the demo, Day 1 + Day 2 are "completed" with sample photos;
-   Day 3 is "in progress" (current); Day 4 + 5 are "upcoming"
+   In-tour & memory state · trip is in the future, all empty
    ════════════════════════════════════════════ */
 const STATE = {
-  current_day: 3,
-  current_stop_index: { 3: 1 },  // on Day 3, stop index 1 = Matthias Church + Bastion is the active stop
-  check_ins: {
-    1: [0, 1, 2, 3, 4],  // all of Day 1 done
-    2: [0, 1, 2, 3, 4, 5],  // all of Day 2 done
-    3: [0]   // Day 3: only first stop done
-  },
-  stop_photos: {
-    "1-2": ["../Budapest_5_Day/images/05_new_york_cafe.jpg"],
-    "1-3": ["../Budapest_5_Day/images/02_basilica.jpg"],
-    "1-4": ["../Budapest_5_Day/images/06_chain_bridge.jpg"],
-    "2-0": ["../Budapest_5_Day/images/01_parliament.jpg"],
-    "2-3": ["../Budapest_5_Day/images/14_heroes_square.jpg"],
-    "2-5": ["../Budapest_5_Day/images/16_szechenyi_bath.jpg"],
-    "3-0": ["../Budapest_5_Day/images/07_buda_castle.jpg"]
-  },
-  voice_notes: {
-    "1-3": "Crossed the Chain Bridge at sunset. The Parliament across the river — unbelievable.",
-    "2-0": "Took the Parliament tour at 9. Crown room is small but the guard ceremony was moving.",
-    "2-5": "Széchenyi after sunset. The outdoor pools steamed in the cool air."
-  },
-  journal: "Friday: arrived stretched but pumped. Bors GasztroBár hit the spot — that lamb baguette. Saturday: Parliament tour was a highlight. Sunday morning now and we're heading up to Buda Castle.",
-  badges: { "1-2": "🌅 sunset", "2-5": "♨️ thermal" }
+  current_day: 1,
+  current_stop_index: {},
+  check_ins: {},
+  stop_photos: {},
+  voice_notes: {},
+  journal: "",
+  badges: {}
 };
 
 const DAY_STATUS = (n) => {
@@ -723,7 +724,7 @@ function renderPlan() {
               ${s.transit ? `<p class="mt-1.5">🚇 <b>Get there</b> · ${s.transit}</p>` : ""}
               ${s.washroom ? `<p>🚻 <b>Washroom</b> · ${s.washroom}</p>` : ""}
               ${s.food ? `<div>🍽 <b>Quick bite</b> · ${s.food.join(" · ")}</div>` : ""}
-              <p class="pt-2"><a href="https://maps.google.com/?q=${encodeURIComponent(s.name + " Budapest")}" target="_blank" class="text-blue-600 hover:underline">Open in Google Maps →</a></p>
+              <p class="pt-2"><a href="https://maps.google.com/?q=${encodeURIComponent(s.name + (s.address ? ', ' + s.address : ''))}" target="_blank" class="text-blue-600 hover:underline">Open in Google Maps →</a></p>
             </div>
           </details>
         `).join("")}
@@ -751,7 +752,7 @@ function renderTour() {
   }).join("");
 
   document.getElementById("tour-status-summary").textContent =
-    `Day ${STATE.current_day} of 5 · ${TRIP.days[STATE.current_day-1].theme}`;
+    `Day ${STATE.current_day} of ${TRIP.days.length} · ${TRIP.days[STATE.current_day-1].theme}`;
 
   // Today's stops
   const day = TRIP.days[STATE.current_day - 1];
@@ -776,7 +777,7 @@ function renderTour() {
           </div>
         </div>
         <div class="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-slate-100">
-          <a href="https://maps.google.com/?q=${encodeURIComponent(s.name + ' Budapest')}" target="_blank" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded font-medium">🧭 Navigate</a>
+          <a href="https://maps.google.com/?q=${encodeURIComponent(s.name + (s.address ? ', ' + s.address : ''))}" target="_blank" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded font-medium">🧭 Navigate</a>
           ${!checked ? `<button onclick="checkIn(${day.n}, ${i})" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-1.5 rounded font-medium">📍 Check in</button>` : ""}
           <button onclick="addPhoto(${day.n}, ${i})" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs px-3 py-1.5 rounded font-medium">📷 Photo</button>
           <button onclick="recordVoice(${day.n}, ${i})" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs px-3 py-1.5 rounded font-medium">🎤 Voice note</button>
