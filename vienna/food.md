@@ -9,5 +9,12 @@
 * **Wiener Schnitzel 維也納炸肉派** St. Stephan 教堂附近 [Brioche und Brösel ](https://maps.app.goo.gl/R12ihax3omCbdTf69) 維也納炸肉派漢堡
 * Zelten 維也納烤餅 罌粟子(poppy seed)口味好吃, Naschmarkt 附近, [Georg am Naschmarkt](https://maps.app.goo.gl/55PBQRD4ozAdTaiX6)
 * Trzesniewski (Trzesniewski Roll) brötchen 維也納開放式三明治 [Buffet Trzesniewski](https://maps.app.goo.gl/E5muKZdGecWNsPr38)
-
+* 豬肋排、精釀啤酒
+  * [Salm Bräu](https://maps.app.goo.gl/VTHzMWNWbwCwG6rT8) 
+    * [website](https://salmbraeu.com/en/)
+    * 炸牛排€27.50豬肋排€44.20 特色啤酒
+    * SURSTELZE for 2 person是兩人份德國豬腳
+    * tafelspitz是維也納的高湯牛排
+  * [Zur Alten Kaisermühle](https://maps.app.goo.gl/9DH9DMgwkC86VfP47)
+    * 豬肋排超好吃的！
 * [Beisl in der Sigmundsgasse](Sigmundsgasse 12, 1070 Wien, Austria), [url](https://beisl-in-der-sigmundsgasse.eatbu.com/) Schinkenflekerl
