@@ -3,10 +3,16 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from pydantic import BaseModel
+
 from .. import schemas
 from ..auth import CurrentUser
 from ..db import get_db
 from ..models import Trip, Day, Stop
+
+
+class StopReorderIn(BaseModel):
+    stop_ids: list[int]
 
 
 router = APIRouter(prefix="/api/trips", tags=["trips"])
@@ -82,3 +88,27 @@ def delete_trip(trip_id: int, user: CurrentUser, db: Annotated[Session, Depends(
     t = _owned(db, user, trip_id)
     db.delete(t)
     db.commit()
+
+
+@router.put("/days/{day_id}/stops/order")
+def reorder_stops(
+    day_id: int, payload: StopReorderIn, user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+):
+    day = db.get(Day, day_id)
+    if not day:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "day not found")
+    trip = db.get(Trip, day.trip_id)
+    if not trip or trip.owner_id != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "day not found")
+
+    existing = {s.id: s for s in day.stops}
+    if set(payload.stop_ids) != set(existing.keys()):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "stop_ids must be a permutation of this day's stops",
+        )
+    for idx, sid in enumerate(payload.stop_ids):
+        existing[sid].order_idx = idx
+    db.commit()
+    return {"day_id": day.id, "stop_ids": payload.stop_ids}
