@@ -149,6 +149,465 @@
     .plan-stop-marker.is-hover > div { transform: scale(1.12); box-shadow: 0 0 0 3px rgba(59,130,246,.3); }
   }
   #plan-day-map { position: absolute; inset: 0; }
+
+  /* ════════════════════════════════════════════
+     Mobile + Tablet adaptive UI (DESIGN-SPEC.md)
+     All rules scoped <1024px. Desktop frozen.
+     ════════════════════════════════════════════ */
+  :root {
+    /* Colors */
+    --c-bg: #FFFFFF;
+    --c-bg-muted: #F5F6F8;
+    --c-bg-page: #F1F5F9;
+    --c-text: #0F172A;
+    --c-text-muted: #64748B;
+    --c-text-micro: #94A3B8;
+    --c-border: #E2E8F0;
+    --c-accent: #E5384A;
+    --c-accent-dark: #C81E32;
+    --c-cta: #2F8BFF;
+    --c-cta-text: #FFFFFF;
+    --c-promo: #F4A14A;
+    --c-promo-text: #7A3A00;
+    --c-fab-add: #E8A33D;
+    --c-fab-toggle: #0F172A;
+    --c-success: #10B981;
+    /* Shadows */
+    --shadow-card:    0 1px 2px rgba(0,0,0,.04), 0 2px 8px rgba(0,0,0,.04);
+    --shadow-sheet:   0 -8px 24px rgba(0,0,0,.10), 0 -1px 0 rgba(0,0,0,.04);
+    --shadow-fab:     0 6px 16px rgba(0,0,0,.18), 0 2px 4px rgba(0,0,0,.10);
+    --shadow-appbar:  0 1px 0 rgba(0,0,0,.06);
+    /* Sheet snap heights (used at mobile breakpoint) */
+    --sheet-h-peek: calc(88px + env(safe-area-inset-bottom, 0px));
+    --sheet-h-half: 50dvh;
+    --sheet-h-full: 92dvh;
+  }
+
+  /* Hide the mobile app bar by default; mobile media query reveals it. */
+  .mobile-app-bar { display: none; }
+  /* Hide the mobile day strip by default. */
+  .day-strip-mobile { display: none; }
+  /* Hide sheet handle/peek/cta-row/FABs by default. */
+  .plan-sheet-handle,
+  .plan-sheet-peek,
+  .plan-sheet-cta-row,
+  .plan-fab-cluster,
+  .plan-locate-fab,
+  .plan-reroute-fab { display: none; }
+  /* Hide tour pill bar by default. */
+  .tour-pill-bar { display: none; }
+
+  /* ────────── MOBILE  (<768px) ────────── */
+  @media (max-width: 767px) {
+    /* Hide desktop header on mobile */
+    .app-header { display: none; }
+
+    /* Mobile app bar 56px sticky top */
+    .mobile-app-bar {
+      display: flex;
+      position: sticky; top: 0; z-index: 1001;
+      background: var(--c-bg);
+      box-shadow: var(--shadow-appbar);
+      padding: env(safe-area-inset-top, 0px) 12px 0 12px;
+      height: calc(56px + env(safe-area-inset-top, 0px));
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .mobile-app-bar .mab-left,
+    .mobile-app-bar .mab-right {
+      display: flex; align-items: center; gap: 4px;
+    }
+    .mobile-app-bar button {
+      width: 40px; height: 40px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 9999px; color: var(--c-text); font-size: 20px; line-height: 1;
+      background: transparent;
+    }
+    .mobile-app-bar button:active { background: var(--c-bg-muted); }
+    .mab-publish {
+      width: auto !important; height: auto !important;
+      padding: 6px 18px !important;
+      border: 1.5px solid var(--c-text);
+      border-radius: 9999px;
+      font-size: 14px; font-weight: 600; color: var(--c-text);
+      opacity: .55;
+      cursor: not-allowed;
+    }
+
+    /* Plan tab section — full viewport, top inset by app bar (overrides inline style="top:56px") */
+    #tab-plan[style] {
+      top: calc(56px + env(safe-area-inset-top, 0px)) !important;
+    }
+
+    /* Hide desktop floating day pills + food toggle inside plan map */
+    #plan-day-tabs { display: none !important; }
+    #tab-plan .absolute.top-4.right-4 { display: none !important; }
+    /* Hide desktop hero card on mobile (info lives in sheet) */
+    #plan-hero-card { display: none !important; }
+
+    /* Mobile day-tab strip 44px sticky */
+    .day-strip-mobile {
+      display: flex;
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 44px;
+      background: var(--c-bg);
+      border-bottom: 1px solid var(--c-border);
+      z-index: 1001;
+      align-items: stretch;
+    }
+    .day-strip-mobile .dsm-scroll {
+      flex: 1; min-width: 0;
+      display: flex; gap: 4px;
+      overflow-x: auto; padding: 0 12px;
+      scroll-snap-type: x proximity;
+      align-items: center;
+    }
+    .day-strip-mobile .dsm-pill {
+      padding: 10px 16px;
+      font-size: 15px; font-weight: 600;
+      color: var(--c-text-micro);
+      white-space: nowrap;
+      border-bottom: 2px solid transparent;
+      line-height: 1;
+      background: transparent;
+      flex-shrink: 0;
+      scroll-snap-align: start;
+    }
+    .day-strip-mobile .dsm-pill.active {
+      color: var(--c-text);
+      border-bottom-color: var(--c-text);
+    }
+    .day-strip-mobile .dsm-end {
+      display: flex; align-items: center; gap: 6px;
+      padding: 0 8px 0 4px;
+      flex-shrink: 0;
+    }
+    .day-strip-mobile .dsm-end button {
+      width: 32px; height: 32px;
+      border-radius: 9999px;
+      background: var(--c-bg-muted);
+      border: 1px solid var(--c-border);
+      font-size: 14px; font-weight: 700;
+      color: var(--c-text);
+      display: flex; align-items: center; justify-content: center;
+      cursor: not-allowed;
+      opacity: .55;
+    }
+
+    /* Map: positioned under day strip; sheet overlays */
+    #tab-plan .absolute.inset-0.flex { flex-direction: column; }
+    #tab-plan .relative.flex-1.min-w-0.bg-slate-200 {
+      position: absolute !important;
+      top: 0; left: 0; right: 0; bottom: 0;
+    }
+    #plan-day-map {
+      position: absolute !important;
+      top: 44px; bottom: 0; left: 0; right: 0;
+    }
+    /* Hide Leaflet zoom control on mobile per spec §3 R10 */
+    .leaflet-bottom.leaflet-right { display: none !important; }
+
+    /* Right-panel desktop wrapper → becomes plan-sheet on mobile */
+    .plan-sheet-shell {
+      position: fixed !important;
+      left: 0; right: 0; bottom: 0;
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      height: var(--sheet-h-full);
+      border-left: 0 !important;
+      border-top-left-radius: 20px;
+      border-top-right-radius: 20px;
+      background: var(--c-bg);
+      box-shadow: var(--shadow-sheet);
+      /* BUG-1 fix: Leaflet panes use z-index 200–700; sheet must sit above them. */
+      z-index: 1000;
+      transform: translateY(calc(var(--sheet-h-full) - var(--sheet-h-half)));
+      will-change: transform;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .plan-sheet-shell.is-snapping {
+      transition: transform 280ms cubic-bezier(.32,.72,0,1);
+    }
+    .plan-sheet-shell.sheet--peek {
+      transform: translateY(calc(var(--sheet-h-full) - var(--sheet-h-peek)));
+    }
+    .plan-sheet-shell.sheet--half {
+      transform: translateY(calc(var(--sheet-h-full) - var(--sheet-h-half)));
+    }
+    .plan-sheet-shell.sheet--full {
+      transform: translateY(8dvh);
+    }
+    /* Drag handle visible at top 32px */
+    .plan-sheet-handle {
+      display: flex; flex-direction: column; align-items: center;
+      padding: 8px 0 4px 0;
+      flex-shrink: 0;
+      height: 32px;
+      box-sizing: border-box;
+      touch-action: none;
+      cursor: grab;
+      user-select: none;
+    }
+    .plan-sheet-handle:active { cursor: grabbing; }
+    .plan-sheet-handle .psh-pill {
+      width: 36px; height: 4px;
+      border-radius: 9999px;
+      background: var(--c-text-micro);
+      opacity: .5;
+    }
+    .plan-sheet-handle .psh-chev {
+      font-size: 12px;
+      color: var(--c-text-micro);
+      line-height: 1;
+      margin-top: 6px;
+    }
+
+    /* Peek strip — visible only in peek state */
+    .plan-sheet-peek {
+      display: none;
+      gap: 8px;
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      align-items: stretch;
+    }
+    .plan-sheet-shell.sheet--peek .plan-sheet-peek { display: flex; }
+    .plan-sheet-shell.sheet--peek #plan-panel-header,
+    .plan-sheet-shell.sheet--peek #plan-day-header,
+    .plan-sheet-shell.sheet--peek .ptab-row,
+    .plan-sheet-shell.sheet--peek .plan-sheet-cta-row,
+    .plan-sheet-shell.sheet--peek #plan-day-content {
+      display: none !important;
+    }
+    .psp-day-pill {
+      flex-shrink: 0;
+      width: 88px; height: 64px;
+      background: #FFE4E6;
+      border: 1.5px solid var(--c-accent);
+      border-radius: 14px;
+      padding: 6px 8px;
+      display: flex; flex-direction: column; justify-content: center;
+    }
+    .psp-day-pill .psp-d1 { font-size: 13px; font-weight: 700; color: var(--c-accent); line-height: 1.1; }
+    .psp-day-pill .psp-d2 { font-size: 11px; font-weight: 500; color: var(--c-text-muted); line-height: 1.2; }
+    .psp-chev { display: flex; align-items: center; font-size: 14px; color: var(--c-text-micro); width: 16px; flex-shrink: 0; }
+    .psp-stop {
+      flex-shrink: 0;
+      width: 132px; height: 64px;
+      position: relative;
+      background: var(--c-bg-muted);
+      border-radius: 14px;
+      padding: 8px 10px 8px 14px;
+      display: flex; align-items: center;
+      scroll-snap-align: start;
+      cursor: pointer;
+    }
+    .psp-stop .psp-name {
+      font-size: 13px; font-weight: 600; color: var(--c-text);
+      line-height: 1.25;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .psp-badge {
+      position: absolute; top: -4px; left: -2px;
+      width: 24px; height: 26px;
+      background: var(--c-accent);
+      color: #fff;
+      font-size: 13px; font-weight: 800;
+      display: flex; align-items: center; justify-content: center;
+      clip-path: polygon(0 0, 100% 0, 100% 75%, 75% 100%, 0 100%);
+      box-shadow: 0 2px 4px rgba(229,56,74,.35);
+    }
+    .psp-transit {
+      flex-shrink: 0;
+      width: 80px; height: 64px;
+      background: transparent;
+      border-radius: 14px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 2px;
+      cursor: default;
+    }
+    .psp-transit .psp-t-icon { font-size: 16px; line-height: 1; }
+    .psp-transit .psp-t-dur { font-size: 12px; font-weight: 600; color: var(--c-text); }
+
+    /* Sheet body: panel header, day header, sub-tabs, content scroll */
+    .plan-sheet-shell #plan-panel-header,
+    .plan-sheet-shell #plan-day-header {
+      flex-shrink: 0;
+    }
+    .plan-sheet-shell .ptab-row {
+      overflow-x: auto; flex-shrink: 0;
+    }
+    .plan-sheet-shell .ptab-row::-webkit-scrollbar { display: none; }
+    .plan-sheet-shell .ptab-row { scrollbar-width: none; }
+
+    .plan-sheet-cta-row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px;
+      padding: 0 16px 12px 16px;
+      flex-shrink: 0;
+    }
+    .plan-sheet-cta-row .pscr-filter {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 8px 14px;
+      border-radius: 9999px;
+      border: 1px solid var(--c-border);
+      background: var(--c-bg);
+      font-size: 14px; font-weight: 600;
+      color: var(--c-text);
+    }
+    .plan-sheet-cta-row .pscr-cta {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 10px 18px;
+      border-radius: 9999px;
+      background: var(--c-cta);
+      color: var(--c-cta-text);
+      font-size: 14px; font-weight: 700;
+      opacity: .55;
+      cursor: not-allowed;
+    }
+
+    /* Plan stop card: mobile style overrides desktop look inside sheet */
+    .plan-sheet-shell #plan-day-content {
+      flex: 1 1 auto; min-height: 0;
+      overflow-y: auto;
+      padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* FAB cluster */
+    .plan-fab-cluster {
+      display: flex; flex-direction: column;
+      gap: 12px;
+      position: fixed;
+      right: calc(16px + env(safe-area-inset-right, 0px));
+      bottom: calc(var(--sheet-current-h, var(--sheet-h-half)) + 16px);
+      /* BUG-4 fix: keep cluster painted above the Leaflet panes + sheet. */
+      z-index: 1001;
+      transition: bottom 280ms cubic-bezier(.32,.72,0,1);
+    }
+    .plan-fab-add {
+      width: 56px; height: 56px;
+      border-radius: 9999px;
+      background: var(--c-fab-add);
+      color: #fff; font-size: 28px; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: var(--shadow-fab);
+      opacity: .65;
+      cursor: not-allowed;
+    }
+    .plan-fab-toggle {
+      width: 48px; height: 56px;
+      border-radius: 9999px;
+      background: var(--c-fab-toggle);
+      color: #fff;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 4px;
+      box-shadow: var(--shadow-fab);
+    }
+    .plan-fab-toggle .pft-top,
+    .plan-fab-toggle .pft-bot { font-size: 18px; line-height: 1; }
+    .plan-fab-toggle .pft-div {
+      width: 22px; height: 1px;
+      background: rgba(255,255,255,.3);
+    }
+    /* In full state hide the + FAB; keep map/list FAB floating outside top edge */
+    .plan-sheet-shell.sheet--full ~ .plan-fab-cluster .plan-fab-add { display: none; }
+    .plan-sheet-shell.sheet--full ~ .plan-fab-cluster {
+      /* Sit just below the 56px mobile app bar with a 16px gap,
+         not above the sheet's top edge (which would overlap the app bar on short devices like iPhone SE 667px). */
+      bottom: calc(92dvh - 56px - 16px);
+    }
+
+    /* Locate / reroute FABs (hidden when sheet full) */
+    .plan-locate-fab,
+    .plan-reroute-fab {
+      display: flex;
+      position: fixed;
+      bottom: calc(var(--sheet-current-h, var(--sheet-h-half)) + 16px);
+      width: 44px; height: 44px;
+      border-radius: 9999px;
+      background: var(--c-bg);
+      box-shadow: var(--shadow-card);
+      align-items: center; justify-content: center;
+      /* BUG-1 fix: stay above sheet (z=1000) and Leaflet panes. */
+      z-index: 1001;
+      transition: bottom 280ms cubic-bezier(.32,.72,0,1);
+    }
+    .plan-locate-fab { left: calc(16px + env(safe-area-inset-left, 0px)); color: var(--c-cta); font-size: 18px; }
+    .plan-reroute-fab { right: calc(16px + env(safe-area-inset-right, 0px)); font-size: 16px; }
+    .plan-sheet-shell.sheet--full ~ .plan-locate-fab,
+    .plan-sheet-shell.sheet--full ~ .plan-reroute-fab { display: none; }
+
+    /* ── Tour tab mobile ── */
+    main.max-w-5xl { max-width: 100% !important; padding-left: 12px; padding-right: 12px; }
+    #tab-tour .flex.gap-4.items-start { flex-direction: column; gap: 12px; }
+    #tab-tour aside.w-56 { width: 100%; flex-direction: column; gap: 12px; }
+    .tour-pill-bar {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 8px 12px;
+      background: var(--c-bg);
+      border-bottom: 1px solid var(--c-border);
+      margin: 0 -12px 8px -12px;
+    }
+    .tour-pill {
+      flex-shrink: 0;
+      height: 36px;
+      padding: 0 14px;
+      border-radius: 9999px;
+      background: var(--c-bg-muted);
+      border: 1px solid var(--c-border);
+      font-size: 13px; font-weight: 600;
+      color: var(--c-text);
+      display: inline-flex; align-items: center; gap: 6px;
+      white-space: nowrap;
+    }
+    /* Hide desktop quick-actions card on mobile (replaced by pill bar) */
+    #tab-tour aside .quick-btn { display: none !important; }
+    #tab-tour aside > div:first-child h3:first-child { display: none; }
+    #tab-tour aside > div:first-child .grid { display: none; }
+
+    /* ── Memory tab mobile ── */
+    #journey-map { height: 50dvh; border-radius: 0; }
+    #tab-memory .flex.gap-4.items-start { flex-direction: column; gap: 12px; }
+    #tab-memory aside.w-60 { width: 100%; }
+    #tab-memory .bg-white.rounded-2xl.shadow-sm.p-4:has(#journey-map) {
+      margin-left: -12px; margin-right: -12px;
+      border-radius: 0;
+      padding-left: 0; padding-right: 0;
+    }
+  }
+
+  /* BUG-2 fix: ensure Plan-only FABs never leak to Tour/Memory tabs at any width.
+     `.hidden` on #tab-plan should already hide descendants, but FABs use position:fixed
+     which in some browsers + stacking-context combinations can paint stale. Explicit. */
+  #tab-plan.hidden .plan-fab-cluster,
+  #tab-plan.hidden .plan-locate-fab,
+  #tab-plan.hidden .plan-reroute-fab { display: none !important; }
+
+  /* ────────── TABLET  (768–1023px) ────────── */
+  @media (min-width: 768px) and (max-width: 1023px) {
+    /* Plan tab: keep two-column, but narrow right panel; sheet disabled. */
+    #tab-plan .bg-white.border-l.border-slate-200 {
+      width: 320px !important;
+      min-width: 280px !important;
+      max-width: 320px !important;
+    }
+    /* BUG-2 fix: FABs are mobile-only — explicitly hidden at tablet. */
+    .plan-fab-cluster,
+    .plan-locate-fab,
+    .plan-reroute-fab { display: none !important; }
+    /* Tour aside narrower */
+    #tab-tour aside.w-56 { width: 200px !important; }
+    /* Memory aside narrower */
+    #tab-memory aside.w-60 { width: 220px !important; }
+  }
 </style>
 </head>
 <body class="bg-slate-100 min-h-screen">
@@ -192,7 +651,20 @@
   <button onclick="resendVerify()" class="ml-2 underline hover:text-amber-700">resend</button>
 </div>
 
-<!-- ──────────────── Header ──────────────── -->
+<!-- ──────────────── Mobile App Bar (<768px) ──────────────── -->
+<header class="mobile-app-bar">
+  <div class="mab-left">
+    <button onclick="toggleTripPicker(event)" title="Trips" aria-label="Trips">‹</button>
+  </div>
+  <button class="mab-publish" disabled title="Coming soon">Publish</button>
+  <div class="mab-right">
+    <button disabled title="Coming soon" aria-label="Search">🔍</button>
+    <button onclick="toggleTripPicker(event)" title="Settings" aria-label="Settings">⚙</button>
+    <button onclick="logout()" title="Log out" aria-label="Log out">⏻</button>
+  </div>
+</header>
+
+<!-- ──────────────── Header (desktop + tablet) ──────────────── -->
 <header class="app-header sticky top-0 z-30 shadow-sm">
   <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
     <!-- Logo + breadcrumb -->
@@ -250,17 +722,49 @@
       </div>
       <!-- Floating hero card — bottom left -->
       <div id="plan-hero-card" class="absolute bottom-6 left-4 z-[1000]"></div>
+      <!-- Mobile-only sticky day-tab strip (renderPlanDayTabs writes both this and the floating one) -->
+      <div class="day-strip-mobile">
+        <div id="plan-day-strip-mobile-scroll" class="dsm-scroll"></div>
+        <div class="dsm-end">
+          <button disabled title="Coming soon">+</button>
+          <button disabled title="Coming soon">−</button>
+        </div>
+      </div>
     </div>
-    <!-- Right: stop list panel -->
-    <div class="bg-white border-l border-slate-200 flex flex-col shadow-xl flex-shrink-0 overflow-hidden" style="width:38%;min-width:320px;max-width:520px">
+    <!-- Right: stop list panel (becomes bottom sheet at <768px) -->
+    <div class="plan-sheet-shell bg-white border-l border-slate-200 flex flex-col shadow-xl flex-shrink-0 overflow-hidden" style="width:38%;min-width:320px;max-width:520px">
+      <!-- Drag handle (mobile only via CSS) -->
+      <div class="plan-sheet-handle" id="plan-sheet-handle">
+        <div class="psh-pill"></div>
+        <div class="psh-chev">▾</div>
+      </div>
+      <!-- Peek strip (mobile-only DOM target; CSS hides except in sheet--peek) -->
+      <div id="plan-sheet-peek" class="plan-sheet-peek"></div>
       <div id="plan-panel-header" class="px-5 pt-4 pb-3 border-b border-slate-100 flex-shrink-0"></div>
       <div id="plan-day-header" class="px-5 py-3 border-b border-slate-100 flex-shrink-0"></div>
-      <div class="flex border-b border-slate-100 flex-shrink-0">
+      <div class="flex border-b border-slate-100 flex-shrink-0 ptab-row">
         <button onclick="setPlanPanelTab('itinerary')" id="ptab-itinerary" class="ptab active">Itinerary</button>
         <button onclick="setPlanPanelTab('docs')" id="ptab-docs" class="ptab">Docs</button>
         <button onclick="setPlanPanelTab('food')" id="ptab-food" class="ptab">Food</button>
       </div>
+      <!-- Mobile Auto-sort CTA row (visible only on mobile via CSS) -->
+      <div class="plan-sheet-cta-row">
+        <button class="pscr-filter" type="button">🚌 Transit ▾</button>
+        <button class="pscr-cta" type="button" disabled title="Coming soon">≡⚡ Auto-sort</button>
+      </div>
       <div id="plan-day-content" class="flex-1 overflow-y-auto py-2"></div>
+    </div>
+    <!-- Floating locate / reroute FABs (mobile only via CSS) -->
+    <button class="plan-locate-fab" type="button" title="Locate me" aria-label="Locate me">◎</button>
+    <button class="plan-reroute-fab" type="button" title="Reroute" aria-label="Reroute">🔀</button>
+    <!-- FAB cluster (mobile only via CSS) -->
+    <div class="plan-fab-cluster">
+      <button class="plan-fab-add" disabled title="Coming soon" aria-label="Add stop">+</button>
+      <button class="plan-fab-toggle" type="button" onclick="sheetTogglePeekFull()" aria-label="Toggle map / list">
+        <span class="pft-top">🗺</span>
+        <span class="pft-div"></span>
+        <span class="pft-bot">≡</span>
+      </button>
     </div>
   </div>
 </section>
@@ -277,6 +781,15 @@
         <span class="text-xs text-slate-400" id="tour-status-summary"></span>
       </div>
       <div id="day-strip" class="flex gap-2 overflow-x-auto scroll-hide pb-1"></div>
+    </div>
+
+    <!-- Mobile-only quick-action pill bar (replaces sidebar quick actions) -->
+    <div class="tour-pill-bar scroll-hide">
+      <button class="tour-pill" onclick="openModal('cheapeats')"><span>🍴</span>Cheap eats</button>
+      <button class="tour-pill" onclick="openModal('phrasebook')"><span>🗣</span>Phrases</button>
+      <button class="tour-pill" onclick="openModal('washroom')"><span>🚻</span>Washroom</button>
+      <button class="tour-pill" onclick="openModal('currency')"><span>💱</span>Currency</button>
+      <button class="tour-pill" onclick="openModal('weather')"><span>☂</span>Weather</button>
     </div>
 
     <!-- Stops + quick sidebar -->
@@ -696,7 +1209,13 @@ function setTab(name) {
     btn.classList.toggle("inactive", t !== name);
   });
   if (name === "memory") setTimeout(initMap, 50);
-  if (name === "plan") setTimeout(() => { if (planMap) planMap.invalidateSize(); }, 60);
+  if (name === "plan") setTimeout(() => {
+    if (planMap) planMap.invalidateSize();
+    if (sheetGetMode() === "mobile") {
+      initPlanSheet();
+      sheetSnap("half");
+    }
+  }, 60);
 }
 
 /* ════════════════════════════════════════════
@@ -727,6 +1246,12 @@ function renderPlan() {
   renderPlanDayHeader(selectedPlanDay);
   renderPlanHeroCard(selectedPlanDay);
   setPlanPanelTab("itinerary");
+  // Mobile: one-time wire the bottom-sheet drag handlers.
+  if (sheetGetMode() === "mobile") initPlanSheet();
+  // BUG-3 fix: re-route through selectPlanDay so the desktop floating pills,
+  // mobile day-strip-mobile, and sheet content stay locked to the same day.
+  // Both day-tab containers exist by now; selectPlanDay updates them all.
+  selectPlanDay(selectedPlanDay);
 }
 
 function renderPlanDayHeader(n) {
@@ -775,19 +1300,30 @@ function renderPlanHeroCard(n) {
 
 function renderPlanDayTabs() {
   const el = document.getElementById("plan-day-tabs");
-  if (!el) return;
-  el.innerHTML = TRIP.days.map(d => {
-    const shortDate = d.date.split(" ").slice(0, 2).join(" ");
-    const checked = ((STATE && STATE.check_ins[d.n]) || []).length;
-    const total = d.stops.length;
-    const badge = checked > 0
-      ? `<span style="font-size:9px;margin-left:5px;padding:1px 5px;border-radius:6px;background:${checked === total ? '#10b981' : 'rgba(245,158,11,.85)'};color:#fff;font-weight:700">${checked}/${total}</span>`
-      : "";
-    return `
-      <button onclick="selectPlanDay(${d.n})" class="plan-day-pill ${d.n === selectedPlanDay ? "active" : ""}">
-        <span style="font-size:10px;opacity:.65;margin-right:4px">D${d.n}</span>${shortDate}${badge}
-      </button>`;
-  }).join("");
+  if (el) {
+    el.innerHTML = TRIP.days.map(d => {
+      const shortDate = d.date.split(" ").slice(0, 2).join(" ");
+      const checked = ((STATE && STATE.check_ins[d.n]) || []).length;
+      const total = d.stops.length;
+      const badge = checked > 0
+        ? `<span style="font-size:9px;margin-left:5px;padding:1px 5px;border-radius:6px;background:${checked === total ? '#10b981' : 'rgba(245,158,11,.85)'};color:#fff;font-weight:700">${checked}/${total}</span>`
+        : "";
+      return `
+        <button onclick="selectPlanDay(${d.n})" class="plan-day-pill ${d.n === selectedPlanDay ? "active" : ""}">
+          <span style="font-size:10px;opacity:.65;margin-right:4px">D${d.n}</span>${shortDate}${badge}
+        </button>`;
+    }).join("");
+  }
+  // Mobile day strip — same handler, different visual pattern (text + underline).
+  const m = document.getElementById("plan-day-strip-mobile-scroll");
+  if (m) {
+    const overviewActive = selectedPlanDay === 0;
+    const overview = `<button class="dsm-pill ${overviewActive ? "active" : ""}" onclick="selectPlanDay(${TRIP.days[0]?.n || 1})">Overview</button>`;
+    const days = TRIP.days.map(d => `
+      <button class="dsm-pill ${d.n === selectedPlanDay ? "active" : ""}" onclick="selectPlanDay(${d.n})">Day ${d.n}</button>
+    `).join("");
+    m.innerHTML = overview + days;
+  }
 }
 
 function selectPlanDay(n) {
@@ -798,6 +1334,8 @@ function selectPlanDay(n) {
   renderPlanDayHeader(n);
   renderPlanHeroCard(n);
   if (currentPlanTab === "itinerary") renderPlanDayContent(n);
+  // Mobile: reset sheet to half so user sees the day list and map context.
+  if (sheetGetMode() === "mobile") sheetSnap("half");
 }
 
 /* Pulse marker on list-card hover. Skipped on touch via media query in CSS. */
@@ -808,8 +1346,182 @@ function hoverStop(idx, on) {
   if (el) el.classList.toggle("is-hover", !!on);
 }
 
-/* Keyboard nav — only active when Plan tab visible and focus isn't in an input/textarea/modal. */
+/* ════════════════════════════════════════════
+   Bottom sheet (mobile <768px) — Plan tab
+   3 snap points: peek 88px / half 50dvh / full 92dvh.
+   Pure transform; CSS class on .plan-sheet-shell is source of truth.
+   ════════════════════════════════════════════ */
+let _sheetState = "half";
+let _sheetDrag = null;
+let _sheetInited = false;
+
+function sheetGetMode() {
+  if (typeof window === "undefined") return "desktop";
+  if (window.matchMedia("(min-width: 1024px)").matches) return "desktop";
+  if (window.matchMedia("(min-width: 768px)").matches) return "tablet";
+  return "mobile";
+}
+
+/* Snap heights resolved at call time from CSS custom properties — keeps dvh + safe-area dynamic. */
+function _resolveSnapPx(state) {
+  const vh = window.innerHeight || document.documentElement.clientHeight || 1;
+  if (state === "peek") {
+    // 88px + safe-area-inset-bottom (we approximate inset via CSS var lookup; fallback 0)
+    return 88;
+  }
+  if (state === "half") return Math.round(vh * 0.50);
+  if (state === "full") return Math.round(vh * 0.92);
+  return Math.round(vh * 0.50);
+}
+
+function sheetCurrentHeight() {
+  return _resolveSnapPx(_sheetState);
+}
+
+function _updateSheetAnchorVar() {
+  // Push the active snap height into a CSS var so FABs anchor cleanly.
+  const px = sheetCurrentHeight();
+  document.documentElement.style.setProperty("--sheet-current-h", px + "px");
+}
+
+function sheetSnap(state) {
+  if (!["peek", "half", "full"].includes(state)) return;
+  const sheet = document.querySelector(".plan-sheet-shell");
+  if (!sheet) return;
+  _sheetState = state;
+  sheet.classList.add("is-snapping");
+  sheet.classList.remove("sheet--peek", "sheet--half", "sheet--full");
+  sheet.classList.add("sheet--" + state);
+  // Inline transform cleared so CSS class takes over.
+  sheet.style.transform = "";
+  _updateSheetAnchorVar();
+  const onEnd = () => {
+    sheet.classList.remove("is-snapping");
+    sheet.removeEventListener("transitionend", onEnd);
+  };
+  sheet.addEventListener("transitionend", onEnd);
+  // Safety: clear is-snapping after 400ms regardless, and detach listener
+  // in case transitionend never fires (no visual delta, re-snap mid-transition).
+  setTimeout(() => {
+    sheet.classList.remove("is-snapping");
+    sheet.removeEventListener("transitionend", onEnd);
+  }, 400);
+}
+
+function sheetTogglePeekFull() {
+  if (_sheetState === "full") sheetSnap("peek");
+  else sheetSnap("full");
+}
+
+function _sheetSnapHeights() {
+  return {
+    peek: _resolveSnapPx("peek"),
+    half: _resolveSnapPx("half"),
+    full: _resolveSnapPx("full"),
+  };
+}
+
+function _sheetTranslateForHeight(h) {
+  // sheet box height = full; translateY moves it down so visible height = h.
+  const full = _resolveSnapPx("full");
+  return Math.max(0, full - h);
+}
+
+function _sheetOnPointerDown(ev) {
+  if (sheetGetMode() !== "mobile") return;
+  const sheet = document.querySelector(".plan-sheet-shell");
+  if (!sheet) return;
+  // Cancel any in-flight snap.
+  sheet.classList.remove("is-snapping");
+  const h0 = _resolveSnapPx(_sheetState);
+  _sheetDrag = { y0: ev.clientY, h0, lastY: ev.clientY, lastT: performance.now() };
+  try { ev.currentTarget.setPointerCapture && ev.currentTarget.setPointerCapture(ev.pointerId); } catch (_) {}
+  ev.preventDefault();
+}
+
+function _sheetOnPointerMove(ev) {
+  if (!_sheetDrag) return;
+  const sheet = document.querySelector(".plan-sheet-shell");
+  if (!sheet) return;
+  const dy = ev.clientY - _sheetDrag.y0;
+  // dy > 0 means dragging down -> height decreases.
+  let targetH = _sheetDrag.h0 - dy;
+  const snaps = _sheetSnapHeights();
+  // Rubber-band beyond bounds.
+  if (targetH > snaps.full) {
+    const over = targetH - snaps.full;
+    targetH = snaps.full + 32 * (1 - Math.exp(-over / 100));
+  } else if (targetH < snaps.peek) {
+    const over = snaps.peek - targetH;
+    targetH = snaps.peek - 32 * (1 - Math.exp(-over / 100));
+  }
+  const translate = _sheetTranslateForHeight(targetH);
+  sheet.style.transform = `translateY(${translate}px)`;
+  _sheetDrag.lastY = ev.clientY;
+  _sheetDrag.lastT = performance.now();
+}
+
+function _sheetOnPointerUp(ev) {
+  if (!_sheetDrag) return;
+  const sheet = document.querySelector(".plan-sheet-shell");
+  const dy = ev.clientY - _sheetDrag.y0;
+  const dt = Math.max(1, performance.now() - _sheetDrag.lastT);
+  // Velocity in px/ms; positive when dragging down (height shrinking).
+  const v = (ev.clientY - _sheetDrag.lastY) / dt;
+  const finalH = _sheetDrag.h0 - dy;
+  const snaps = _sheetSnapHeights();
+  const order = [
+    { name: "peek", h: snaps.peek },
+    { name: "half", h: snaps.half },
+    { name: "full", h: snaps.full },
+  ];
+  let pick = "half";
+  if (Math.abs(v) > 0.5) {
+    // Velocity-driven: step toward direction.
+    const curIdx = order.findIndex(o => o.name === _sheetState);
+    if (v > 0) {
+      // dragging down -> next smaller height
+      pick = order[Math.max(0, curIdx - 1)].name;
+    } else {
+      pick = order[Math.min(order.length - 1, curIdx + 1)].name;
+    }
+  } else {
+    // Nearest by distance.
+    let best = order[0], bestD = Math.abs(finalH - order[0].h);
+    for (const o of order) {
+      const d = Math.abs(finalH - o.h);
+      if (d < bestD) { best = o; bestD = d; }
+    }
+    pick = best.name;
+  }
+  _sheetDrag = null;
+  if (sheet) sheet.style.transform = "";
+  sheetSnap(pick);
+}
+
+function initPlanSheet() {
+  if (_sheetInited) return;
+  const handle = document.getElementById("plan-sheet-handle");
+  if (!handle) return;
+  handle.addEventListener("pointerdown", _sheetOnPointerDown);
+  handle.addEventListener("pointermove", _sheetOnPointerMove);
+  handle.addEventListener("pointerup", _sheetOnPointerUp);
+  handle.addEventListener("pointercancel", _sheetOnPointerUp);
+  // Initial state.
+  sheetSnap("half");
+  // Recompute anchor var on resize (handles rotation + dvh).
+  let _rt;
+  window.addEventListener("resize", () => {
+    clearTimeout(_rt);
+    _rt = setTimeout(_updateSheetAnchorVar, 120);
+  });
+  _sheetInited = true;
+}
+
+/* Keyboard nav — only active when Plan tab visible and focus isn't in an input/textarea/modal.
+   Guarded to desktop only (>=1024px) per DESIGN-SPEC.md §7.5. */
 document.addEventListener("keydown", (ev) => {
+  if (!window.matchMedia("(min-width: 1024px)").matches) return;
   const planVisible = !document.getElementById("tab-plan")?.classList.contains("hidden");
   if (!planVisible || !TRIP) return;
   const modalOpen = !document.getElementById("modal")?.classList.contains("hidden");
@@ -943,6 +1655,21 @@ function selectStop(idx, source) {
   if (card && (source === "map" || source === "key")) {
     if (!card.open) card.open = true;
     requestAnimationFrame(() => card.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+  }
+  // Mobile sheet behavior — snap to half on stop interaction.
+  // For "map" markers when sheet is at peek -> snap to half (leave full alone).
+  if (sheetGetMode() === "mobile") {
+    if (source === "map") {
+      if (_sheetState === "peek") sheetSnap("half");
+      // also flash + scroll card per spec §7.3
+      if (card) {
+        card.classList.add("memory-flash");
+        setTimeout(() => card.classList.remove("memory-flash"), 1100);
+        requestAnimationFrame(() => card.scrollIntoView({ behavior: "smooth", block: "center" }));
+      }
+    } else if (source === "list" || source === "peek" || source === "key") {
+      sheetSnap("half");
+    }
   }
 }
 
@@ -1224,6 +1951,61 @@ function renderPlanDayContent(n) {
   });
 
   el.innerHTML = `<div class="pb-4">${pieces.join("")}</div>`;
+  // Mobile: render parallel peek strip
+  renderPlanDayPeek(n);
+}
+
+/* Build the horizontal peek strip seen at sheet--peek state (mobile only).
+   Same data as the list, compact tap targets. */
+function renderPlanDayPeek(n) {
+  const el = document.getElementById("plan-sheet-peek");
+  if (!el || !TRIP) return;
+  const day = TRIP.days.find(d => d.n === n);
+  if (!day) { el.innerHTML = ""; return; }
+  const shortDate = (day.date || "").split(" ").slice(0, 2).join(" ");
+  const parts = [];
+  parts.push(`
+    <div class="psp-day-pill">
+      <div class="psp-d1">Day ${day.n}</div>
+      <div class="psp-d2">${shortDate}</div>
+    </div>
+    <div class="psp-chev">›</div>
+  `);
+  day.stops.forEach((s, i) => {
+    parts.push(`
+      <div class="psp-stop" onclick="selectStop(${i}, 'peek')">
+        <div class="psp-badge">${i + 1}</div>
+        <div class="psp-name">${s.name}</div>
+      </div>
+    `);
+    if (i < day.stops.length - 1) {
+      const next = day.stops[i + 1];
+      let dur = "";
+      let icon = "🚌";
+      if (next.transit) {
+        const raw = next.transit;
+        if (raw.toLowerCase().includes("walk") || raw.includes("🚶")) icon = "🚶";
+        const m = raw.match(/(\d+)\s*min/i);
+        if (m) {
+          const mins = parseInt(m[1], 10);
+          dur = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
+        }
+      }
+      if (!dur && s.lat && s.lng && next.lat && next.lng) {
+        const mins = walkMinutes(haversineKm(s, next));
+        dur = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
+        icon = "🚶";
+      }
+      if (!dur) dur = "—";
+      parts.push(`
+        <div class="psp-transit">
+          <span class="psp-t-icon">${icon}</span>
+          <span class="psp-t-dur">${dur}</span>
+        </div>
+      `);
+    }
+  });
+  el.innerHTML = parts.join("");
 }
 
 /* ────── Plan panel tabs ────── */

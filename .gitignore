@@ -5,3 +5,7 @@ TourCompanion/server/.venv/
 **/*.pyc
 **/*.pyo
 **/*.pyd
+
+# Large reference assets (kept locally, not versioned)
+*.MP4
+handoff/ref-frames/
