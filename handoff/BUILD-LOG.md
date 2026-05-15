@@ -5,13 +5,32 @@
 
 ## Current Status
 
-**Active step:** — (Step 6 closed; all KGs from Step 1 batch resolved or backend-deferred)
-**Last cleared:** Step 6 — KG-3b Publish flow — 2026-05-15
+**Active step:** — (Step 7 closed; all known gaps resolved)
+**Last cleared:** Step 7 — KG-8 rate limit + KG-9 real 404 — 2026-05-15
 **Pending deploy:** NO (committed locally; no remote configured)
 
 ---
 
 ## Step History
+
+### Step 7 — KG-8 rate limit + KG-9 real 404 — Status: COMPLETE
+*Date: 2026-05-15*
+
+Files changed:
+- `app/config.py` — `rate_public: str = "60/minute"`.
+- `app/routes/trips.py` — added `Request` import; added `limiter`/`settings` imports; decorated `get_public_trip` with `@limiter.limit(settings.rate_public)` and added `request: Request` param (slowapi requirement).
+- `app/main.py` — `serve_public_spa` now takes `db` dependency and returns 404 when slug not found; added `Annotated`/`Depends`/`Session`/`get_db`/`Trip` imports.
+
+Verification (live curl):
+- `GET /p/hrm7ivghPU` → 200 (existing slug).
+- `GET /p/nope` → 404 (invalid slug, no more SPA shell).
+- `GET /api/public/trips/hrm7ivghPU` → 200.
+- `GET /api/public/trips/nope` → 404.
+- Burst test 70 requests in <1s: first 59 → 200, then 429 rate-limited. Limit 60/min per IP holds.
+
+Deploy: committed locally 2026-05-15.
+
+---
 
 ### Step 6 — KG-3b Publish flow — Status: COMPLETE
 *Date: 2026-05-15*
@@ -165,8 +184,8 @@ Deploy: committed locally 2026-05-14. No remote push (no remote configured).
 - **KG-1** — Stop card in sheet uses existing `<details>` markup; spec §3.5.1 literal redesign deferred — logged 2026-05-14. **CLOSED 2026-05-14 (Step 2):** new `.plan-stop-card-m` markup added alongside `<details>`. Mobile shows new card (60×60 thumb + red shield badge + category-icon + time + name + duration + 36×36 nav arrow); transit row between consecutive stops. Desktop unchanged (16/16 details visible, 0/16 mobile cards visible at ≥768px).
 - **KG-2** — Promo banner — logged 2026-05-14. **CLOSED 2026-05-15 (Step 4):** Stop.promo JSON field + Alembic migration + Pydantic + adaptTrip passthrough + mobile orange banner with URL scheme guard. Demo seeded on Vienna Airport.
 - **KG-3** — Auto-sort + `+` FAB + Publish + day `+`/`−` stubs — logged 2026-05-14. **PARTIAL CLOSE 2026-05-14 (Step 3):** Auto-sort + day `+`/`−` wired. **CLOSED 2026-05-15 (Steps 5 + 6):** Add-stop FAB (modal + endpoint + geocode) and Publish flow (slug + public viewer + sanitization) shipped. All four stubs are real.
-- **KG-8** — No rate limit on `/api/public/trips/{slug}` — logged 2026-05-15. Low risk (slug entropy ~60 bits prevents enumeration); revisit if abuse appears.
-- **KG-9** — `/p/<invalid-slug>` serves SPA shell with in-app 404 card instead of 404 HTTP — logged 2026-05-15. Acceptable UX, SPA renders error state.
+- **KG-8** — Rate limit on public route — logged 2026-05-15. **CLOSED 2026-05-15 (Step 7):** slowapi `@limiter.limit("60/minute")` on `get_public_trip`. Burst test confirms 429 after 59 requests.
+- **KG-9** — `/p/<invalid-slug>` 404 — logged 2026-05-15. **CLOSED 2026-05-15 (Step 7):** `serve_public_spa` queries DB and raises 404 if slug not found.
 - **KG-6** — Day +/- race — logged 2026-05-14. **CLOSED 2026-05-15 (Step 4):** try/finally disables button during request.
 - **KG-7** — Auto-sort "+N" notation — logged 2026-05-14. **CLOSED 2026-05-15 (Step 4):** regex `/^(\d{1,2}):(\d{2})(?:\s*\+(\d+))?/` adds `dayOffset * 1440` to sort key.
 - **KG-4** — Visual scratch test at 1280px done via diff-read only — logged 2026-05-14. **CLOSED 2026-05-14:** verified live at 1280×800 in claude-in-chrome during runtime sweep; desktop pixel-identical to baseline.

@@ -2,14 +2,16 @@ import secrets
 from datetime import timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from pydantic import BaseModel
 
 from .. import schemas
 from ..auth import CurrentUser
+from ..config import settings
 from ..db import get_db
+from ..limiter import limiter
 from ..models import Trip, Day, Stop
 
 
@@ -255,7 +257,8 @@ public_router = APIRouter(prefix="/api/public/trips", tags=["public"])
 
 
 @public_router.get("/{slug}", response_model=schemas.TripDetail)
-def get_public_trip(slug: str, db: Annotated[Session, Depends(get_db)]):
+@limiter.limit(settings.rate_public)
+def get_public_trip(request: Request, slug: str, db: Annotated[Session, Depends(get_db)]):
     t = db.query(Trip).filter_by(published_slug=slug).first()
     if not t:
         raise HTTPException(404, "not found")

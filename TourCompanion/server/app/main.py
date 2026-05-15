@@ -9,7 +9,10 @@ logging.basicConfig(level=logging.INFO,
 
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
-from fastapi import FastAPI, HTTPException
+from typing import Annotated
+
+from fastapi import Depends, FastAPI, HTTPException
+from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -18,7 +21,8 @@ from slowapi.middleware import SlowAPIMiddleware
 from slowapi import _rate_limit_exceeded_handler
 
 from .config import settings
-from .db import SessionLocal
+from .db import SessionLocal, get_db
+from .models import Trip
 from .limiter import limiter
 from .routes import auth as auth_routes
 from .routes import trips, tour, journal, streetfood, plan
@@ -78,8 +82,11 @@ frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
 # KG-3b: public share-link viewer. Serve the same SPA shell as "/"; the
 # frontend detects `/p/` in location.pathname and switches to public mode.
 # Registered BEFORE the catch-all StaticFiles mount so it wins.
+# KG-9: return real 404 when slug is unknown instead of serving SPA shell.
 @app.get("/p/{slug}")
-def serve_public_spa(slug: str):
+def serve_public_spa(slug: str, db: Annotated[Session, Depends(get_db)]):
+    if not db.query(Trip).filter_by(published_slug=slug).first():
+        raise HTTPException(404, "trip not found")
     index_html = frontend_dir / "index.html"
     if not index_html.exists():
         raise HTTPException(404, "frontend not built")

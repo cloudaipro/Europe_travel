@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     rate_forgot: str = "3/hour"
     rate_default: str = "100/minute"
     rate_ingest: str = "10/hour"
+    rate_public: str = "60/minute"
 
     # S3-compatible object storage (R2/S3/Backblaze). Empty bucket → local volume.
     s3_bucket: str = ""
