@@ -82,7 +82,8 @@ DAYS = [
     {"n": 1, "date_label": "Mon 18 May",
      "theme": "Vienna arrival → Stephansdom + Hofburg loop", "mode": "Walking", "stops": [
         {"time_label": "09:00", "name": "Vienna Airport (VIE)", "lat": 48.1102, "lng": 16.5697,
-         "address": "1300 Schwechat, Austria", "note": "Pass through · CAT/S7 train to city ~30 min"},
+         "address": "1300 Schwechat, Austria", "note": "Pass through · CAT/S7 train to city ~30 min",
+         "promo": {"label": "Vienna eSIM (demo)", "price": "€19", "url": "https://example.com/esim"}},
         {"time_label": "10:00", "name": "arte Hotel Wien Stadthalle (check-in)", "lat": 48.1985, "lng": 16.3357,
          "address": "Mariahilfer Str., 1150 Wien", "note": "Drop bags · 20 min stay"},
         {"time_label": "10:49", "name": "Fenster Café", "lat": 48.2117, "lng": 16.3735,

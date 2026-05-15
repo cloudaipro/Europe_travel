@@ -25,6 +25,7 @@ def _stop_to_out(s: Stop) -> schemas.StopOut:
         address=s.address, lat=s.lat, lng=s.lng, hours=s.hours, tickets=s.tickets,
         intro=s.intro, highlights=s.highlights or [], transit=s.transit,
         washroom=s.washroom, food=s.food or [], note=s.note,
+        promo=s.promo,
         check_in_count=len(s.check_ins),
         photo_paths=[p.path for p in s.photos],
         voice_transcript=(s.voice_notes[-1].transcript if s.voice_notes else ""),

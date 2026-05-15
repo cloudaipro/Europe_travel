@@ -58,6 +58,7 @@ class StopOut(BaseModel):
     washroom: str
     food: list
     note: str
+    promo: dict | None = None
     check_in_count: int = 0
     photo_paths: list[str] = []
     voice_transcript: str = ""

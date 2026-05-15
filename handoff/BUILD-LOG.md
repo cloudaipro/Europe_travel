@@ -5,13 +5,39 @@
 
 ## Current Status
 
-**Active step:** — (Step 3 closed)
-**Last cleared:** Step 3 — Wire Auto-sort + day add/remove — 2026-05-14
+**Active step:** — (Step 4 closed)
+**Last cleared:** Step 4 — KG-6 race + KG-7 +1 parser + KG-2 promo — 2026-05-15
 **Pending deploy:** NO (committed locally; no remote configured)
 
 ---
 
 ## Step History
+
+### Step 4 — KG-6 race + KG-7 +1 parser + KG-2 promo — Status: COMPLETE
+*Date: 2026-05-15*
+
+Files changed:
+- `app/models.py` — `Stop.promo` JSON nullable column.
+- `app/schemas.py` — `StopOut.promo` Optional[dict].
+- `app/routes/trips.py` — `_stop_to_out` passes promo through.
+- `app/seed.py` + `app/seed_data/vienna_budapest.py` — demo promo on Vienna Airport.
+- `alembic/versions/8e2c011bf237_add_stop_promo.py` — new migration + idempotent op.execute seed.
+- `frontend/index.html` — `esc()` helper, `.plan-promo-m` CSS + render, KG-6 try/finally on +/−, KG-7 "+N" regex parser, `adaptTrip` passes promo + URL scheme guard (https/http only).
+
+Decisions:
+- Promo shape: `{label, price, url}` JSON dict; nullable; mobile-only banner.
+- KG-6: `try/finally` around button.disabled.
+- KG-7: regex captures optional `\+(\d+)` for day offset; `dayOffset * 1440 + minutes` sort key.
+- URL scheme guard: only `^https?://` allowed; otherwise href falls back to `#` (prevents `javascript:` XSS).
+
+Reviewer findings:
+- Richard hit usage limit mid-review; Arch self-reviewed inline.
+- Arch checks: migration idempotent (WHERE promo IS NULL), downgrade drops column, `esc()` on all 3 promo fields, `target="_blank" rel="noopener"`, try/finally correct, regex anchored.
+- Arch live sweep: API returns promo on stop 28 (Vienna Airport); after hard reload, promo banner renders with "DEAL Vienna eSIM (demo) €19 ›" in orange under Vienna Airport card.
+
+Deploy: committed locally 2026-05-15.
+
+---
 
 ### Step 3 — Wire Auto-sort + day add/remove (KG-3 partial close) — Status: COMPLETE
 *Date: 2026-05-14*
@@ -84,10 +110,10 @@ Deploy: committed locally 2026-05-14. No remote push (no remote configured).
 *Logged here instead of fixed. Addressed in a future step.*
 
 - **KG-1** — Stop card in sheet uses existing `<details>` markup; spec §3.5.1 literal redesign deferred — logged 2026-05-14. **CLOSED 2026-05-14 (Step 2):** new `.plan-stop-card-m` markup added alongside `<details>`. Mobile shows new card (60×60 thumb + red shield badge + category-icon + time + name + duration + 36×36 nav arrow); transit row between consecutive stops. Desktop unchanged (16/16 details visible, 0/16 mobile cards visible at ≥768px).
-- **KG-2** — Promo banner markup not emitted (no `stop.promo` field in API) — logged 2026-05-14. **Status: backend-deferred.** CSS slot in place; will activate when API exposes `stop.promo`. No frontend work pending.
+- **KG-2** — Promo banner — logged 2026-05-14. **CLOSED 2026-05-15 (Step 4):** Stop.promo JSON field + Alembic migration + Pydantic + adaptTrip passthrough + mobile orange banner with URL scheme guard. Demo seeded on Vienna Airport.
 - **KG-3** — Auto-sort CTA + `+` FAB + Publish + day `+`/`−` are disabled stubs (no backend) — logged 2026-05-14. **PARTIAL CLOSE 2026-05-14 (Step 3):** Auto-sort + day `+`/`−` wired. Remaining backend-deferred items: orange `+` add-stop FAB (needs new-stop UX) and Publish flow (needs share/access-control UX).
-- **KG-6** — Race condition on `+` day double-tap creates two days. Acceptable; will fix when needed — logged 2026-05-14.
-- **KG-7** — Auto-sort parses `"HH:MM +1"` (next-day timestamps) as plain `HH:MM` minutes-since-midnight, sorting next-day stops to top. Real-world impact minimal (most stops are same-day); fix later if needed — logged 2026-05-14.
+- **KG-6** — Day +/- race — logged 2026-05-14. **CLOSED 2026-05-15 (Step 4):** try/finally disables button during request.
+- **KG-7** — Auto-sort "+N" notation — logged 2026-05-14. **CLOSED 2026-05-15 (Step 4):** regex `/^(\d{1,2}):(\d{2})(?:\s*\+(\d+))?/` adds `dayOffset * 1440` to sort key.
 - **KG-4** — Visual scratch test at 1280px done via diff-read only — logged 2026-05-14. **CLOSED 2026-05-14:** verified live at 1280×800 in claude-in-chrome during runtime sweep; desktop pixel-identical to baseline.
 
 ---

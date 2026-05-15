@@ -51,6 +51,7 @@ def _create_trip_from_seed(db: Session, user: User, mod) -> Trip:
                 washroom=s.get("washroom", ""),
                 food=s.get("food", []),
                 note=s.get("note", ""),
+                promo=s.get("promo"),
             )
             db.add(stop)
             db.flush()

@@ -564,6 +564,43 @@
       margin-left: 2px;
     }
 
+    /* KG-2: orange promo banner under a mobile stop card (DESIGN-SPEC §3.5.1). */
+    .plan-promo-m {
+      display: flex; align-items: center;
+      gap: 8px;
+      margin: 6px 16px 0 76px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: var(--c-promo);
+      text-decoration: none;
+    }
+    .ppm-deal {
+      font-size: 11px; font-weight: 800;
+      color: var(--c-promo-text);
+      background: #fff;
+      padding: 2px 6px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+    .ppm-label {
+      font-size: 13px; font-weight: 600;
+      color: var(--c-promo-text);
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ppm-price {
+      font-size: 14px; font-weight: 800;
+      color: var(--c-promo-text);
+      flex-shrink: 0;
+    }
+    .ppm-chev {
+      font-size: 14px;
+      color: var(--c-promo-text);
+      flex-shrink: 0;
+    }
+
     /* Sheet body: panel header, day header, sub-tabs, content scroll */
     .plan-sheet-shell #plan-panel-header,
     .plan-sheet-shell #plan-day-header {
@@ -1033,6 +1070,9 @@ let currentPlanTab = "itinerary";
 
 const API_BASE = "/api";
 
+/* KG-2: minimal HTML escape for user-typed promo/label strings */
+const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
+
 async function apiCall(path, opts = {}) {
   const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
   if (API_TOKEN) headers["Authorization"] = `Bearer ${API_TOKEN}`;
@@ -1086,6 +1126,7 @@ function adaptTrip(api) {
         lat: s.lat, lng: s.lng, hours: s.hours, tickets: s.tickets, intro: s.intro,
         highlights: s.highlights || [], transit: s.transit, washroom: s.washroom,
         food: s.food || [], note: s.note,
+        promo: s.promo || null,
         _checkin_count: s.check_in_count, _photos: s.photo_paths || [], _voice: s.voice_transcript || "",
       })),
     })),
@@ -1275,9 +1316,14 @@ async function autoSortCurrentDay() {
   const n = selectedPlanDay || 1;
   const day = TRIP.days.find(d => d.n === n) || TRIP.days[n - 1];
   if (!day || !day.stops || day.stops.length < 2) return;
+  // KG-7: recognize "HH:MM +N" so next-day stamps sort after same-day ones.
+  // e.g. "00:24 +1" -> 1440 + 24 = 1464  (sorts after 23:42 = 1422)
   const toMinutes = (t) => {
-    const m = /^(\d{1,2}):(\d{2})/.exec(t || '');
-    return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : Infinity;
+    if (!t) return Infinity;
+    const m = /^(\d{1,2}):(\d{2})(?:\s*\+(\d+))?/.exec(t);
+    if (!m) return Infinity;
+    const dayOffset = m[3] ? parseInt(m[3], 10) : 0;
+    return dayOffset * 1440 + parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
   };
   const sortedIds = [...day.stops]
     .map((s, i) => ({ id: s._stop_id, min: toMinutes(s.time), i }))
@@ -1299,11 +1345,16 @@ async function autoSortCurrentDay() {
 
 async function addDay() {
   if (!TRIP_ID) return;
+  // KG-6: lock the +/− button during the in-flight request so double-taps
+  // can't queue duplicate day adds.
+  const btn = document.querySelector('.dsm-end button[onclick*="addDay"]');
+  if (btn) btn.disabled = true;
   try {
     const detail = await apiCall(`/trips/${TRIP_ID}/days`, { method: 'POST', body: '{}' });
     adaptTrip(detail);
     renderPlan();
   } catch (e) { console.warn('add day failed', e.message); }
+  finally { if (btn) btn.disabled = false; }
 }
 
 async function removeLastDay() {
@@ -1311,6 +1362,9 @@ async function removeLastDay() {
     showSnack("Can't remove the only day");
     return;
   }
+  // KG-6: lock the − button so the user can't fire two deletes in a row.
+  const btn = document.querySelector('.dsm-end button[onclick*="removeLastDay"]');
+  if (btn) btn.disabled = true;
   const lastN = Math.max(...TRIP.days.map(d => d.n));
   try {
     const detail = await apiCall(`/trips/${TRIP_ID}/days/${lastN}`, { method: 'DELETE' });
@@ -1322,7 +1376,7 @@ async function removeLastDay() {
   } catch (e) {
     console.warn('remove day failed', e.message);
     showSnack('Remove day failed');
-  }
+  } finally { if (btn) btn.disabled = false; }
 }
 
 const DAY_STATUS = (n) => {
@@ -2172,6 +2226,20 @@ function renderPlanDayContent(n) {
           aria-label="Open in Google Maps"
           onclick="event.stopPropagation();">↗</a>
       </div>`);
+
+    /* KG-2: orange promo banner (mobile only) — appears under the stop card
+       when the stop carries promo data. Label/price are user-typed, escape them. */
+    if (s.promo && (s.promo.label || s.promo.price)) {
+      const _rawUrl = String(s.promo.url || "");
+      const pUrl = /^https?:\/\//i.test(_rawUrl) ? esc(_rawUrl) : "#";
+      pieces.push(`
+        <a class="plan-promo-m" href="${pUrl}" target="_blank" rel="noopener">
+          <span class="ppm-deal">DEAL</span>
+          <span class="ppm-label">${esc(s.promo.label || "")}</span>
+          <span class="ppm-price">${esc(s.promo.price || "")}</span>
+          <span class="ppm-chev">›</span>
+        </a>`);
+    }
 
     if (i < day.stops.length - 1) {
       const next = day.stops[i + 1];

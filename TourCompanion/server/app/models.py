@@ -1,4 +1,5 @@
 from datetime import datetime, date
+from typing import Optional
 from sqlalchemy import (
     String, Integer, Float, Date, DateTime, ForeignKey, Text, Boolean, JSON
 )
@@ -91,6 +92,7 @@ class Stop(Base):
     washroom: Mapped[str] = mapped_column(Text, default="")
     food: Mapped[list] = mapped_column(JSON, default=list)
     note: Mapped[str] = mapped_column(Text, default="")
+    promo: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     day: Mapped[Day] = relationship(back_populates="stops")
     check_ins: Mapped[list["CheckIn"]] = relationship(back_populates="stop", cascade="all, delete-orphan")

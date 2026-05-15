@@ -1,84 +1,91 @@
-# Architect Brief — Step 3: Wire Auto-sort + Day Add/Remove
+# Architect Brief — Step 4: KG-6 + KG-7 + KG-2
 
 ---
 
-## Step 3 — Wire two of the disabled stubs from Step 1 (KG-3 partial close)
+## Step 4 — Three bundled fixes
 
-### Goal
+### 4.1 — KG-6: race on `+`/`−` day double-tap
 
-Make the **Auto-sort** CTA pill and the **+ / −** day controls in the mobile day-strip do real work. Keep Publish + orange `+` stop FAB as stubs (they need UX decisions beyond this step).
+**Goal:** disable button during in-flight request; re-enable on response (success or error).
 
-### Scope split
+**Frontend only.** In `addDay()` and `removeLastDay()`:
+- Take the triggering button (find via `.dsm-end button[onclick*="addDay"]` and `[onclick*="removeLastDay"]`).
+- Set `btn.disabled = true` at start; `btn.disabled = false` in a `finally` block.
+- Wrap the fetch in `try/finally`.
 
-- **Auto-sort = frontend-only.** Reuse the existing `PUT /api/trips/days/{day_id}/stops/order` endpoint. Frontend sorts the current day's stops by `time_label` ascending, then calls the reorder endpoint with the new order, then refreshes the trip.
-- **Day add = new endpoint.** `POST /api/trips/{trip_id}/days` — appends an empty day with `n = max(n)+1`, `date_label` computed from `trip.start_date + (n-1) days`, `theme = ""`, `mode = ""`. Also extends `trip.end_date` by 1 day.
-- **Day remove = new endpoint.** `DELETE /api/trips/{trip_id}/days/{day_n}` — removes the **last** day only (refuse if `day_n != max(n)` to avoid mid-trip gaps). Cascade deletes stops via existing relationship. Decrements `trip.end_date` by 1 day. Refuse with 400 if only 1 day remains.
+### 4.2 — KG-7: auto-sort `"HH:MM +N"` parser
 
-### Source of truth
+**Goal:** Recognize next-day timestamps. `"00:24 +1"` should sort AFTER `23:42`, not before `09:00`.
 
-- Backend: `TourCompanion/server/app/routes/trips.py` — add 2 endpoints. Reuse `_owned()`, `_trip_to_detail()`. Use `from datetime import timedelta`.
-- Frontend: `TourCompanion/server/frontend/index.html` — wire 3 onclick handlers + add 3 small async functions.
-
-### Decisions (locked)
-
-- **No schema migrations.** Day model already has all needed fields (`n`, `date_label`, `theme`, `mode`). Trip has `end_date` which we update.
-- **No `n` renumbering on day remove.** Since we only allow removing the LAST day, `n` stays gap-free naturally.
-- **No mid-day insertion.** + always appends after the last day.
-- **Auto-sort time parsing.** `time_label` can be "09:00", "9:00", "10:49", or empty. Parse as `HH:MM` to minutes-since-midnight; empty strings sort last. Stable sort.
-- **Confirmation modals: none.** Day remove on the LAST day is recoverable (user can re-add and re-paste stops). Auto-sort is reversible (manual drag-reorder still works). Keep UX fast.
-- **Frontend refresh strategy.** After each mutation, call existing trip-fetch path (`loadTrip(TRIP.id)` or equivalent — grep for it) and re-render via existing `renderPlan()` etc.
-
-### Backend endpoint specs
-
-```
-POST /api/trips/{trip_id}/days
-Body: {}                                    # no body needed
-Response 201: TripDetail (full refreshed trip)
-Errors: 404 (trip not found / not owned)
-
-DELETE /api/trips/{trip_id}/days/{day_n}
-Response 200: TripDetail
-Errors: 404 (trip/day not found), 400 (day_n != max(n)), 400 (only 1 day left)
+**Frontend only.** In `autoSortCurrentDay()`, replace the `toMinutes` parser with:
+```js
+const toMinutes = (t) => {
+  if (!t) return Infinity;
+  const m = /^(\d{1,2}):(\d{2})(?:\s*\+(\d+))?/.exec(t);
+  if (!m) return Infinity;
+  const dayOffset = m[3] ? parseInt(m[3], 10) : 0;
+  return dayOffset * 1440 + parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+};
 ```
 
-Both endpoints use `_owned()` for auth and return `_trip_to_detail()` to give the frontend a fully refreshed trip in one round-trip.
+### 4.3 — KG-2: Stop.promo field + frontend rendering
 
-### Frontend wiring
+**Goal:** Render the orange promo banner per DESIGN-SPEC §3.5.1 inside `.plan-stop-card-m` when a stop carries promo data.
 
-- **Auto-sort CTA pill** — currently `disabled title="Coming soon"`. Remove the disabled attr; add `onclick="autoSortCurrentDay()"`. Implement:
-  - Get current day's stops by `time_label` ascending order.
-  - Call `PUT /api/trips/days/{day_id}/stops/order` with the new `stop_ids` list.
-  - On success, reload trip and re-render Plan tab. Keep current day selected.
-- **`+` day control** — currently `disabled title="Coming soon"`. Wire to `addDay()` async helper that POSTs the new endpoint and reloads.
-- **`−` day control** — wire to `removeLastDay()` — POSTs the DELETE endpoint with `max(n)`. Show a non-blocking `alert()` (existing pattern) if backend returns 400 (only 1 day left).
-- Show a brief loading state on the CTA pill (e.g. opacity 0.6, disabled) during the round-trip. Re-enable after.
+**Data shape (decision locked):**
+```python
+# JSON column, nullable
+promo = {
+    "label": str,    # "Vienna eSIM", "Fiaker tour", etc.
+    "price": str,    # "NT$69", "€1,200" — string keeps currency symbol flexible
+    "url": str,      # optional click-through URL
+}
+```
 
-### Flags — do not guess
+**Backend tasks:**
+1. Add `promo: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)` to `Stop` in `app/models.py`. Use `JSON` from `sqlalchemy` (SQLite supports JSON via TEXT under the hood — confirm by grepping for existing JSON-typed columns; e.g. `highlights` is `JSON`).
+2. Add `promo` field to `StopOut` schema in `app/schemas.py` — `Optional[dict]`.
+3. Update `_stop_to_out()` in `routes/trips.py` to pass through `s.promo`.
+4. Alembic migration: `cd server && ./migrate.sh revision --autogenerate -m "add stop.promo"`. Inspect the generated file — it should add one column. If migrate.sh autogen doesn't produce anything useful (autogen with SQLite + JSON sometimes fails), hand-write the migration body: `op.add_column('stops', sa.Column('promo', sa.JSON, nullable=True))`. Then `./migrate.sh upgrade head`.
+5. Seed one demo promo: in `app/seed_data/budapest.py` or `vienna_budapest.py`, on **one** stop (e.g. Day 1 stop 1 of vienna_budapest), set `promo={"label": "Vienna eSIM (demo)", "price": "€19", "url": "https://example.com/esim"}`. Just so the UI renders something on the demo. Document this in your revision note.
 
-- **Existing trip-reload helper.** Grep frontend for `loadTrip(`, `fetchTrip(`, or the pattern that initially populates `TRIP`. Reuse it. If none, add a minimal `await refreshTrip()` that re-fetches and re-renders.
-- **Stop ID source.** `_stop_to_out()` returns `id`. Frontend `TRIP.days[i].stops[j].id` is the source for the reorder payload.
-- **time_label parse fail.** If `time_label` is unparseable (e.g. "morning"), treat as `Infinity` (sort to end). Don't throw.
-- **End-state of the disabled buttons.** Keep them styled identically (text, colors). Just remove `disabled` and `title="Coming soon"`.
-- **Don't touch Publish.** Stays a stub. Don't touch the orange `+` FAB (add-stop). Stays a stub.
+**Frontend tasks:**
+6. In `renderPlanDayContent()`'s mobile-card emit, after the `.plan-stop-card-m` block (and before the `.plan-transit-row-m` block), emit a `.plan-promo-m` banner row when `s.promo` is truthy:
+   ```html
+   <a class="plan-promo-m" href="${url}" target="_blank" rel="noopener">
+     <span class="ppm-deal">DEAL</span>
+     <span class="ppm-label">${label}</span>
+     <span class="ppm-price">${price}</span>
+     <span class="ppm-chev">›</span>
+   </a>
+   ```
+7. Add CSS for `.plan-promo-m` and children inside the mobile media block. Per DESIGN-SPEC §3.5.1 promo-banner section:
+   - Container: `margin: 6px 16px 0 76px` (indent under thumb), `background: var(--c-promo)`, `border-radius: 10px`, `padding: 8px 12px`, flex row, gap 8, `text-decoration: none`.
+   - `.ppm-deal`: 11px 800 `--c-promo-text`, white pill background `padding: 2px 6px`, `border-radius: 4px`.
+   - `.ppm-label`: 13px 600 `--c-promo-text`, `flex: 1`, truncate (`text-overflow: ellipsis`, `white-space: nowrap`, `overflow: hidden`).
+   - `.ppm-price`: 14px 800 `--c-promo-text`.
+   - `.ppm-chev`: 14px `--c-promo-text`.
+
+### Flags / decisions
+
+- **JSON column on SQLite.** `JSON` type works via SQLAlchemy's `JSON` cross-DB type. Just import `from sqlalchemy import JSON`.
+- **Migration must run automatically on next boot** — `app/main.py` already runs `alembic upgrade head` on lifespan; no manual step needed after the migration file is in place.
+- **Seed promo on a stop owned by the demo user only.** Don't pollute every stop.
+- **HTML-escape promo content.** Use the existing `htmlEsc()` or whatever the codebase uses (grep). Promo `label` is user-typed; don't trust it.
+- **Don't touch existing `<details>` desktop markup.** Promo is mobile-only for this step.
 
 ### Definition of Done
 
-- [ ] `POST /api/trips/{trip_id}/days` added in `routes/trips.py`. Returns full `TripDetail`. 404 on bad trip.
-- [ ] `DELETE /api/trips/{trip_id}/days/{day_n}` added. Returns full `TripDetail`. 404 on bad trip/day, 400 on mid-trip or single-day attempt.
-- [ ] Frontend `autoSortCurrentDay()` wired to Auto-sort pill.
-- [ ] Frontend `addDay()` wired to `+` control.
-- [ ] Frontend `removeLastDay()` wired to `−` control.
-- [ ] Disabled-stub styling cleared on all three controls.
-- [ ] Test in browser: Auto-sort visibly reorders stops; + adds a new day at end of day strip; − removes last day; trip state survives a refresh.
-- [ ] No new console errors at any viewport.
-- [ ] No backend test break (server reload-on-save will surface syntax issues; check uvicorn output).
-- [ ] `handoff/REVIEW-REQUEST.md` appended with Revision 4 — Step 3.
+- [ ] `addDay`/`removeLastDay` disable triggering button during request, re-enable after.
+- [ ] Auto-sort parser handles `"HH:MM +N"` — write a quick assert in a comment if helpful.
+- [ ] `Stop.promo` column added + migration generated + applied.
+- [ ] `StopOut.promo` passes through API.
+- [ ] One demo stop carries a promo; banner renders in the mobile sheet on that stop.
+- [ ] No new console errors. No new backend test failures (server reloads cleanly).
+- [ ] Desktop pixel-frozen (promo banner is mobile-only).
+- [ ] `handoff/REVIEW-REQUEST.md` updated with Revision 5.
 
 ---
 
 ## Builder Plan
-
-Architect pre-approval (scope is tight and decisions locked):
-- [x] **Pre-approved.** Bob: plan + build in one round. If you hit a real ambiguity, halt and write into REVIEW-REQUEST.md.
-
----
+Architect pre-approval: [x] Pre-approved. Plan + build in one round.

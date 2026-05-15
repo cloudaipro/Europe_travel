@@ -441,3 +441,44 @@ Between consecutive stops: `.plan-transit-row-m` with the same connLabel + isWal
 ### Uncertainty
 
 - `trip.end_date` semantics. Brief and current `start_date → end_date` rendering imply `end_date` is the last day inclusive. Add bumps it forward only if the new day falls past it; remove pulls it back by exactly 1 day if `end_date > start_date`. This means if user adds, removes, adds, removes, dates stay consistent. Will not survive heavy reorder schemes — but Step 3 doesn't allow those.
+
+---
+
+## Revision 5 — Step 4 KG-6/7/2 bundled
+
+### Files changed (7)
+
+1. **`server/app/models.py`** — `+2 lines` (import `Optional`, add `Stop.promo: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)`).
+2. **`server/app/schemas.py`** — `+1 line` (`promo: dict | None = None` on `StopOut`).
+3. **`server/app/routes/trips.py`** — `+1 line` (`promo=s.promo` in `_stop_to_out`).
+4. **`server/app/seed.py`** — `+1 line` (`promo=s.get("promo")` in `_create_trip_from_seed`).
+5. **`server/app/seed_data/vienna_budapest.py`** — `+1 line` (demo promo on Day 1 stop 0, "Vienna Airport (VIE)").
+6. **`server/alembic/versions/8e2c011bf237_add_stop_promo.py`** — new migration. Autogen added the column; I appended an `op.execute("UPDATE stops … WHERE name LIKE 'Vienna Airport%'")` so existing demo DBs get the banner without a reseed (seeder is idempotent by trip name).
+7. **`server/frontend/index.html`** — three small additions:
+   - `+2 lines` — top-of-script `const esc = …` HTML-escape helper (no existing helper found).
+   - **KG-7** — `autoSortCurrentDay()` `toMinutes` rewritten to parse `"HH:MM +N"` (next-day offset → `dayOffset * 1440 + h * 60 + m`).
+   - **KG-6** — `addDay()` / `removeLastDay()`: grab `.dsm-end button[onclick*="…"]`, set `btn.disabled = true` at start, restore in a `finally` block.
+   - **KG-2** — `renderPlanDayContent()` emits a `.plan-promo-m` `<a>` block after the `.plan-stop-card-m` (and before `.plan-transit-row-m`) whenever `s.promo` is truthy. Label/price/url all routed through `esc()`.
+   - **KG-2 CSS** — `.plan-promo-m` and `.ppm-deal/.ppm-label/.ppm-price/.ppm-chev` added inside the existing mobile media block right after `.pttrm-chev`. Uses `--c-promo` / `--c-promo-text` (already defined at line 170–171).
+
+### Decisions
+
+- **`promo` as `JSON nullable`, not a join table.** Brief locked the shape. SQLAlchemy `JSON` column-type works across SQLite/Postgres; no Pydantic schema for the nested shape — kept as `dict | None` to stay flexible while we learn the use cases.
+- **Demo seed lives in two places** (seed_data dict + migration `op.execute`). Seed_data covers fresh installs; the migration data-fill covers the existing demo `tour.db` so the reviewer can see the banner immediately without nuking the DB. Bounded to `name LIKE 'Vienna Airport%' AND promo IS NULL`, so it's idempotent and won't clobber a real user's promo.
+- **HTML-escape helper invented inline.** No `htmlEsc` / `escapeHtml` existed in the codebase. Added a 1-liner `esc()` near the top of the script section rather than threading a util module through. Covers `< > & "`; sufficient for `promo.label/price/url` which never end up in attribute contexts other than `href` (we keep the URL as `esc(url)` and rely on `rel="noopener"`).
+- **Mobile-only banner.** Desktop `<details>` markup untouched per brief.
+- **Button-grab via `document.querySelector('.dsm-end button[onclick*="addDay"]')`** rather than passing `event.currentTarget` — keeps the existing `onclick="addDay()"` signature intact. Single `+`/`−` exists in the DOM, so the selector is unambiguous.
+
+### Verification
+
+- `./migrate.sh current` → `8e2c011bf237 (head)` ✅
+- `sqlite3 tour.db "SELECT id, name, promo FROM stops WHERE promo IS NOT NULL"` → returns the Vienna Airport row with the demo JSON ✅
+- `curl -s -H "Authorization: Bearer <token>" http://127.0.0.1:8000/api/trips/2` → Day 1 stop 0 carries `"promo": {"label": "Vienna eSIM (demo)", "price": "€19", "url": "https://example.com/esim"}` ✅
+- `Stop.__table__.c.promo` resolves; ORM imports cleanly under uvicorn `--reload`.
+- KG-7 parser unit-check (mental): `toMinutes("23:42")` → `1422`. `toMinutes("00:24 +1")` → `1440 + 24 = 1464` → sorts after `23:42` ✅
+- KG-6 double-tap: `addDay`/`removeLastDay` buttons now flip `disabled` synchronously before `await apiCall(…)`; second tap inside the in-flight window is a no-op.
+
+### Open questions for reviewer
+
+- Should `promo.url` get a stricter scheme allowlist (only `https:` allowed)? Currently `esc()` neutralises HTML metachars but not e.g. `javascript:` URLs. Demo URL is `https://example.com/esim` so safe, but the open question stands for user-typed promos in a later step.
+- Should `StopOut.promo` use a proper Pydantic submodel (`PromoOut(label, price, url)`) rather than `dict | None`? Cleaner contract, but more code for a shape that's likely to grow (CTA copy, expiry, image, …).

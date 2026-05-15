@@ -1,34 +1,39 @@
-# Review Feedback — Step 3 (Auto-sort + Day Add/Remove)
+# Review Feedback — Step 4 (KG-6 + KG-7 + KG-2)
 Date: 2026-05-14
 Reviewer: Richard
-Verdict: CLEAR
+Verdict: CONDITIONALLY CLEAR
 
 ## Tier 1 findings
-- **Ownership check** — PASS. `add_day` (trips.py:96) and `remove_day` (trips.py:113) both call `_owned(db, user, trip_id)` as their first statement. Returns 404 on missing or non-owner before any mutation.
-- **Cascade integrity** — PASS. `Day.stops` relationship at models.py:73 has `cascade="all, delete-orphan"`. `db.delete(target)` on the Day cascades to its Stops; nested `Stop.check_ins/photos/voice_notes` (models.py:96–98) also cascade. No orphans possible.
-- **400 vs 404 distinction** — PASS. trips.py:114 returns 400 for "only day left", :117 returns 400 for non-last day, :120 returns 404 for missing day. `_owned` covers 404 for missing trip.
-- **No SQL injection / authz bypass** — PASS. `trip_id: int`, `day_n: int` typed path params; all DB access via SQLAlchemy ORM (`db.get`, `db.delete`, attribute writes). No raw SQL anywhere in the new code.
-- **No `await` outside async** — PASS. `refreshTrip`, `autoSortCurrentDay`, `addDay`, `removeLastDay` all declared `async`. Buttons call them via `onclick`; the returned promises are fire-and-forget which is fine.
-- **Auto-sort early-exit** — PASS. index.html:1286 — `if (sortedIds.every((id, i) => id === day.stops[i]._stop_id)) return;` short-circuits before the disable-button + apiCall block.
-- **`selectedPlanDay` consistency** — PASS. Module-scoped `let selectedPlanDay` at index.html:1029. All three new handlers reference it (1275, 1317, 1318). No `_currentPlanDay` references found.
+
+- **(1) Migration idempotency — OK.** `op.execute` is guarded by `WHERE promo IS NULL AND id = (SELECT MIN(id) FROM stops WHERE name LIKE 'Vienna Airport%')`. Alembic version-table also prevents re-runs in practice. No change needed.
+- **(2) `downgrade()` correctness — OK.** `batch_alter_table('stops')` + `drop_column('promo')`. Rollback safe.
+- **(3) Cross-db JSON column — OK.** `sa.JSON()` in the migration and `JSON` from `sqlalchemy` in `models.py`. Portable across SQLite + Postgres. `Mapped[Optional[dict]]` typing is correct.
+- **(4) HTML-escape on promo render — OK.** `esc()` is applied to `s.promo.label`, `s.promo.price`, and `s.promo.url`. The helper covers `< > & "` — sufficient for text content and for the one attribute context we use (`href`, double-quoted).
+- **(5) `target="_blank"` + `rel="noopener"` — OK.** Present on the `.plan-promo-m` `<a>` at index.html:2234. (Also present on `.pscm-nav-arrow` from prior step.)
+- **(6) Auto-sort regex — OK.** `/^(\d{1,2}):(\d{2})(?:\s*\+(\d+))?/` is left-anchored; empty/garbage falls through `if (!m) return Infinity;`. `parseInt` on captured groups is safe. Mental check confirms `"00:24 +1"` → 1464 sorts after `"23:42"` → 1422.
+- **(7) Race fix: `finally` block — OK.** Both `addDay()` and `removeLastDay()` set `btn.disabled = true` synchronously before the `await`, with `finally { if (btn) btn.disabled = false; }`. `autoSortCurrentDay()` follows the same pattern with opacity restore. Double-tap window is closed.
 
 ## Tier 2 findings
-- **date_label format** — PASS. `%a %d %b` produces "Fri 22 May" exactly matching seed data (budapest.py:63 "Fri 22 May", vienna_budapest.py:82 "Mon 18 May").
-- **end_date adjustment** — PASS. Add: `if t.end_date < new_date: t.end_date = new_date` (only extends, never shrinks). Remove: `if t.end_date > t.start_date: t.end_date = end_date - 1 day` (guards against negative span, end never goes below start). Add/remove sequence is reversible with no drift.
-- **Stop ID source for reorder** — PASS. `_stop_to_out` returns backend `s.id` as `id` (trips.py:24). `adaptTrip` maps that to `_stop_id` (index.html:1085). `autoSortCurrentDay` uses `_stop_id` (1283, 1286) — consistent with the existing reorder endpoint contract.
-- **refreshTrip rebinds TRIP cleanly** — PASS. `adaptTrip(detail)` reassigns the module-level `TRIP` object fresh; old closures inside previous DOM handlers are discarded when `renderPlan` rebuilds the day content. No stale-TRIP risk in the new flow.
-- **Race conditions** — NOTED. Double-tap on `+` will fire two POSTs. Backend computes `next_n = max(...)+1` inside one request scope; with SQLite under concurrent writes both requests could compute the same `next_n` and produce two Days with the same `n`. Low-risk for single-user travel-planning UX. Not a blocker. Log as `KG-5` in BUILD-LOG so the next builder considers either a brief request-time disable on `+` or a uniqueness constraint.
+
+- **(8) `promo.url` scheme — Must Fix (promoted from Tier 2).** `esc()` neutralises HTML metachars but does NOT block `javascript:`, `data:`, or `vbscript:` URL schemes. Today the only writer is the seed + migration, so the live attack surface is zero — but the `StopOut.promo` field is now a typed API contract that a future PUT/PATCH endpoint will populate. The fix is one of:
+  - **Preferred (defense in depth):** in `renderPlanDayContent`, compute `pUrl` via `new URL(s.promo.url, location.href)` inside try/catch, then reject if `u.protocol !== 'https:' && u.protocol !== 'http:'` — fall back to omitting the `href` (render the banner as a non-link `<div>`) or to `"#"`.
+  - **Or server-side:** validate `promo.url` scheme in the write path when one is added.
+  Recommend doing the client-side gate now (5 lines, no backend change); revisit server-side validation when the write endpoint lands.
+- **(9) Pydantic submodel — nice-to-have.** Keeping `dict | None` for now is acceptable. When the shape grows (expiry / image / CTA copy) promote to `PromoOut(BaseModel)` with `label: str | None`, `price: str | None`, `url: AnyHttpUrl | None`. Not a blocker.
+- **(10) Seed-leak from `op.execute` — OK.** UPDATE runs *after* `add_column` (inside `upgrade()`, after the `batch_alter_table` block returns) and is guarded by `promo IS NULL`. Order is correct.
 
 ## Tier 3 findings
-- **Error UX** — Acceptable for Step 3. `console.warn` on `addDay`/`autoSortCurrentDay` failures is bare-bones; `removeLastDay` does call `showSnack('Remove day failed')`, which is better UX. Consistency nit; do not block.
-- **Disabled styling residual** — PASS. Bob removed `disabled` and `title="Coming soon"` from all three controls (lines 865, 866, 889). The remaining `disabled title="Coming soon"` on lines 795, 797, 898 are unrelated Publish / Search / `+` stop-add buttons that are still stubs per spec. No leftover CSS targeting `[disabled]` on the wired controls.
 
-## Bob's judgment calls — Richard's calls
-1. date_label format `%a %d %b` — YES. Matches existing seed.
-2. apiCall vs authHeaders — YES. Reusing the existing wrapper is correct; it centralizes auth and 401 handling.
-3. `_stop_id` / `selectedPlanDay` identifier — YES. These are the actual codebase names; using the brief's names would have produced broken code.
-4. snack vs alert for "only day" failure — YES. Snack is the established pattern in this file.
-5. No loading state on `+`/`−` — YES, with a caveat. Acceptable for Step 3 since the operations are fast. The Tier-2 race-condition note covers the double-tap concern; log to BUILD-LOG or accept it. Not blocking.
+- **(11) `.ppm-*` naming — consistent with neighbour `.pscm-*` / `.pttrm-*` family. Fine.**
+- **(12) Promo CSS scope — OK.** `.plan-promo-m` (line 568–602) sits inside the `@media (max-width: 767px)` block opened at line 201 and closed before the `@media (min-width: 768px)` at line 762. Desktop is not affected.
+- **(13) Minor: stale button reference after re-render.** `renderPlan()` inside the `try` block rebuilds the DOM, so the `btn` captured before `await` is detached by the time `finally` runs. Setting `disabled = false` on a detached node is harmless. No fix required; flagging for the log.
+- **(14) Minor: `if (s.promo && (s.promo.label || s.promo.price))` skips banners that only carry a `url`.** Probably intentional (a banner needs *something* to read), but worth a one-line comment for the next maintainer.
+
+## Bob's open questions — Richard's answers
+
+1. **URL allowlist (javascript: scheme) — YES, gate it now (client-side).** See Tier 2 #8. One-liner with `new URL()`, reject non-http(s), fall back to a non-link banner. Do this in this revision; it's cheap insurance and the typed `promo.url` field on `StopOut` is now visible from the API.
+2. **Pydantic submodel vs dict for promo — NO, not now.** `dict | None` is fine until the shape stabilises. Re-open when a second consumer (write endpoint, analytics, …) appears.
 
 ## Summary for Arch
-Step 3 is clean. Both new endpoints are authorization-checked, return correct status codes, use the ORM (no raw SQL), and rely on the existing `cascade="all, delete-orphan"` chain for safe Day deletion. The frontend wires the three controls correctly, uses the actual codebase identifiers (`TRIP_ID`, `selectedPlanDay`, `_stop_id`, `_day_id`), gracefully early-exits Auto-sort when the day is already sorted, and clamps `selectedPlanDay` before re-render on remove. One item worth logging (KG-5: double-tap race on `+` can create two days with the same `n` under concurrent writes). No blockers; Step 3 is clear.
+
+Step 4 is structurally sound. The migration is idempotent + reversible, the new `Stop.promo` column is cross-database, the `_stop_to_out` wiring is correct, and the frontend HTML escape + `rel="noopener"` are in place. The `+`/`−` double-tap race and the `HH:MM +N` parser both look correct. One outstanding concern: `promo.url` is rendered into an `href` without a scheme allowlist, so a future write path that lets users supply their own URLs would let a `javascript:` URL through `esc()`. Bob should add a short client-side scheme gate (parse via `new URL`, accept only `http:`/`https:`) before this clears. Everything else is green or nit-level.
