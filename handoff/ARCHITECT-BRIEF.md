@@ -1,144 +1,192 @@
-# Architect Brief — Step 5: KG-3a Add-stop FAB
+# Architect Brief — Step 6: KG-3b Publish flow
 
 ---
 
-## Step 5 — Wire orange `+` FAB to add-stop modal + endpoint
+## Step 6 — Wire the "Publish" pill to a real share-link flow
 
 ### Goal
 
-Tapping the orange `+` FAB (in `.plan-fab-cluster .plan-fab-add`) opens a modal form. Submitting POSTs to a new endpoint and appends a stop to the currently-selected day. No lat/lng entry — backend geocodes from address if provided (Nominatim infrastructure already exists in the codebase).
+Tapping the **Publish** pill in the mobile app bar (currently `disabled title="Coming soon"`) opens a small modal that generates a public read-only shareable URL for the current trip. Toggling Publish OFF revokes the slug. Public viewers see the trip on a no-auth route.
 
 ### Decisions (locked)
 
-- **Modal pattern.** Reuse the existing modal pattern (grep `openModal` and `closeModal` in `frontend/index.html` — Tour tab uses modals for Cheap eats / Phrasebook / Washroom / etc.). Add a new modal section `<dialog>` or `<div class="modal">` keyed to `add-stop`.
-- **Fields.** name (required), time_label (optional, free-form "HH:MM"), address (optional). Three text inputs + Cancel + Save.
-- **Backend.** `POST /api/trips/{trip_id}/days/{day_n}/stops` — body `{name, time_label?, address?}`. Returns full `TripDetail`. Auth + ownership via `_owned()`.
-- **Backend geocode.** If `address` provided, call existing `geocoder.geocode()` (grep for it) synchronously inside the handler. Best-effort: if it fails or address is empty, store `lat=0, lng=0` and let the existing background-geocode infrastructure pick it up later (look at `plan.py` for the pattern).
-- **order_idx.** New stop appended at the end: `order_idx = max(existing.order_idx) + 1`.
-- **Promo, category, hours, tickets, etc.** All left empty/null on creation — user can fill via separate edits (out of scope here).
-- **Frontend refresh.** Reuse `refreshTrip()` (or just call `adaptTrip(detail); renderPlan();`).
-- **Validation.** Frontend: name non-empty before allowing Save. Backend: 400 if name missing.
+- **Slug.** 10-char URL-safe base62 random string (e.g. `aB3xK9pLq2`). Generated server-side, never reused. Stored on Trip as `published_slug` (nullable string, unique).
+- **Public URL shape.** `GET /p/{slug}` returns the SPA shell (same index.html) with a query/state hint to load public mode; OR cleaner: `GET /api/public/trips/{slug}` returns a sanitized `TripDetail` (no `journal`, no `check_in_count`, no `photo_paths`, no `voice_transcript`). The SPA detects "public mode" from URL path and renders accordingly. **Pick:** simpler is a dedicated read-only public viewer page mounted at `/p/{slug}`, which serves a slimmed-down render. To minimize new code, **do this:**
+  - Add backend route `GET /api/public/trips/{slug}` → returns sanitized TripDetail (or 404).
+  - Add backend route `GET /p/{slug}` → serves the existing `index.html` (same as `/`). Frontend detects `location.pathname` starts with `/p/` and:
+    - Skips login flow.
+    - Fetches `/api/public/trips/${slug}` instead of `/api/trips/{id}`.
+    - Hides edit affordances: Auto-sort CTA, `+`/`−` day controls, orange `+` FAB, Publish pill, drag handles.
+- **Backend endpoints:**
+  - `POST /api/trips/{trip_id}/publish` — generates slug if not present, returns `{slug, url}`. Requires auth + ownership.
+  - `DELETE /api/trips/{trip_id}/publish` — sets `published_slug = NULL`. Requires auth + ownership.
+  - `GET /api/public/trips/{slug}` — no auth; returns sanitized TripDetail; 404 if slug not found or trip's slug was revoked.
+- **Sanitized public TripDetail.**
+  - Drop fields: `journal`, `bookings` (might contain private notes), per-stop `note`, `tickets`, `hours` are fine to keep, `check_in_count`, `photo_paths`, `voice_transcript`.
+  - Keep: trip name/destination/dates, days, stops (name/time/address/lat/lng/intro/highlights/transit/food), street_food.
+  - Easiest implementation: reuse `_trip_to_detail()` then post-process to null out sensitive fields. Define a `_public_trip_to_detail(t)` helper.
+- **Slug generation.** Use `secrets.token_urlsafe(8)` (Python stdlib) — returns ~11 char string, take first 10.
+- **Migration.** Add `published_slug` column to `trips`. Nullable. Unique index.
+- **Frontend modal.** Reuse the existing `#add-stop-modal` styles (`.modal-overlay`, `.modal-card`, etc.) — create a new `#publish-modal` with same CSS classes.
+- **Publish modal contents:**
+  - Title: "Publish trip"
+  - If unpublished: a short paragraph + a primary "Generate share link" button.
+  - If published: show the URL in a read-only `<input>`, a "Copy" button (`navigator.clipboard.writeText`), and a secondary "Unpublish" button.
+- **Public-mode UI distinctions.**
+  - Add `body.classList.add('is-public')` when path starts with `/p/`.
+  - CSS: `body.is-public .plan-fab-cluster, body.is-public .plan-fab-add, body.is-public .pscr-cta, body.is-public .dsm-end, body.is-public .mab-publish, body.is-public .pscm-nav-arrow ~ * { display: none !important; }` (or similar — hide edit controls).
+  - Skip the entire auth flow on public paths.
 
-### Backend implementation
+### Backend specifics
 
-In `app/routes/trips.py`:
-
+In `app/models.py`:
 ```python
-from pydantic import BaseModel
-
-class StopCreateIn(BaseModel):
-    name: str
-    time_label: str = ""
-    address: str = ""
-
-@router.post("/{trip_id}/days/{day_n}/stops", response_model=schemas.TripDetail, status_code=201)
-def add_stop(trip_id: int, day_n: int, payload: StopCreateIn,
-             user: CurrentUser, db: Annotated[Session, Depends(get_db)]):
-    t = _owned(db, user, trip_id)
-    name = payload.name.strip()
-    if not name:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "name is required")
-    day = next((d for d in t.days if d.n == day_n), None)
-    if not day:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "day not found")
-    next_idx = max((s.order_idx for s in day.stops), default=-1) + 1
-    lat, lng = 0.0, 0.0
-    addr = payload.address.strip()
-    if addr:
-        try:
-            from ..geocoder import geocode_query  # adapt to actual function name — grep first
-            res = geocode_query(addr)  # may return (lat, lng) or None
-            if res:
-                lat, lng = res
-        except Exception:
-            pass  # swallow; existing background geocoder may retry later
-    s = Stop(day_id=day.id, order_idx=next_idx, name=name,
-             time_label=payload.time_label.strip(), address=addr,
-             lat=lat, lng=lng)
-    db.add(s)
-    db.commit()
-    db.refresh(t)
-    return _trip_to_detail(t)
+published_slug: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, unique=True, index=True)
 ```
 
-**Grep first** for the actual geocoder function name in `app/geocoder.py` — adapt the import line.
+In `app/schemas.py`: extend `TripDetail` with `published_slug: Optional[str] = None`.
 
-### Frontend implementation
+In `app/routes/trips.py`:
+```python
+import secrets
 
-1. Find orange + FAB markup. Remove `disabled` + `title="Coming soon"`. Add `onclick="openAddStopModal()"`.
-2. Add modal markup. Place near existing modals or near end of body. Example structure:
-   ```html
-   <div id="add-stop-modal" class="modal-overlay hidden">
-     <div class="modal-card">
-       <h2>Add stop</h2>
-       <label>Name <input id="as-name" type="text" required></label>
-       <label>Time (HH:MM) <input id="as-time" type="text" placeholder="14:30"></label>
-       <label>Address <input id="as-addr" type="text" placeholder="Street, City"></label>
-       <div class="modal-actions">
-         <button onclick="closeAddStopModal()">Cancel</button>
-         <button id="as-save" onclick="submitAddStop()">Save</button>
-       </div>
-     </div>
-   </div>
-   ```
-3. Add three JS functions:
+@router.post("/{trip_id}/publish")
+def publish_trip(trip_id: int, user: CurrentUser, db: Annotated[Session, Depends(get_db)]):
+    t = _owned(db, user, trip_id)
+    if not t.published_slug:
+        # Retry on rare slug collision
+        for _ in range(5):
+            slug = secrets.token_urlsafe(8)[:10]
+            existing = db.query(Trip).filter_by(published_slug=slug).first()
+            if not existing:
+                t.published_slug = slug
+                db.commit()
+                break
+        else:
+            raise HTTPException(500, "could not generate unique slug")
+    return {"slug": t.published_slug, "url": f"/p/{t.published_slug}"}
+
+@router.delete("/{trip_id}/publish", status_code=204)
+def unpublish_trip(trip_id: int, user: CurrentUser, db: Annotated[Session, Depends(get_db)]):
+    t = _owned(db, user, trip_id)
+    t.published_slug = None
+    db.commit()
+```
+
+New file `app/routes/public.py` (or add to `trips.py`):
+```python
+@router.get("/api/public/trips/{slug}", response_model=schemas.TripDetail)
+def get_public_trip(slug: str, db: Annotated[Session, Depends(get_db)]):
+    t = db.query(Trip).filter_by(published_slug=slug).first()
+    if not t:
+        raise HTTPException(404, "not found")
+    detail = _trip_to_detail(t)
+    detail.journal = None
+    detail.bookings = []
+    for d in detail.days:
+        for s in d.stops:
+            s.note = None
+            s.check_in_count = 0
+            s.photo_paths = []
+            s.voice_transcript = ""
+    return detail
+```
+
+In `app/main.py` (or wherever static is mounted), add:
+```python
+@app.get("/p/{slug}")
+def serve_public_spa(slug: str):
+    return FileResponse(FRONTEND_DIR / "index.html")
+```
+
+Adapt to actual static-mount pattern — grep `main.py` for `StaticFiles` / `FileResponse`.
+
+### Frontend specifics
+
+1. Detect public mode at boot: `const PUBLIC_MODE = location.pathname.startsWith('/p/'); const PUBLIC_SLUG = PUBLIC_MODE ? location.pathname.slice(3) : null;`
+2. If `PUBLIC_MODE`, skip login. Fetch `/api/public/trips/${PUBLIC_SLUG}` instead. Add `body.is-public` class.
+3. Hide edit controls via CSS.
+4. Add `#publish-modal` markup near `#add-stop-modal`.
+5. Wire Publish pill `onclick="openPublishModal()"`. Remove `disabled title="Coming soon"`.
+6. Functions:
    ```js
-   function openAddStopModal() {
-     document.getElementById('add-stop-modal').classList.remove('hidden');
-     setTimeout(() => document.getElementById('as-name').focus(), 50);
+   async function openPublishModal() {
+     // Refresh current trip to get latest slug
+     await refreshTrip();
+     document.getElementById('publish-modal').classList.remove('hidden');
+     renderPublishModalBody();
    }
-   function closeAddStopModal() {
-     document.getElementById('add-stop-modal').classList.add('hidden');
-     ['as-name','as-time','as-addr'].forEach(id => document.getElementById(id).value = '');
+   function closePublishModal() {
+     document.getElementById('publish-modal').classList.add('hidden');
    }
-   async function submitAddStop() {
-     const name = document.getElementById('as-name').value.trim();
-     if (!name) { showSnack('Name required'); return; }
-     const time_label = document.getElementById('as-time').value.trim();
-     const address = document.getElementById('as-addr').value.trim();
-     const save = document.getElementById('as-save');
-     save.disabled = true;
+   function renderPublishModalBody() {
+     const body = document.getElementById('pub-modal-body');
+     const slug = TRIP_PUBLISHED_SLUG; // set by adaptTrip
+     if (slug) {
+       const url = location.origin + '/p/' + slug;
+       body.innerHTML = `
+         <p>Anyone with this link can view your trip (read-only):</p>
+         <input id="pub-url" readonly value="${url}">
+         <div class="modal-actions">
+           <button onclick="copyPublishUrl()">Copy</button>
+           <button onclick="unpublishTrip()" class="danger">Unpublish</button>
+         </div>`;
+     } else {
+       body.innerHTML = `
+         <p>Generate a shareable read-only link for this trip.</p>
+         <div class="modal-actions">
+           <button onclick="closePublishModal()">Cancel</button>
+           <button onclick="publishTrip()" class="primary">Generate link</button>
+         </div>`;
+     }
+   }
+   async function publishTrip() {
      try {
-       const dayN = selectedPlanDay || 1;
-       const detail = await apiCall(`/trips/${TRIP_ID}/days/${dayN}/stops`, {
-         method: 'POST',
-         body: JSON.stringify({name, time_label, address}),
-       });
-       adaptTrip(detail);
-       renderPlan();
-       closeAddStopModal();
-     } catch (e) {
-       console.warn('add stop failed', e.message);
-       showSnack('Add stop failed');
-     } finally {
-       save.disabled = false;
+       const resp = await apiCall(`/trips/${TRIP_ID}/publish`, { method: 'POST', body: '{}' });
+       TRIP_PUBLISHED_SLUG = resp.slug;
+       renderPublishModalBody();
+     } catch (e) { showSnack('Publish failed'); }
+   }
+   async function unpublishTrip() {
+     try {
+       await apiCall(`/trips/${TRIP_ID}/publish`, { method: 'DELETE' });
+       TRIP_PUBLISHED_SLUG = null;
+       renderPublishModalBody();
+     } catch (e) { showSnack('Unpublish failed'); }
+   }
+   async function copyPublishUrl() {
+     const input = document.getElementById('pub-url');
+     try {
+       await navigator.clipboard.writeText(input.value);
+       showSnack('Link copied');
+     } catch {
+       input.select(); document.execCommand('copy'); showSnack('Link copied');
      }
    }
    ```
-4. CSS: minimal modal overlay (`.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 2000; }`, `.modal-overlay.hidden { display: none; }`, `.modal-card { background: white; padding: 20px; border-radius: 16px; width: min(90vw, 400px); display: flex; flex-direction: column; gap: 12px; }`, label flex stack, button styling).
-5. **Esc closes modal.** Add `keydown` listener that closes when modal is visible.
+7. In `adaptTrip()`, set `TRIP_PUBLISHED_SLUG = api.published_slug || null;`.
 
 ### Flags
 
-- **Reuse existing modal pattern if it exists** (Tour tab modals). Grep for the existing modal CSS — if so, just add a new modal entry rather than inventing a new system.
-- **`showSnack`** — already exists from prior steps. Reuse.
-- **`apiCall`** — already exists. Reuse.
-- **`selectedPlanDay`** — global. Reuse.
-- **`TRIP_ID`** — global. Reuse.
+- **No personal data in public view.** Sanitization is critical. Triple-check that `journal`, `bookings`, per-stop `note`/`check_in_count`/`photo_paths`/`voice_transcript` are all stripped.
+- **Slug is opaque.** Don't expose `trip_id` in any public response. Public viewer never sees the internal trip id.
+- **CORS / auth header.** Public fetch doesn't send Authorization. `apiCall` likely adds it automatically — for public fetch, use raw `fetch` without auth.
+- **Public mode flag persists.** Once `PUBLIC_MODE` is true at boot, all subsequent renders skip edit affordances.
 
 ### Definition of Done
 
-- [ ] `POST /api/trips/{trip_id}/days/{day_n}/stops` added; returns 201 + TripDetail; 400 on empty name; 404 on missing trip/day.
-- [ ] Orange `+` FAB no longer disabled; opens modal.
-- [ ] Modal has 3 inputs + Cancel + Save.
-- [ ] Save disabled when name empty.
-- [ ] Submit appends stop to current day, refreshes UI, closes modal.
-- [ ] Esc closes modal.
-- [ ] Address-based geocode best-effort (no crash if Nominatim down).
+- [ ] `trips.published_slug` column + migration applied.
+- [ ] `POST /api/trips/{id}/publish` returns `{slug, url}`.
+- [ ] `DELETE /api/trips/{id}/publish` returns 204.
+- [ ] `GET /api/public/trips/{slug}` returns sanitized TripDetail (no `journal`, no per-stop `note`/`check_in_count`/`photo_paths`/`voice_transcript`, no `bookings`).
+- [ ] `GET /p/{slug}` serves index.html.
+- [ ] Publish pill no longer disabled; opens modal showing Generate Link or Copy+Unpublish based on current state.
+- [ ] Generated URL works in incognito (no auth required).
+- [ ] Public-mode UI hides Auto-sort, +/-, orange +, Publish, nav arrow.
 - [ ] No new console errors.
-- [ ] Desktop pixel-frozen (modal only triggers from mobile FAB).
-- [ ] `handoff/REVIEW-REQUEST.md` updated with Revision 6.
+- [ ] Desktop pixel-frozen.
+- [ ] `handoff/REVIEW-REQUEST.md` updated with Revision 7.
 
 ---
 
-Architect approval: [x] Pre-approved. Bob plan + build in one round.
+Architect approval: [x] Pre-approved.

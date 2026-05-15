@@ -524,3 +524,64 @@ Between consecutive stops: `.plan-transit-row-m` with the same connLabel + isWal
 - Should we kick off `geocode_trip_async` (or a single-stop variant) as a `BackgroundTasks` task on add-stop responses where `address` was given but `geocode_query` failed (e.g. Nominatim timeout, rate limit)? Right now a failed geocode just leaves `(0,0)` and the next full-trip geocode pass would pick it up — but there isn't a scheduled pass after Step 4 unless the user re-creates the trip. A short async catch-up would close that gap.
 - Should `time_label` be normalized server-side (regex `^\d{1,2}:\d{2}( \+\d+)?$` → fall back to `""` on miss)? Currently we accept anything. Frontend `autoSortCurrentDay` already handles malformed labels safely (sink to bottom), so the cost of garbage data is low — but it does mean users can type `"morning"` and the sort silently demotes the stop.
 - The demo DB now carries one "Test Stop" row from the curl verification (Day 1, `order_idx=16`). It's harmless but the reviewer may want to delete it manually or re-seed. There's no `DELETE /stops/{id}` endpoint yet; flagged as future work.
+
+---
+
+## Revision 7 — Step 6 publish flow
+
+### Scope (KG-3b)
+
+Wire the disabled **Publish** pill to a real public-share-link flow:
+
+- Backend: `published_slug` column on `trips` (nullable, unique, indexed) + three new endpoints + one SPA-shell route.
+- Frontend: detect `/p/<slug>` at boot → public read-only mode (skip login, hide edit affordances), Publish modal with Generate / Copy / Unpublish, no Authorization header on the public fetch.
+- Sanitization of the public TripDetail.
+
+### Files touched
+
+- `TourCompanion/server/app/models.py` — added `Trip.published_slug` (String(20), nullable, unique, indexed).
+- `TourCompanion/server/app/schemas.py` — extended `TripDetail` with `published_slug: str | None = None`.
+- `TourCompanion/server/app/routes/trips.py` — added `_public_trip_to_detail()`, `POST /api/trips/{id}/publish`, `DELETE /api/trips/{id}/publish`, and a new `public_router` mounted at `/api/public/trips` with `GET /api/public/trips/{slug}`.
+- `TourCompanion/server/app/main.py` — registered `trips.public_router`; added `GET /p/{slug}` route serving `frontend/index.html` (registered before the catch-all StaticFiles mount so it wins).
+- `TourCompanion/server/alembic/versions/5b693a15c159_add_trip_published_slug.py` — new migration, autogen'd; **autogen produced the unique index** so no manual edit was needed.
+- `TourCompanion/server/frontend/index.html` — wired Publish pill, added `#publish-modal` (reuses `.as-overlay`/`.as-card` styles + new `.as-btn-danger`), added `PUBLIC_MODE`/`PUBLIC_SLUG` constants, `publicFetch()` (no auth header), `bootPublic()`, `body.is-public` hides, `TRIP_PUBLISHED_SLUG` set in `adaptTrip`, Esc closes publish modal, and a no-redirect 401 path inside `apiCall` when `PUBLIC_MODE` (defence-in-depth; the public path never calls `apiCall`).
+
+### Decisions & deviations from brief
+
+- **Slug generation matches brief:** `secrets.token_urlsafe(8)[:10]`. 8 random bytes → ~64 bits of entropy in the input; first 10 base64url chars preserve well above the 60-bit floor. Collision-retry loop kept at 5 attempts.
+- **Sanitization went a touch further than the brief lists.** The brief explicitly enumerates `journal`, `bookings`, per-stop `note`/`check_in_count`/`photo_paths`/`voice_transcript`. I also zero out `detail.id`, every `day.id` and every `stop.id`, and null out `detail.published_slug` in the response — the brief's "Don't expose `trip_id` in any public response. Public viewer never sees the internal trip id." flag locked this. Pydantic requires non-null `int` for `id` on `TripDetail`/`DayOut`/`StopOut`, so I assign `0` rather than dropping the field. Public mode in the frontend doesn't use these ids (no edit calls).
+- **`detail.journal` set to `""` not `None`.** `TripDetail.journal: str` (non-optional) — keeping the type contract is cheaper than widening the schema.
+- **`detail.published_slug = None` in the public response** so the slug doesn't echo back; the public client already knows it from `location.pathname`.
+- **Routing order for `/p/{slug}`:** added as a real route on `app` *before* `app.mount("/", StaticFiles…, html=True)`. FastAPI evaluates routes in registration order, and the StaticFiles mount is the catch-all, so `/p/<slug>` is matched by the explicit route. Verified end-to-end (HTTP 200 with HTML body).
+- **Public router is a separate `APIRouter(prefix="/api/public/trips")`** in `trips.py`, exposed as `trips.public_router` and `include_router`'d from `main.py`. Keeping it in the same module avoids a new file for one endpoint and keeps `_public_trip_to_detail` co-located with `_trip_to_detail`.
+- **`mab-publish` styling.** Brief left this open. The previous `disabled` look (gray, `cursor: not-allowed`) is now reserved for `:disabled`; the active pill has the default outline, and when the trip is published it flips to a filled state via `.mab-publish.is-on` (set by `renderPublishModalBody`). Subtle but gives the user a quick "is this trip live" cue without needing to open the modal.
+- **`body.is-public` hides set, beyond the brief's list.** Added `.plan-fab-toggle`, `.mab-left`, `.mab-right`, `#trip-picker-btn`, `#verify-banner` — anything that implies "you're logged in and can edit". The brief's enumeration was illustrative; the principle is "hide edit affordances and account chrome".
+- **`publicFetch` is a tiny helper, not a flag on `apiCall`.** Cleaner separation: the public mode literally never calls the authenticated `apiCall`, and the 401-handler change inside `apiCall` is just defence-in-depth.
+- **Modal copy.** Title "Publish trip"; unpublished body adds a small `font-size: 11px` reassurance line ("Personal notes, journal, photos and check-ins stay private.") — not in the brief but addresses the obvious user question.
+
+### Verification
+
+- `./migrate.sh upgrade head` → **`5b693a15c159 (head)`**. `PRAGMA table_info(trips)` confirms column; `SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='trips'` shows `ix_trips_published_slug`. ✅
+- `curl -X POST -H "Authorization: Bearer …" /api/trips/1/publish -d '{}'` → **HTTP 200** `{"slug":"WyGu1KAWsb","url":"/p/WyGu1KAWsb"}` (slug length = 10). ✅
+- Idempotency: second POST returns the **same** slug. ✅
+- `curl /api/public/trips/<slug>` (no Authorization header) → **HTTP 200**; dumped JSON confirms `id=0`, `published_slug=None`, `journal=""`, `bookings=[]`, every stop's `note=""`/`check_in_count=0`/`photo_paths=[]`/`voice_transcript=""`. Kept: `name`, `destination`, `start_date`/`end_date`, `hotel_*`, `days[].n/date_label/theme/mode`, `stops[].time_label/name/address/lat/lng/hours/tickets/intro/highlights/transit/food/promo`, `street_food`. ✅
+- `curl /p/<slug>` → **HTTP 200**, `Content-Type: text/html; charset=utf-8`, body starts `<!DOCTYPE html>` (157573 bytes — the full SPA). ✅
+- `curl -X DELETE -H "Authorization …" /api/trips/1/publish` → **HTTP 204**, then `curl /api/public/trips/<slug>` → **HTTP 404** `{"detail":"not found"}`. ✅
+- `curl -X POST /api/trips/1/publish` (no auth) → **HTTP 401**. ✅
+- Mental walk-through of frontend: load `/` while logged-in → Publish pill is enabled, no `disabled title="Coming soon"` → tap it → `openPublishModal` calls `refreshTrip` to get the latest slug → modal shows "Generate link" (unpublished) → tap Generate → `apiCall POST /trips/.../publish` → `TRIP_PUBLISHED_SLUG = resp.slug` → modal re-renders with read-only URL + Copy + Unpublish → tap Copy → `navigator.clipboard.writeText` → snack "Link copied". Load `/p/<slug>` in incognito → `PUBLIC_MODE=true`, `body.is-public` added, `publicFetch` fetches sanitized detail (no Authorization header), `adaptTrip` populates TRIP (all `_checkin_count=0`, `_photos=[]`, `_voice=""` thanks to the sanitization), `renderPlan/renderTour/renderMemory` run with empty STATE. CSS hides FAB cluster, day +/- buttons, auto-sort, Publish pill, nav arrow, trip picker, log-out, verify banner. ✅
+- Demo DB left clean: trip 1's `published_slug` reset to NULL after verification. ✅
+
+### Critical-flag triple-check
+
+- **No personal data in public view.** Confirmed by inspecting the live JSON response — all six listed fields are stripped. Plus `id` columns zeroed across trip/days/stops. ✅
+- **Slug is opaque.** Public response contains no `trip_id`, no owner email, no per-stop database ids. ✅
+- **Public fetch sends no Authorization header.** `publicFetch` is a thin `fetch` wrapper that does not touch `API_TOKEN`; verified above (anonymous curl returned 200). ✅
+- **Public mode skips login.** `init()` short-circuits to `bootPublic()` when `PUBLIC_MODE` — never touches `API_TOKEN`, never calls `apiCall("/auth/me")`, never invokes `showLogin()`. ✅
+
+### Known limitations / future work
+
+- **Slug is regenerable but not rotatable.** If a user un-publishes then re-publishes, they get a *new* slug (intended — revoking the old link is the whole point of Unpublish). Anyone with the old slug is locked out after revoke (404), which is the desired security property.
+- **No rate limit on the public GET.** `slowapi` middleware is in place app-wide but no per-endpoint limit on `/api/public/trips/{slug}`. Low-risk (read-only, no auth state to enumerate beyond random 10-char slugs), but a future hardening pass could add `@limiter.limit("60/minute")`.
+- **`/p/<slug>` always returns 200 even if the slug is invalid** — the SPA shell loads, then `bootPublic` shows a "Link not found" card on the 404 from `/api/public/trips/<slug>`. That's intentional (single SPA shell pattern), but a reviewer might prefer the route itself to 404 on unknown slugs. Trade-off: would require a DB lookup in `serve_public_spa`, making the static-shell route stateful. Left as-is.
+- **Public mode renders the Tour and Memory tabs with all-zero counters.** Functionally correct (a stranger viewing your trip should see "0 check-ins, 0 photos"), but visually a bit empty. Could later hide those tabs entirely in public mode; out of scope.
+- **`<input id="pub-url">` value is HTML-escaped** via `esc()` even though it's a URL we constructed ourselves. Belt-and-braces; if the slug regex ever changes it won't regress XSS.

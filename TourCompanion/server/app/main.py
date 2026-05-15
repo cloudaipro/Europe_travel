@@ -9,8 +9,9 @@ logging.basicConfig(level=logging.INFO,
 
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -62,6 +63,7 @@ def health():
 
 app.include_router(auth_routes.router)
 app.include_router(trips.router)
+app.include_router(trips.public_router)
 app.include_router(tour.router)
 app.include_router(journal.router)
 app.include_router(streetfood.router)
@@ -71,5 +73,18 @@ Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
 
 frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
+
+
+# KG-3b: public share-link viewer. Serve the same SPA shell as "/"; the
+# frontend detects `/p/` in location.pathname and switches to public mode.
+# Registered BEFORE the catch-all StaticFiles mount so it wins.
+@app.get("/p/{slug}")
+def serve_public_spa(slug: str):
+    index_html = frontend_dir / "index.html"
+    if not index_html.exists():
+        raise HTTPException(404, "frontend not built")
+    return FileResponse(str(index_html))
+
+
 if frontend_dir.exists():
     app.mount("/", StaticFiles(directory=str(frontend_dir), html=True), name="frontend")

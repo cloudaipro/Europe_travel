@@ -51,6 +51,9 @@ class Trip(Base):
     hotel_lng: Mapped[float | None] = mapped_column(Float, nullable=True)
     hotel_address: Mapped[str] = mapped_column(String(300), default="")
     journal: Mapped[str] = mapped_column(Text, default="")
+    published_slug: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True, unique=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     owner: Mapped[User] = relationship(back_populates="trips")

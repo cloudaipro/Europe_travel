@@ -142,6 +142,7 @@ class TripDetail(BaseModel):
     hotel_lng: float | None
     hotel_address: str
     journal: str
+    published_slug: str | None = None
     days: list[DayOut]
     bookings: list[BookingOut]
     companion_docs: list[CompanionDocOut]

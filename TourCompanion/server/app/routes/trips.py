@@ -1,3 +1,4 @@
+import secrets
 from datetime import timedelta
 from typing import Annotated
 
@@ -45,6 +46,7 @@ def _trip_to_detail(t: Trip) -> schemas.TripDetail:
         season=t.season, style=t.style, pace=t.pace, source_url=t.source_url,
         hotel_name=t.hotel_name, hotel_lat=t.hotel_lat, hotel_lng=t.hotel_lng,
         hotel_address=t.hotel_address, journal=t.journal,
+        published_slug=t.published_slug,
         days=[
             schemas.DayOut(
                 id=d.id, n=d.n, date_label=d.date_label, theme=d.theme, mode=d.mode,
@@ -194,3 +196,67 @@ def reorder_stops(
         existing[sid].order_idx = idx
     db.commit()
     return {"day_id": day.id, "stop_ids": payload.stop_ids}
+
+
+# ── KG-3b: Publish flow ─────────────────────────────────────────────────────
+
+def _public_trip_to_detail(t: Trip) -> schemas.TripDetail:
+    """Sanitized TripDetail for public viewers — strips journal, bookings,
+    per-stop note/check_in_count/photo_paths/voice_transcript, and the
+    internal trip id (slug is the only public handle)."""
+    detail = _trip_to_detail(t)
+    detail.id = 0
+    detail.journal = ""
+    detail.bookings = []
+    detail.published_slug = None
+    for d in detail.days:
+        d.id = 0
+        for s in d.stops:
+            s.id = 0
+            s.note = ""
+            s.check_in_count = 0
+            s.photo_paths = []
+            s.voice_transcript = ""
+    return detail
+
+
+@router.post("/{trip_id}/publish")
+def publish_trip(
+    trip_id: int, user: CurrentUser, db: Annotated[Session, Depends(get_db)]
+):
+    t = _owned(db, user, trip_id)
+    if not t.published_slug:
+        # secrets.token_urlsafe(8) returns ~11 chars of base64url (≥48 bits
+        # of entropy from 8 random bytes); take first 10 chars. Retry on the
+        # exceedingly rare collision.
+        for _ in range(5):
+            slug = secrets.token_urlsafe(8)[:10]
+            existing = db.query(Trip).filter_by(published_slug=slug).first()
+            if not existing:
+                t.published_slug = slug
+                db.commit()
+                break
+        else:
+            raise HTTPException(500, "could not generate unique slug")
+    return {"slug": t.published_slug, "url": f"/p/{t.published_slug}"}
+
+
+@router.delete("/{trip_id}/publish", status_code=204)
+def unpublish_trip(
+    trip_id: int, user: CurrentUser, db: Annotated[Session, Depends(get_db)]
+):
+    t = _owned(db, user, trip_id)
+    t.published_slug = None
+    db.commit()
+
+
+# Separate router for the no-auth public viewer endpoint (different prefix).
+public_router = APIRouter(prefix="/api/public/trips", tags=["public"])
+
+
+@public_router.get("/{slug}", response_model=schemas.TripDetail)
+def get_public_trip(slug: str, db: Annotated[Session, Depends(get_db)]):
+    t = db.query(Trip).filter_by(published_slug=slug).first()
+    if not t:
+        raise HTTPException(404, "not found")
+    return _public_trip_to_detail(t)

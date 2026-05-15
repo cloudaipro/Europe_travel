@@ -5,13 +5,44 @@
 
 ## Current Status
 
-**Active step:** — (Step 5 closed)
-**Last cleared:** Step 5 — KG-3a Add-stop FAB + endpoint — 2026-05-15
+**Active step:** — (Step 6 closed; all KGs from Step 1 batch resolved or backend-deferred)
+**Last cleared:** Step 6 — KG-3b Publish flow — 2026-05-15
 **Pending deploy:** NO (committed locally; no remote configured)
 
 ---
 
 ## Step History
+
+### Step 6 — KG-3b Publish flow — Status: COMPLETE
+*Date: 2026-05-15*
+
+Files changed:
+- `app/models.py` — `Trip.published_slug` (String(20), nullable, unique, indexed).
+- `app/schemas.py` — `TripDetail.published_slug` Optional[str].
+- `alembic/versions/5b693a15c159_add_trip_published_slug.py` — migration with unique index.
+- `app/routes/trips.py` — `POST /api/trips/{id}/publish` (idempotent, `secrets.token_urlsafe(8)[:10]` slug + 5-retry collision loop); `DELETE /api/trips/{id}/publish` (204); `_public_trip_to_detail()` helper strips sensitive fields + zeros internal ids.
+- `app/routes/public.py` (or trips.py) — `public_router` `GET /api/public/trips/{slug}` no-auth route.
+- `app/main.py` — `GET /p/{slug}` serves index.html before catch-all static mount.
+- `frontend/index.html` — `PUBLIC_MODE`/`PUBLIC_SLUG` detection; `publicFetch()` no-auth helper; `bootPublic()` skips login; `body.is-public` CSS hides FAB cluster, day +/-, Auto-sort CTA, Publish pill, nav arrow, trip picker, logout, verify banner; `#publish-modal` reuses `.as-overlay`/`.as-card` styles; `openPublishModal`/`publishTrip`/`unpublishTrip`/`copyPublishUrl`/`closePublishModal` handlers; `TRIP_PUBLISHED_SLUG` set by `adaptTrip`.
+
+Decisions:
+- Slug: `secrets.token_urlsafe(8)[:10]` — ~60 bits entropy, 5-retry collision loop.
+- Sanitization: drops `journal`, `bookings`, per-stop `note`/`check_in_count`/`photo_paths`/`voice_transcript`; also zeros `trip.id`/`day.id`/`stop.id` and nulls `published_slug` in response so internal ids don't leak.
+- Route ordering: `/p/{slug}` registered BEFORE StaticFiles catch-all in main.py to win the match.
+- Public-mode hide list expanded beyond brief: trip picker + logout + verify banner also hidden.
+
+Reviewer findings:
+- Bob's 4 curl verifications all pass (POST → slug; GET public no-auth → 200 sanitized; `/p/<slug>` → 200 HTML; DELETE → 204; subsequent GET → 404).
+- Idempotent re-POST returns same slug; unauth POST → 401.
+- Arch live sweep: Publish modal renders (Title "Publish trip", URL `http://127.0.0.1:8000/p/hrm7ivghPU`, Close/Copy/Unpublish buttons). Public viewer at `/p/hrm7ivghPU` loads in second tab without auth; `PUBLIC_MODE=true`, `body.is-public`, all edit controls `display:none`, `has_journal=false`, `has_bookings=0`, 10 days rendered.
+
+Known limitations (logged as KGs):
+- KG-8 — No rate limit on `/api/public/trips/{slug}` (low risk; slug entropy ~60 bits prevents enumeration).
+- KG-9 — `/p/<invalid>` returns SPA shell with in-app 404 card rather than 404 HTTP status (acceptable UX; SPA renders error state).
+
+Deploy: committed locally 2026-05-15.
+
+---
 
 ### Step 5 — KG-3a Add-stop FAB + endpoint — Status: COMPLETE
 *Date: 2026-05-15*
@@ -133,7 +164,9 @@ Deploy: committed locally 2026-05-14. No remote push (no remote configured).
 
 - **KG-1** — Stop card in sheet uses existing `<details>` markup; spec §3.5.1 literal redesign deferred — logged 2026-05-14. **CLOSED 2026-05-14 (Step 2):** new `.plan-stop-card-m` markup added alongside `<details>`. Mobile shows new card (60×60 thumb + red shield badge + category-icon + time + name + duration + 36×36 nav arrow); transit row between consecutive stops. Desktop unchanged (16/16 details visible, 0/16 mobile cards visible at ≥768px).
 - **KG-2** — Promo banner — logged 2026-05-14. **CLOSED 2026-05-15 (Step 4):** Stop.promo JSON field + Alembic migration + Pydantic + adaptTrip passthrough + mobile orange banner with URL scheme guard. Demo seeded on Vienna Airport.
-- **KG-3** — Auto-sort CTA + `+` FAB + Publish + day `+`/`−` are disabled stubs (no backend) — logged 2026-05-14. **PARTIAL CLOSE 2026-05-14 (Step 3):** Auto-sort + day `+`/`−` wired. Remaining backend-deferred items: orange `+` add-stop FAB (needs new-stop UX) and Publish flow (needs share/access-control UX).
+- **KG-3** — Auto-sort + `+` FAB + Publish + day `+`/`−` stubs — logged 2026-05-14. **PARTIAL CLOSE 2026-05-14 (Step 3):** Auto-sort + day `+`/`−` wired. **CLOSED 2026-05-15 (Steps 5 + 6):** Add-stop FAB (modal + endpoint + geocode) and Publish flow (slug + public viewer + sanitization) shipped. All four stubs are real.
+- **KG-8** — No rate limit on `/api/public/trips/{slug}` — logged 2026-05-15. Low risk (slug entropy ~60 bits prevents enumeration); revisit if abuse appears.
+- **KG-9** — `/p/<invalid-slug>` serves SPA shell with in-app 404 card instead of 404 HTTP — logged 2026-05-15. Acceptable UX, SPA renders error state.
 - **KG-6** — Day +/- race — logged 2026-05-14. **CLOSED 2026-05-15 (Step 4):** try/finally disables button during request.
 - **KG-7** — Auto-sort "+N" notation — logged 2026-05-14. **CLOSED 2026-05-15 (Step 4):** regex `/^(\d{1,2}):(\d{2})(?:\s*\+(\d+))?/` adds `dayOffset * 1440` to sort key.
 - **KG-4** — Visual scratch test at 1280px done via diff-read only — logged 2026-05-14. **CLOSED 2026-05-14:** verified live at 1280×800 in claude-in-chrome during runtime sweep; desktop pixel-identical to baseline.

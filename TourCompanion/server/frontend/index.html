@@ -231,8 +231,11 @@
       border: 1.5px solid var(--c-text);
       border-radius: 9999px;
       font-size: 14px; font-weight: 600; color: var(--c-text);
-      opacity: .55;
-      cursor: not-allowed;
+      cursor: pointer;
+    }
+    .mab-publish:disabled { opacity: .55; cursor: not-allowed; }
+    .mab-publish.is-on {
+      background: var(--c-text); color: var(--c-bg);
     }
 
     /* Plan tab section — full viewport, top inset by app bar (overrides inline style="top:56px") */
@@ -829,7 +832,7 @@
   <div class="mab-left">
     <button onclick="toggleTripPicker(event)" title="Trips" aria-label="Trips">‹</button>
   </div>
-  <button class="mab-publish" disabled title="Coming soon">Publish</button>
+  <button class="mab-publish" type="button" onclick="openPublishModal()" title="Publish">Publish</button>
   <div class="mab-right">
     <button disabled title="Coming soon" aria-label="Search">🔍</button>
     <button onclick="toggleTripPicker(event)" title="Settings" aria-label="Settings">⚙</button>
@@ -1066,6 +1069,27 @@
   .as-btn-save { background: #f97316; color: #fff; }
   .as-btn-save:hover:not(:disabled) { background: #ea580c; }
   .as-btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+  .as-btn-danger { background: #e11d48; color: #fff; }
+  .as-btn-danger:hover { background: #be123c; }
+  #pub-url {
+    width: 100%; padding: 8px 10px; font-size: 13px; color: #0f172a;
+    background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  #pub-modal-body p { font-size: 13px; color: #475569; margin: 0 0 4px; }
+
+  /* KG-3b: public-mode hides edit affordances. */
+  body.is-public .plan-fab-cluster,
+  body.is-public .plan-fab-add,
+  body.is-public .plan-fab-toggle,
+  body.is-public .pscr-cta,
+  body.is-public .dsm-end,
+  body.is-public .mab-publish,
+  body.is-public .pscm-nav-arrow,
+  body.is-public #verify-banner,
+  body.is-public #trip-picker-btn,
+  body.is-public .mab-left,
+  body.is-public .mab-right { display: none !important; }
 </style>
 
 <!-- Modal -->
@@ -1105,6 +1129,14 @@
   </div>
 </div>
 
+<!-- Publish modal (KG-3b) — reuses .as-overlay/.as-card styles. -->
+<div id="publish-modal" class="as-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="pub-title">
+  <div class="as-card">
+    <h3 id="pub-title" class="font-bold text-slate-800 text-base mb-2">Publish trip</h3>
+    <div id="pub-modal-body"></div>
+  </div>
+</div>
+
 <!-- Snackbar -->
 <div id="snackbar" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-5 py-3 rounded-full shadow-2xl text-sm hidden z-50"></div>
 
@@ -1116,6 +1148,7 @@ let HOTEL = { name: "(loading)", lat: 0, lng: 0, address: "" };
 let TRIP = null;
 let STATE = null;
 let TRIP_ID = null;
+let TRIP_PUBLISHED_SLUG = null;
 let API_TOKEN = localStorage.getItem("tc_token") || null;
 let API_USER_EMAIL = localStorage.getItem("tc_email") || null;
 let selectedPlanDay = 1;
@@ -1125,6 +1158,12 @@ let currentPlanTab = "itinerary";
 
 const API_BASE = "/api";
 
+/* KG-3b: read-only public viewer mode. When the URL path starts with /p/,
+   the SPA skips login entirely and fetches a sanitized public trip detail. */
+const PUBLIC_MODE = location.pathname.startsWith("/p/");
+const PUBLIC_SLUG = PUBLIC_MODE ? location.pathname.slice(3) : null;
+if (PUBLIC_MODE && document.body) document.body.classList.add("is-public");
+
 /* KG-2: minimal HTML escape for user-typed promo/label strings */
 const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
 
@@ -1132,9 +1171,19 @@ async function apiCall(path, opts = {}) {
   const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
   if (API_TOKEN) headers["Authorization"] = `Bearer ${API_TOKEN}`;
   const res = await fetch(API_BASE + path, { ...opts, headers });
-  if (res.status === 401) { logout(); throw new Error("unauthorized"); }
+  if (res.status === 401) {
+    if (!PUBLIC_MODE) logout();
+    throw new Error("unauthorized");
+  }
   if (!res.ok) { const text = await res.text(); throw new Error(`API ${res.status}: ${text}`); }
   if (res.status === 204) return null;
+  return res.json();
+}
+
+/* KG-3b: no-auth fetch for public-mode trip load. Never sends Authorization. */
+async function publicFetch(path) {
+  const res = await fetch(API_BASE + path, { headers: { "Content-Type": "application/json" } });
+  if (!res.ok) { const text = await res.text(); throw new Error(`API ${res.status}: ${text}`); }
   return res.json();
 }
 
@@ -1166,6 +1215,7 @@ async function signup(email, password) {
 
 function adaptTrip(api) {
   TRIP_ID = api.id;
+  TRIP_PUBLISHED_SLUG = api.published_slug || null;
   HOTEL = { name: api.hotel_name || "(hotel)", lat: api.hotel_lat || 0, lng: api.hotel_lng || 0, address: api.hotel_address || "" };
   const dateRange = `${api.start_date} → ${api.end_date}`;
   TRIP = {
@@ -1416,7 +1466,88 @@ document.addEventListener("keydown", (ev) => {
     ev.preventDefault();
     closeAddStopModal();
   }
+  const pub = document.getElementById("publish-modal");
+  if (pub && !pub.classList.contains("hidden")) {
+    ev.preventDefault();
+    closePublishModal();
+  }
 });
+
+/* ── KG-3b: Publish modal ─────────────────────────────────────────────── */
+async function openPublishModal() {
+  if (PUBLIC_MODE || !TRIP_ID) return;
+  // Refresh to pick up any out-of-band slug changes (e.g. another tab).
+  try { await refreshTrip(); } catch (e) { /* fall through with cached state */ }
+  document.getElementById("publish-modal").classList.remove("hidden");
+  renderPublishModalBody();
+}
+function closePublishModal() {
+  document.getElementById("publish-modal").classList.add("hidden");
+}
+function renderPublishModalBody() {
+  const body = document.getElementById("pub-modal-body");
+  if (!body) return;
+  const slug = TRIP_PUBLISHED_SLUG;
+  if (slug) {
+    const url = location.origin + "/p/" + slug;
+    body.innerHTML = `
+      <p>Anyone with this link can view your trip (read-only):</p>
+      <input id="pub-url" readonly value="${esc(url)}">
+      <div class="as-actions" style="margin-top:12px">
+        <button type="button" onclick="closePublishModal()" class="as-btn as-btn-cancel">Close</button>
+        <button type="button" onclick="copyPublishUrl()" class="as-btn as-btn-save">Copy</button>
+        <button type="button" onclick="unpublishTrip()" class="as-btn as-btn-danger">Unpublish</button>
+      </div>`;
+  } else {
+    body.innerHTML = `
+      <p>Generate a shareable read-only link for this trip.</p>
+      <p style="font-size:11px;color:#94a3b8;margin-top:4px">
+        Personal notes, journal, photos and check-ins stay private.
+      </p>
+      <div class="as-actions" style="margin-top:12px">
+        <button type="button" onclick="closePublishModal()" class="as-btn as-btn-cancel">Cancel</button>
+        <button type="button" onclick="publishTrip()" class="as-btn as-btn-save">Generate link</button>
+      </div>`;
+  }
+  // Reflect state on the app-bar pill.
+  const pill = document.querySelector(".mab-publish");
+  if (pill) pill.classList.toggle("is-on", !!slug);
+}
+async function publishTrip() {
+  if (!TRIP_ID) return;
+  try {
+    const resp = await apiCall(`/trips/${TRIP_ID}/publish`, { method: "POST", body: "{}" });
+    TRIP_PUBLISHED_SLUG = resp.slug;
+    renderPublishModalBody();
+    showSnack("🔗 Share link ready");
+  } catch (e) {
+    console.warn("publish failed", e.message);
+    showSnack("Publish failed");
+  }
+}
+async function unpublishTrip() {
+  if (!TRIP_ID) return;
+  try {
+    await apiCall(`/trips/${TRIP_ID}/publish`, { method: "DELETE" });
+    TRIP_PUBLISHED_SLUG = null;
+    renderPublishModalBody();
+    showSnack("Link revoked");
+  } catch (e) {
+    console.warn("unpublish failed", e.message);
+    showSnack("Unpublish failed");
+  }
+}
+async function copyPublishUrl() {
+  const input = document.getElementById("pub-url");
+  if (!input) return;
+  try {
+    await navigator.clipboard.writeText(input.value);
+    showSnack("Link copied");
+  } catch {
+    try { input.select(); document.execCommand("copy"); showSnack("Link copied"); }
+    catch { showSnack("Copy failed — long-press the field"); }
+  }
+}
 
 async function autoSortCurrentDay() {
   if (!TRIP || !TRIP.days) return;
@@ -3181,7 +3312,32 @@ async function bootApp() {
   } catch (e) { showSnack("Boot failed: " + e.message); }
 }
 
+async function bootPublic() {
+  // KG-3b: read-only viewer. No auth, no edit affordances, no login redirect.
+  try {
+    if (!PUBLIC_SLUG) throw new Error("missing slug");
+    const detail = await publicFetch(`/public/trips/${encodeURIComponent(PUBLIC_SLUG)}`);
+    hideLogin();
+    adaptTrip(detail);
+    renderPlan();
+    renderTour();
+    renderMemory();
+  } catch (e) {
+    hideLogin();
+    document.getElementById("plan-day-content").innerHTML =
+      '<div class="bg-white rounded-2xl p-8 text-center text-slate-500 shadow-sm">' +
+      '<p class="mb-2 text-lg">🔗 Link not found</p>' +
+      '<p class="text-sm">This share link is invalid or has been revoked.</p>' +
+      '</div>';
+  }
+}
+
 async function init() {
+  if (PUBLIC_MODE) {
+    if (document.body) document.body.classList.add("is-public");
+    await bootPublic();
+    return;
+  }
   await handleVerifyTokenFromURL();
   if (!API_TOKEN) { showLogin(); return; }
   try {
