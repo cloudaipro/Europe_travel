@@ -5,13 +5,35 @@
 
 ## Current Status
 
-**Active step:** — (Step 1 closed)
-**Last cleared:** Step 1 — Mobile-first adaptive UI redesign — 2026-05-14
+**Active step:** — (Step 2 closed)
+**Last cleared:** Step 2 — KG-1 mobile stop card redesign — 2026-05-14
 **Pending deploy:** NO (committed locally; no remote configured)
 
 ---
 
 ## Step History
+
+### Step 2 — KG-1 mobile stop card redesign — Status: COMPLETE
+*Date: 2026-05-14*
+
+Files changed:
+- `TourCompanion/server/frontend/index.html` — ~155 lines added (125 CSS mobile-scoped, 5 CSS hide rule ≥768px, 18-line `_catGlyph()` helper, ~25-line mobile card + transit row template inside `renderPlanDayContent`). Zero deletions. New CSS classes: `.plan-stop-card-m`, `.pscm-thumb`, `.pscm-badge`, `.pscm-info`, `.pscm-time-row`, `.pscm-cat-icon`, `.pscm-name`, `.pscm-duration`, `.pscm-nav-arrow`, `.plan-transit-row-m`, `.pttrm-icon`, `.pttrm-dur`, `.pttrm-chev`.
+
+Decisions made:
+- ALONGSIDE rendering: emit both `<details>` (desktop) and `.plan-stop-card-m` (mobile) per stop; CSS toggles visibility by viewport.
+- Notes indicator pulls from `STATE.voice_notes[\`${n}-${i}\`]` + `STATE.stop_photos[\`${n}-${i}\`]` — same keys as Tour and Memory tabs.
+- Duration fallback `"Stay 1h 00m"` literal (spec §3.5.1 names this format; stop data has no duration field).
+- `.walk-connector` also hidden on mobile to prevent double-render alongside `.plan-transit-row-m`.
+- `_catGlyph()` maps `_stopCategory()` output to spec §1.6 emoji; falls back to 🕒.
+- Nav arrow uses `event.stopPropagation()` so card-body click doesn't double-fire.
+
+Reviewer findings:
+- Richard: CLEAR — 0 blockers, 0 should-fixes. All four of Bob's judgment calls approved.
+- Arch live sweep: mobile cards render per spec at 390/500px; transit rows correct; tap card → flies map + snaps half; tap nav arrow → opens Google Maps in new tab; desktop 1280px shows only `<details>` (16/16 visible, 0/16 mobile-cards visible) — pixel-frozen.
+
+Deploy: committed locally 2026-05-14.
+
+---
 
 ### Step 1 — Mobile-first adaptive UI redesign (Plan / Tour / Memory) — Status: COMPLETE
 *Date: 2026-05-14*
@@ -40,10 +62,10 @@ Deploy: committed locally 2026-05-14. No remote push (no remote configured).
 ## Known Gaps
 *Logged here instead of fixed. Addressed in a future step.*
 
-- **KG-1** — Stop card in sheet uses existing `<details>` markup; spec §3.5.1 literal redesign deferred — logged 2026-05-14.
-- **KG-2** — Promo banner markup not emitted (no `stop.promo` field in API) — logged 2026-05-14.
-- **KG-3** — Auto-sort CTA + `+` FAB + Publish + day `+`/`−` are disabled stubs (no backend) — logged 2026-05-14.
-- **KG-4** — Visual scratch test at 1280px done via diff-read only (no live browser this session) — logged 2026-05-14.
+- **KG-1** — Stop card in sheet uses existing `<details>` markup; spec §3.5.1 literal redesign deferred — logged 2026-05-14. **CLOSED 2026-05-14 (Step 2):** new `.plan-stop-card-m` markup added alongside `<details>`. Mobile shows new card (60×60 thumb + red shield badge + category-icon + time + name + duration + 36×36 nav arrow); transit row between consecutive stops. Desktop unchanged (16/16 details visible, 0/16 mobile cards visible at ≥768px).
+- **KG-2** — Promo banner markup not emitted (no `stop.promo` field in API) — logged 2026-05-14. **Status: backend-deferred.** CSS slot in place; will activate when API exposes `stop.promo`. No frontend work pending.
+- **KG-3** — Auto-sort CTA + `+` FAB + Publish + day `+`/`−` are disabled stubs (no backend) — logged 2026-05-14. **Status: backend-deferred.** Stubs render correctly with `title="Coming soon"`. No frontend work pending.
+- **KG-4** — Visual scratch test at 1280px done via diff-read only — logged 2026-05-14. **CLOSED 2026-05-14:** verified live at 1280×800 in claude-in-chrome during runtime sweep; desktop pixel-identical to baseline.
 
 ---
 

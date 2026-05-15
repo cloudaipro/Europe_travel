@@ -339,3 +339,66 @@ Anchor formula (`bottom: sheet-current-h + 16px`) was already correct — places
 - Mobile @ 500px: switch Plan → Tour → Memory; orange `+` FAB and locate/reroute FABs disappear.
 - Mobile @ 500px: confirm orange `+` FAB and black map/list toggle FAB now visible at bottom-right of map area in half state.
 - Tablet @ 768px: no FAB leak across tab switches.
+
+---
+
+## Revision 3 — Step 2 stop card redesign (KG-1)
+
+Per `handoff/ARCHITECT-BRIEF.md` and DESIGN-SPEC §3.5.1 / §1.6. ALONGSIDE rendering: existing `<details>` markup untouched; new `.plan-stop-card-m` emitted alongside, CSS toggles which is visible per breakpoint.
+
+### Files changed
+
+- `TourCompanion/server/frontend/index.html` — only.
+
+### Lines added / modified
+
+- **CSS (inside `@media (max-width: 767px)` block, after `.psp-transit` rules):** +~125 lines. Added classes:
+  - `.plan-stop-card-m` (mobile card container, flex row, var(--c-bg-muted), radius 14, padding 12, cursor pointer, is-selected variant with accent inset ring)
+  - `.pscm-thumb` (60×60 wrapper, overflow visible to allow badge bleed)
+  - `.pscm-thumb img` (60×60 cover, radius 10)
+  - `.pscm-badge` (red shield, clip-path polygon per §1.6, 24×26, top:0 left:-4px)
+  - `.pscm-info` (flex column, justify center, min-width 0)
+  - `.pscm-time-row` (accent color, 14/700 + circular `.pscm-cat-icon` 20px with 1px accent border)
+  - `.pscm-name` (16/700, 2-line clamp)
+  - `.pscm-duration` (13/500, muted)
+  - `.pscm-nav-arrow` (36×36 white-bg pill, 1px border, glyph ↗, anchored as `<a>` so middle-click works; cursor pointer)
+  - `.plan-transit-row-m` (margin 8 16 8 38, dashed left vertical 1px border via `::before`)
+  - `.pttrm-icon` / `.pttrm-dur` / `.pttrm-chev` (20px circle, 13/600, 12 micro)
+  - Hide rule (mobile only): `.plan-sheet-shell #plan-day-content details.plan-stop-card, .plan-sheet-shell #plan-day-content .walk-connector { display: none; }` so desktop `<details>` + walk-connector are hidden inside the mobile sheet.
+- **CSS (just after mobile block, before tablet block):** +5 lines.
+  - `@media (min-width: 768px) { .plan-stop-card-m, .plan-transit-row-m { display: none !important; } }` — tablet + desktop hide the new mobile-only markup so existing `<details>` remains pixel-frozen.
+- **JS:** +1 helper `_catGlyph(cat)` (~18 lines) mapping `_stopCategory()` labels → emoji. Falls back to 🕒 when unrecognized.
+- **JS `renderPlanDayContent(n)`:** +~25 lines per stop emit. After the existing `<details>` `pieces.push`, append a second `pieces.push` rendering `.plan-stop-card-m` with badge / thumb / info / nav-arrow. Inside the transit branch, append a second `pieces.push` for `.plan-transit-row-m` after the existing `.walk-connector` emit.
+- **No deletions.** No existing markup or class touched.
+
+### What the mobile sheet now renders
+
+For each stop:
+- 60×60 thumb (picsum stable seed reused from existing card) with red shield badge top-left, number 1..N.
+- Center info: category-icon circle + `time` (accent), stop name 16/700 clamped to 2 lines, "Stay 1h 00m" muted with " · noted" appended when `STATE.stop_photos[\`${day.n}-${i}\`]` or `STATE.voice_notes[\`${day.n}-${i}\`]` is non-empty.
+- 36×36 navigate arrow (anchor `<a href=gmapsUrl(s)>`, `target=_blank`, `event.stopPropagation()` on click to prevent card-body tap from also firing).
+
+Tap behavior:
+- Card body → `selectStop(idx, 'list')` (existing flow: map fly + sheet snap to half + flash).
+- Nav arrow → opens Google Maps in new tab via existing `gmapsUrl(s)`.
+
+Between consecutive stops: `.plan-transit-row-m` with the same connLabel + isWalk decision the existing `.walk-connector` uses (raw `next.transit` → strip emoji prefix → first two `·` segments; else haversine → `~Xm · X.X km`; else "~15 min walk").
+
+### Judgment calls
+
+1. **Notes indicator data source.** Brief said grep `stop.voice_notes` / `stop.photos` / `stop.journal`. Stops don't carry those — voice notes / photos are stored on `STATE.voice_notes[\`${day.n}-${i}\`]` and `STATE.stop_photos[\`${day.n}-${i}\`]` (per the Tour tab pattern at line ~2207). Used those. `journal` is trip-wide on `STATE.journal`, not per-stop, so excluded.
+2. **Duration field.** No `s.duration` on stops in current data. Used `s.duration || s.stay || "Stay 1h 00m"` as a safe fallback so the row never empties. (Existing desktop card never displays stay — only `snip` and `address`.) If Arch wants a different fallback (e.g. compute from times of adjacent stops), flag it.
+3. **Category-icon glyph.** Spec §1.6 lists glyphs per category but `_stopCategory()` returns custom labels (ARRIVAL/HOTEL/CAFÉ/…). Added `_catGlyph()` mapping these to the §1.6 emojis. ARRIVAL → ✈️, HOTEL → 🏨, CAFÉ → ☕, BAR → 🍸, DINING → 🍴, SPA → ♨️, CHURCH → ⛪, LANDMARK → 🏛, MARKET → 🛍, MUSEUM → 🖼, NATURE → 🌳, MUST → 📷, fallback 🕒.
+4. **"(custom)" sub-label.** Per flag, skipped (no `user_set` flag on stops).
+5. **Drag-reorder on mobile.** Per brief, NOT re-implemented. Mobile card has no `draggable` attribute; existing desktop `<details>` keeps drag.
+6. **`.walk-connector` on mobile.** Brief didn't explicitly say to hide it, but visually it would double-render alongside `.plan-transit-row-m`. Hidden inside `.plan-sheet-shell` at mobile only — desktop layout untouched.
+
+### Desktop / tablet verification
+
+- Desktop ≥1024px: `.plan-stop-card-m` + `.plan-transit-row-m` both `display:none !important;` from `@media (min-width: 768px)` rule. `<details>` unchanged. `.walk-connector` unchanged. Pixel-frozen.
+- Tablet 768–1023px: same — new markup hidden, narrow side panel unchanged.
+- Mobile <768px: `<details>` + `.walk-connector` hidden inside `.plan-sheet-shell` (which is the right panel that becomes the sheet on mobile via existing CSS).
+
+### Open questions for Arch
+
+- None blocking. If duration fallback "Stay 1h 00m" is wrong, easy 1-line change.

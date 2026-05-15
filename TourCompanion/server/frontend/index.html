@@ -434,6 +434,136 @@
     .psp-transit .psp-t-icon { font-size: 16px; line-height: 1; }
     .psp-transit .psp-t-dur { font-size: 12px; font-weight: 600; color: var(--c-text); }
 
+    /* ── Mobile stop card (KG-1, DESIGN-SPEC §3.5.1) ──
+       Rendered alongside the desktop <details> markup; CSS toggles visibility.
+       Hides desktop <details> + walk-connector inside the mobile sheet. */
+    .plan-sheet-shell #plan-day-content details.plan-stop-card,
+    .plan-sheet-shell #plan-day-content .walk-connector { display: none; }
+    .plan-stop-card-m {
+      display: flex;
+      align-items: stretch;
+      gap: 12px;
+      margin: 0 16px 0;
+      background: var(--c-bg-muted);
+      border-radius: 14px;
+      padding: 12px;
+      cursor: pointer;
+      position: relative;
+    }
+    .plan-stop-card-m.is-selected {
+      box-shadow: 0 0 0 2px var(--c-accent) inset;
+    }
+    .pscm-thumb {
+      position: relative;
+      width: 60px; height: 60px;
+      flex-shrink: 0;
+      border-radius: 10px;
+      overflow: visible;
+    }
+    .pscm-thumb img {
+      width: 60px; height: 60px;
+      border-radius: 10px;
+      object-fit: cover;
+      display: block;
+      background: var(--c-border);
+    }
+    .pscm-badge {
+      position: absolute;
+      top: 0; left: -4px;
+      width: 24px; height: 26px;
+      background: var(--c-accent);
+      color: #fff;
+      font-size: 13px; font-weight: 800;
+      display: flex; align-items: center; justify-content: center;
+      clip-path: polygon(0 0, 100% 0, 100% 75%, 75% 100%, 0 100%);
+      box-shadow: 0 2px 4px rgba(229,56,74,.35);
+      line-height: 1;
+    }
+    .pscm-info {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: flex; flex-direction: column;
+      justify-content: center;
+      gap: 2px;
+    }
+    .pscm-time-row {
+      display: flex; align-items: center;
+      gap: 6px;
+      font-size: 14px; font-weight: 700;
+      color: var(--c-accent);
+      line-height: 1.2;
+    }
+    .pscm-time-row .pscm-cat-icon {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 20px; height: 20px;
+      border-radius: 9999px;
+      border: 1px solid var(--c-accent);
+      font-size: 12px; line-height: 1;
+      color: var(--c-accent);
+    }
+    .pscm-name {
+      font-size: 16px; font-weight: 700;
+      color: var(--c-text);
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      word-break: break-word;
+    }
+    .pscm-duration {
+      font-size: 13px; font-weight: 500;
+      color: var(--c-text-muted);
+      line-height: 1.3;
+    }
+    .pscm-nav-arrow {
+      flex-shrink: 0;
+      align-self: center;
+      width: 36px; height: 36px;
+      border-radius: 9999px;
+      background: var(--c-bg);
+      border: 1px solid var(--c-border);
+      color: var(--c-text-muted);
+      font-size: 16px; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .pscm-nav-arrow:active { background: var(--c-bg-muted); }
+
+    /* Transit row between consecutive mobile cards */
+    .plan-transit-row-m {
+      display: flex; align-items: center;
+      gap: 8px;
+      margin: 8px 16px 8px 38px;
+      position: relative;
+      padding-left: 12px;
+    }
+    .plan-transit-row-m::before {
+      content: "";
+      position: absolute;
+      left: 0; top: -4px; bottom: -4px;
+      width: 0;
+      border-left: 1px dashed var(--c-border);
+    }
+    .pttrm-icon {
+      width: 20px; height: 20px;
+      border-radius: 9999px;
+      border: 1px solid var(--c-text-muted);
+      color: var(--c-text-muted);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 12px; line-height: 1;
+      flex-shrink: 0;
+    }
+    .pttrm-dur {
+      font-size: 13px; font-weight: 600;
+      color: var(--c-text);
+    }
+    .pttrm-chev {
+      font-size: 12px; color: var(--c-text-micro);
+      margin-left: 2px;
+    }
+
     /* Sheet body: panel header, day header, sub-tabs, content scroll */
     .plan-sheet-shell #plan-panel-header,
     .plan-sheet-shell #plan-day-header {
@@ -590,6 +720,12 @@
   #tab-plan.hidden .plan-fab-cluster,
   #tab-plan.hidden .plan-locate-fab,
   #tab-plan.hidden .plan-reroute-fab { display: none !important; }
+
+  /* KG-1: mobile stop card + transit row hidden at tablet + desktop. */
+  @media (min-width: 768px) {
+    .plan-stop-card-m,
+    .plan-transit-row-m { display: none !important; }
+  }
 
   /* ────────── TABLET  (768–1023px) ────────── */
   @media (min-width: 768px) and (max-width: 1023px) {
@@ -1869,6 +2005,26 @@ async function _onCardDrop(ev, targetIdx) {
   }
 }
 
+/* KG-1: category label → emoji glyph for the mobile stop card's circular
+   category icon. Falls back to 🕒 when no recognizable category. */
+function _catGlyph(cat) {
+  switch (cat) {
+    case "ARRIVAL":  return "✈️";
+    case "HOTEL":    return "🏨";
+    case "CAFÉ":     return "☕";
+    case "BAR":      return "🍸";
+    case "DINING":   return "🍴";
+    case "SPA":      return "♨️";
+    case "CHURCH":   return "⛪";
+    case "LANDMARK": return "🏛";
+    case "MARKET":   return "🛍";
+    case "MUSEUM":   return "🖼";
+    case "NATURE":   return "🌳";
+    case "MUST":     return "📷";
+    default:         return "🕒";
+  }
+}
+
 function renderPlanDayContent(n) {
   const day = TRIP.days.find(d => d.n === n);
   const el = document.getElementById("plan-day-content");
@@ -1926,6 +2082,33 @@ function renderPlanDayContent(n) {
         </div>
       </details>`);
 
+    /* KG-1: mobile-only stop card rendered alongside the <details> above.
+       CSS at @media (max-width: 767px) hides <details>; ≥768px hides this. */
+    const mPhotos = STATE.stop_photos[`${n}-${i}`] || [];
+    const mNote   = STATE.voice_notes[`${n}-${i}`];
+    const hasNotes = !!(mNote || (mPhotos && mPhotos.length));
+    const durationLabel = s.duration || s.stay || "Stay 1h 00m";
+    const glyph = _catGlyph(cat);
+    pieces.push(`
+      <div class="plan-stop-card-m ${i === selectedStopIdx ? 'is-selected' : ''}" data-stop-idx="${i}"
+        onclick="selectStop(${i}, 'list')">
+        <div class="pscm-thumb">
+          <img src="https://picsum.photos/seed/${thumbSeed}/120/120" alt="" loading="lazy">
+          <div class="pscm-badge">${i + 1}</div>
+        </div>
+        <div class="pscm-info">
+          <div class="pscm-time-row">
+            <span class="pscm-cat-icon">${glyph}</span>
+            <span>${s.time || ""}</span>
+          </div>
+          <div class="pscm-name">${s.name || ""}</div>
+          <div class="pscm-duration">${durationLabel}${hasNotes ? " · noted" : ""}</div>
+        </div>
+        <a class="pscm-nav-arrow" href="${gmapsUrl(s)}" target="_blank" rel="noopener"
+          aria-label="Open in Google Maps"
+          onclick="event.stopPropagation();">↗</a>
+      </div>`);
+
     if (i < day.stops.length - 1) {
       const next = day.stops[i + 1];
       const raw = next.transit || "";
@@ -1946,6 +2129,13 @@ function renderPlanDayContent(n) {
         <div class="walk-connector mx-3 my-0.5">
           <div class="wc-line" style="margin-left:10px"></div>
           <div class="wc-label">${isWalk ? "🚶" : "🚇"} ${connLabel}</div>
+        </div>`);
+      /* KG-1: mobile-only transit row (sibling to .plan-stop-card-m above) */
+      pieces.push(`
+        <div class="plan-transit-row-m">
+          <span class="pttrm-icon">${isWalk ? "🚶" : "🚌"}</span>
+          <span class="pttrm-dur">${connLabel}</span>
+          <span class="pttrm-chev">›</span>
         </div>`);
     }
   });

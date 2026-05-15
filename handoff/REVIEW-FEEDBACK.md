@@ -1,94 +1,38 @@
-# Review Feedback — Step 1 (Round 2 — Live Browser Sweep)
-
+# Review Feedback — Step 2 (Mobile Stop Card Redesign)
 Date: 2026-05-14
-Reviewer: Arch (after running multi-viewport sweep in claude-in-chrome on the running app at http://127.0.0.1:8000/)
-Verdict: **CONDITIONALLY CLEAR — 4 fixes required, all small.**
+Reviewer: Richard
+Verdict: CLEAR
 
-Previous round (Richard static review): cleared with 3 should-fixes already applied. This round was a live runtime sweep at 1280 / 768 / 500 px widths.
+## Tier 1 findings
 
----
+None blocking. All five Tier 1 checks pass:
 
-## What Passes ✓
+1. **Desktop ≥768px scoping.** Confirmed at index.html:725–728: `@media (min-width: 768px) { .plan-stop-card-m, .plan-transit-row-m { display: none !important; } }`. Existing `<details>` at desktop is untouched — the hide rule for `<details>` at index.html:440–441 lives inside `@media (max-width: 767px)` (mobile block 201–715), so it does not fire at ≥768px. Pixel-frozen.
+2. **Mobile <768px no double-render.** Inside mobile media: `.plan-sheet-shell #plan-day-content details.plan-stop-card, .plan-sheet-shell #plan-day-content .walk-connector { display: none; }` (lines 440–441). New `.plan-stop-card-m` and `.plan-transit-row-m` rendered alongside (pieces.push at 2092 and 2134). No overlap.
+3. **No undefined function calls.** `_catGlyph` defined at 2010, `_stopCategory` at 1920, `gmapsUrl` at 1289, `selectStop` at 1770. All reachable from the new render path.
+4. **Nav arrow stopPropagation.** index.html:2109 — `onclick="event.stopPropagation();"` on the `<a class="pscm-nav-arrow">`. Default link navigation (target="_blank") is preserved (no preventDefault). Card-body click does not fire.
+5. **No new console-error sources.** STATE is initialized in `loadTrip()` (line 1098) before any `renderPlanDayContent` call. Pattern reuse (`STATE.stop_photos[\`${n}-${i}\`] || []`) is identical to Tour tab at line 2396. No null deref risk in normal flow.
 
-- **Desktop @ 1280px** — Plan tab renders identically to pre-change (2-column, map + 38% right panel, day pills, hero card, sub-tabs). No visible delta. Pixel-frozen.
-- **Tablet @ 768px** — Plan tab renders as narrow side panel + map; sheet shell + day-strip-mobile + app bar correctly hidden.
-- **Mobile @ 500px (390 OS window)** — App bar (Publish stub, search disabled, gear, logout), sticky day strip (Overview / Day 1..N / + / −), full-bleed map all render correctly.
-- **Tour tab mobile** — pill bar (Cheap eats / Phrases / Washroom / Currency / Weather) horizontal scroll works; stop cards full-width with Navigate / Check-in / Photo / Voice buttons; day strip works.
-- **Memory tab mobile** — `Your journey` map renders, day cards stack, journal section below.
-- **Console** — zero application errors at any viewport. Only chrome-extension noise (`common loaded`, `releaseNoteVersionReceived`) from a browser extension, not the app.
-- **Sheet content** when forced visible — header, sub-tabs, transit filter, blue Auto-sort CTA, drag handle, stop cards all render per spec.
-- **Sheet drag math (forced)** — `sheetSnap('half')` correctly applies `.sheet--half` class and computes `matrix(1,0,0,1,0,280.14)` (= translate(0, calc(100%-50dvh))). Math is right.
+## Tier 2 findings
 
----
+6. **Notes indicator data source.** Key format `${n}-${i}` at line 2087–2088 matches Tour tab (line 2396–2397) and Memory tab (line 2573, 2589) verbatim. Same data, same key shape. Approved.
+7. **Duration fallback.** `s.duration || s.stay || "Stay 1h 00m"` (line 2090) — hardcoded string is the right call for now: stop data has no duration field, so an empty third row would look broken. Spec §3.5.1 row 3 literally specifies "Stay 1h 00m" as the label format. Approved.
+8. **Badge clip-path.** Line 478 uses `polygon(0 0, 100% 0, 100% 75%, 75% 100%, 0 100%)` — matches DESIGN-SPEC §1.6 exactly. 24×26, top-left, white digit 13/800. Compliant.
+9. **Card body tap source.** Line 2094 — `onclick="selectStop(${i}, 'list')"`. `selectStop` mobile branch (line 1806) explicitly accepts `'list' | 'peek' | 'key'` and snaps the sheet to half. Correct routing.
+10. **Transit row data reuse.** Lines 2114–2127 reuse the same `next.transit` raw parse + haversine fallback as the existing `.walk-connector` block (2128–2132). Identical `connLabel` and `isWalk` values feed both. Not hardcoded.
 
-## What Fails ✗ — Required Fixes
+## Tier 3 findings
 
-### BUG-1 — BLOCKER — Sheet invisible by default on mobile (z-index conflict with Leaflet)
+11. **Naming.** `.pscm-*` (mobile stop card) and `.pttrm-*` (mobile transit row) are consistent within each family. All classes used in the JS template are defined in CSS (verified: thumb, badge, info, time-row, cat-icon, name, duration, nav-arrow, icon, dur, chev).
+12. **Dead CSS / duplicates.** `.pscm-thumb` is given `overflow: visible` so the badge can bleed `left:-4px` — intentional per §1.6. `.pscm-thumb img` re-asserts 60×60 + radius — fine for box-model isolation, not dead. No duplicates.
 
-**Symptom:** At mobile width (<768px), after `initPlanSheet()` + `sheetSnap('half')`, the sheet has correct geometry (`top:53; bottom:0; transform:translateY(280px)`, `bg:rgb(255,255,255)`, `display:flex`, `opacity:1`) and `document.elementFromPoint(250, 500)` returns the sheet's H3 — but **screenshots show only the map** in the lower half where the sheet should be.
+## Bob's judgment calls — Richard's calls
 
-**Root cause:** Leaflet's internal panes (`.leaflet-map-pane`) carry `z-index: 400`, with tile/marker/overlay panes at 200–700. Bob's sheet uses `z-index: 40`. Hit-testing finds the sheet (because Leaflet panes are inside the map container, which is a separate stacking context from the sheet), but the **map's tile pane composites over the sheet visually** because it's painted later in the stacking order due to how transform-3d-promoted layers interact.
+1. Notes indicator data source (`STATE.voice_notes[${n}-${i}]`, `STATE.stop_photos[${n}-${i}]`) — **yes**. Key format and access pattern match Tour and Memory tabs verbatim.
+2. Duration fallback "Stay 1h 00m" — **yes**. Spec §3.5.1 literally names this as the label format. Empty third row would look broken. Reconsider when real duration data exists.
+3. Hiding `.walk-connector` on mobile — **yes**. Without it, the dashed connector would double-render alongside `.plan-transit-row-m`. Scoped to `.plan-sheet-shell #plan-day-content` and to the mobile media block, so desktop is untouched.
+4. `_catGlyph` mapping via `_stopCategory` — **yes**. Spec §1.6 lists glyphs by semantic role; existing `_stopCategory` already classifies stops into the right buckets. Fallback to 🕒 on unrecognized category is safe. Mapping is correct: HOTEL→🏨, CAFÉ→☕, DINING→🍴, SPA→♨️, CHURCH→⛪, etc.
 
-**Confirmed fix:** setting `style.zIndex='1000'` on `.plan-sheet-shell` immediately made the sheet visible. Recommend setting **`z-index: 1000`** (not 40) on `.plan-sheet-shell` in mobile media block; also bump `.plan-fab-cluster`, `.plan-locate-fab`, `.plan-reroute-fab`, `.mobile-app-bar`, and `.day-strip-mobile` to **z-index 1001** so they stay above the sheet. Verified working.
+## Summary for Arch
 
-**File:** `TourCompanion/server/frontend/index.html` — mobile media block, ~line 380–420 region.
-
----
-
-### BUG-2 — BLOCKER — Plan FABs leak to Tour + Memory tabs
-
-**Symptom:** On Tour and Memory tabs at mobile width, the two small Apple-Maps-style icons (`.plan-locate-fab` + `.plan-reroute-fab`) — and likely `.plan-fab-cluster` — remain visible floating on the right side of the screen. They are Plan-tab-only controls.
-
-**Root cause:** Bob placed `.plan-fab-cluster`, `.plan-locate-fab`, `.plan-reroute-fab` as `position: fixed` siblings, which means they don't hide when `#tab-plan` has `.hidden`. The CSS shows them based on viewport width only, not active tab.
-
-**Fix options (pick one):**
-- (a) **Move the three FAB elements inside `<section id="tab-plan">`** so they inherit the `.hidden` from `setTab()`. This is the cleanest fix.
-- (b) Add CSS rule that hides FABs when `#tab-plan.hidden`: e.g. `#tab-plan.hidden ~ .plan-fab-cluster, #tab-plan.hidden ~ .plan-locate-fab, #tab-plan.hidden ~ .plan-reroute-fab { display: none !important; }` — but this is fragile (relies on sibling order).
-- (c) JS-driven: `setTab()` toggles a body class like `body.on-plan` and FAB CSS keys off that. Adds complexity.
-
-Recommend option (a).
-
-**Also on tablet (768px) sweep:** the same FAB leak appears even though sheet shell is hidden — confirms FABs are not scoped properly even within Plan tab. After fix (a), additionally ensure FAB cluster + locate + reroute are scoped to `@media (max-width: 767px)` only and stay `display: none` at ≥768px. Verify the tablet-block selector list explicitly includes these.
-
----
-
-### BUG-3 — HIGH — Day mismatch on initial load
-
-**Symptom:** Day-tab strip pills show "Day 1" as active (underlined). Sheet content shows "Day 6 · Sat 23 May · Library + Synagogue + NY Café + Heroes Sq + Zoo + Opera · 6 STOPS · 8.4 km WALK".
-
-**Root cause:** Bob's `selectPlanDay()` mobile branch resets the sheet to half, but `_currentPlanDay` (or whatever variable backs `renderPlanDayContent`) was set to 6 by some prior interaction (likely a `selectStop` call from a marker click during fitBounds animation). On fresh page load this should default to Day 1. Either the desktop floating day-pill click handler is firing for Day 6, or `renderPlanDayTabs()` is auto-selecting the last day.
-
-**Verify + fix:** check `renderPlan()` / `renderPlanDayTabs()` / `setPlanDay()` initial-state logic. Default day on first render should be Day 1 (or "Overview"). The mobile day strip's `selectPlanDay` calls must keep desktop floating-pill in sync.
-
-**File:** `TourCompanion/server/frontend/index.html` — `renderPlanDayTabs()` (~line 1095) and `renderPlan()` tail (~line 1031).
-
----
-
-### BUG-4 — MEDIUM — `.plan-fab-cluster` not visibly rendered in half state
-
-**Symptom:** In half state with sheet visible (after the z-index fix), the spec-required orange `+` FAB + black map/list toggle FAB **do not appear**. Only the smaller locate / reroute FABs show.
-
-**JS rect check at mobile width:** `fab cluster: display=flex z=50 rect={t:193, l:428, w:56, h:124}` — element IS in DOM with geometry, but at top=193 it sits *above* the sheet top (333) and *above* the map area (map starts at top=100). Width 56 height 124 places it at x:428-484 y:193-317.
-
-Looking at the live screenshot, this region is blank — either the orange/black background colors aren't applied, the children inside the cluster are `display:none`, or the cluster is being painted behind something.
-
-**Action:** Bob should inspect `.plan-fab-cluster > .plan-fab-add` and `.plan-fab-cluster > .plan-fab-toggle` computed styles + visible-bounds. Verify the orange `#E8A33D` and slate-900 `#0F172A` backgrounds, the 56×56 circles, and that they're not collapsed by `flex-shrink` or hidden by an `@media` rule.
-
-Also after fix: confirm the anchor logic in `--sheet-current-h` math places the cluster **below the sheet's bottom edge** when sheet is in `half` (so the cluster sits over the map area, not above the sheet top). Spec §3.4 has the cluster anchored to the bottom-right of the map area, not pinned to the sheet's top.
-
----
-
-## Re-test Required After Fixes
-
-Once Bob lands the four fixes, re-run:
-- Mobile @ 500px: Plan tab — sheet visible by default; orange + + black toggle FAB visible at bottom-right of map; day strip Day 1 matches sheet content "Day 1".
-- Mobile @ 500px: switch to Tour, then Memory — confirm Plan FABs no longer visible.
-- Mobile @ 500px: drag sheet handle peek ↔ half ↔ full; tap stop card; tap map marker; switch day via strip.
-- Tablet @ 768px: confirm no FAB leak.
-- Desktop @ 1280px: pixel-identical to baseline.
-
----
-
-## Summary for Project Owner
-
-Build is structurally sound — all design tokens, breakpoints, sheet drag math, function preservation, keyboard guard, safe-area handling, Tour pill bar, Memory stack, and desktop preservation are correct. Two blockers (sheet z-index, FAB tab-leak) and two smaller issues (day mismatch, FAB cluster visibility) found in live runtime. All four are small, targeted fixes. Estimate one more Bob round (under 30 min) to clear.
+Step 2 (KG-1 mobile stop card redesign) is clear. Bob added ~125 lines of mobile-scoped CSS and ~45 lines of JS, all additive — zero existing DOM or class modified. Desktop ≥768px pixel-frozen via `display: none !important` on the new `.plan-stop-card-m` / `.plan-transit-row-m`. Mobile <768px hides the existing `<details>` and `.walk-connector` (scoped inside `.plan-sheet-shell #plan-day-content` and the `max-width: 767px` media block) so no double-render. Badge shape matches DESIGN-SPEC §1.6 exactly. Nav arrow uses `event.stopPropagation()` so the card-body click does not double-fire. All function references (`_catGlyph`, `_stopCategory`, `gmapsUrl`, `selectStop`) are defined and reachable. Notes-indicator data source mirrors the Tour / Memory tab pattern verbatim. All four of Bob's judgment calls stand. No must-fix, no should-fix. Ready to ship.

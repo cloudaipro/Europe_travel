@@ -5,28 +5,33 @@
 
 ## Where We Stopped
 
-Step 1 (Mobile-first adaptive UI for TourCompanion — all 3 tabs: Plan / Tour / Memory) is **COMPLETE and committed locally**. No remote configured, so no push. Next action: pick the next step (likely KG-1 stop-card markup redesign, or any new feature the Project Owner wants).
+Steps 1 + 2 complete and committed locally:
+- **Step 1** — Mobile-first adaptive UI for all 3 tabs (Plan / Tour / Memory). Bottom-sheet over map on Plan (3 snaps), pill bar on Tour, stacked layout on Memory. Desktop ≥1024px pixel-frozen.
+- **Step 2** — KG-1: mobile stop card redesign. New `.plan-stop-card-m` matches DESIGN-SPEC §3.5.1 (60×60 thumb + red shield badge + category icon + time + name + duration + 36×36 nav arrow). Transit row between cards. ALONGSIDE rendering keeps `<details>` for desktop unchanged.
+
+No active step. Pick next when ready.
 
 ---
 
 ## What Was Decided This Session
 
-- **Reference design:** chicTrip (Taiwanese travel app) mobile UI emulated for the Plan tab (3-snap bottom sheet over map). Reference frames extracted from `phone-ui-ref.MP4` to `handoff/ref-frames/`.
-- **Scope:** all 3 tabs redesigned this step. Single-file edit only (`TourCompanion/server/frontend/index.html`). Desktop ≥1024px pixel-frozen.
-- **Breakpoints:** mobile `<768px` = bottom-sheet, tablet `768–1023px` = narrow side panel sheet disabled, desktop `≥1024px` = original 2-column.
-- **Design system:** colors / type / spacing / radii / shadows defined in `handoff/DESIGN-SPEC.md` (431 lines, literal). Custom properties on `:root`.
-- **Sheet z-index baseline = 1000** (above Leaflet's 400-700 pane stack). FABs at 1001.
-- **Stop card markup deferred** — existing `<details>` retained inside sheet to preserve drag-reorder + keyboard nav. KG-1 logged for next step.
-- **Stubs (no backend) for:** Publish pill, Search button, +/− day controls, orange + FAB, Auto-sort CTA — all `disabled title="Coming soon"`.
+- Reference design: chicTrip Taiwanese travel app emulated for Plan tab mobile.
+- Single-file constraint: all UI in `TourCompanion/server/frontend/index.html`.
+- Breakpoints: mobile `<768px`, tablet `768–1023px`, desktop `≥1024px`.
+- Sheet z-index = 1000 (above Leaflet panes 400-700); FABs at 1001.
+- Stub buttons (Publish, +, +/−, Auto-sort, Search): `disabled title="Coming soon"`. KG-3 backend-deferred.
+- Promo banner gated on `stop.promo` field (KG-2, backend-deferred).
+- ALONGSIDE rendering for mobile cards — keeps desktop `<details>` intact (preserves drag-reorder, `_onStopSummaryClick`, keyboard nav).
 
 ---
 
 ## Still Open
 
-- **KG-1** — Stop card literal redesign per DESIGN-SPEC §3.5.1 (flat 60×60 thumb + numbered shield + 36×36 nav arrow). Deferred to its own step.
-- **KG-2** — Promo banner markup gated on `stop.promo` field; backend doesn't expose it yet.
-- **KG-3** — Auto-sort, day-add/remove, Publish all need backend before they're real.
-- No remote git configured — `git push` will fail.
+- **KG-2** — Promo banner (backend-deferred; no `stop.promo` field).
+- **KG-3** — Auto-sort / +/− day controls / Publish / orange `+` FAB (all backend-deferred).
+- No git remote configured — `git push` will fail.
+
+All other Known Gaps closed.
 
 ---
 
