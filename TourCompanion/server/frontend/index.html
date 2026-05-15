@@ -862,8 +862,8 @@
       <div class="day-strip-mobile">
         <div id="plan-day-strip-mobile-scroll" class="dsm-scroll"></div>
         <div class="dsm-end">
-          <button disabled title="Coming soon">+</button>
-          <button disabled title="Coming soon">−</button>
+          <button onclick="addDay()">+</button>
+          <button onclick="removeLastDay()">−</button>
         </div>
       </div>
     </div>
@@ -886,7 +886,7 @@
       <!-- Mobile Auto-sort CTA row (visible only on mobile via CSS) -->
       <div class="plan-sheet-cta-row">
         <button class="pscr-filter" type="button">🚌 Transit ▾</button>
-        <button class="pscr-cta" type="button" disabled title="Coming soon">≡⚡ Auto-sort</button>
+        <button class="pscr-cta" type="button" onclick="autoSortCurrentDay()">≡⚡ Auto-sort</button>
       </div>
       <div id="plan-day-content" class="flex-1 overflow-y-auto py-2"></div>
     </div>
@@ -1259,6 +1259,70 @@ async function confirmDeleteTrip() {
     await apiCall(`/trips/${TRIP_ID}`, { method: "DELETE" });
     localStorage.removeItem("tc_trip_id"); showSnack("Trip deleted"); await bootApp();
   } catch (e) { showSnack("Delete failed: " + e.message); }
+}
+
+async function refreshTrip() {
+  if (!TRIP_ID) return;
+  try {
+    const detail = await apiCall(`/trips/${TRIP_ID}`);
+    adaptTrip(detail);
+    renderPlan();
+  } catch (e) { console.warn("refresh failed", e.message); }
+}
+
+async function autoSortCurrentDay() {
+  if (!TRIP || !TRIP.days) return;
+  const n = selectedPlanDay || 1;
+  const day = TRIP.days.find(d => d.n === n) || TRIP.days[n - 1];
+  if (!day || !day.stops || day.stops.length < 2) return;
+  const toMinutes = (t) => {
+    const m = /^(\d{1,2}):(\d{2})/.exec(t || '');
+    return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : Infinity;
+  };
+  const sortedIds = [...day.stops]
+    .map((s, i) => ({ id: s._stop_id, min: toMinutes(s.time), i }))
+    .sort((a, b) => (a.min - b.min) || (a.i - b.i))
+    .map(s => s.id);
+  if (sortedIds.every((id, i) => id === day.stops[i]._stop_id)) return;
+  const btn = document.querySelector('.pscr-cta');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+  try {
+    await apiCall(`/trips/days/${day._day_id}/stops/order`, {
+      method: 'PUT',
+      body: JSON.stringify({ stop_ids: sortedIds }),
+    });
+    await refreshTrip();
+    selectPlanDay(n);
+  } catch (e) { console.warn('auto-sort failed', e.message); }
+  finally { if (btn) { btn.disabled = false; btn.style.opacity = ''; } }
+}
+
+async function addDay() {
+  if (!TRIP_ID) return;
+  try {
+    const detail = await apiCall(`/trips/${TRIP_ID}/days`, { method: 'POST', body: '{}' });
+    adaptTrip(detail);
+    renderPlan();
+  } catch (e) { console.warn('add day failed', e.message); }
+}
+
+async function removeLastDay() {
+  if (!TRIP || !TRIP.days || TRIP.days.length <= 1) {
+    showSnack("Can't remove the only day");
+    return;
+  }
+  const lastN = Math.max(...TRIP.days.map(d => d.n));
+  try {
+    const detail = await apiCall(`/trips/${TRIP_ID}/days/${lastN}`, { method: 'DELETE' });
+    if (selectedPlanDay > (TRIP.days.length - 1)) {
+      selectedPlanDay = TRIP.days.length - 1;
+    }
+    adaptTrip(detail);
+    renderPlan();
+  } catch (e) {
+    console.warn('remove day failed', e.message);
+    showSnack('Remove day failed');
+  }
 }
 
 const DAY_STATUS = (n) => {

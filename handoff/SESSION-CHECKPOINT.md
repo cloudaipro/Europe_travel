@@ -5,9 +5,10 @@
 
 ## Where We Stopped
 
-Steps 1 + 2 complete and committed locally:
-- **Step 1** — Mobile-first adaptive UI for all 3 tabs (Plan / Tour / Memory). Bottom-sheet over map on Plan (3 snaps), pill bar on Tour, stacked layout on Memory. Desktop ≥1024px pixel-frozen.
-- **Step 2** — KG-1: mobile stop card redesign. New `.plan-stop-card-m` matches DESIGN-SPEC §3.5.1 (60×60 thumb + red shield badge + category icon + time + name + duration + 36×36 nav arrow). Transit row between cards. ALONGSIDE rendering keeps `<details>` for desktop unchanged.
+Steps 1 + 2 + 3 complete and committed locally:
+- **Step 1** — Mobile-first adaptive UI (3 tabs).
+- **Step 2** — KG-1: mobile stop card redesign per spec §3.5.1.
+- **Step 3** — KG-3 partial close: Auto-sort CTA + day add/remove wired (backend + frontend).
 
 No active step. Pick next when ready.
 
@@ -16,19 +17,21 @@ No active step. Pick next when ready.
 ## What Was Decided This Session
 
 - Reference design: chicTrip Taiwanese travel app emulated for Plan tab mobile.
-- Single-file constraint: all UI in `TourCompanion/server/frontend/index.html`.
+- Single-file constraint for frontend; minimal additions for backend.
 - Breakpoints: mobile `<768px`, tablet `768–1023px`, desktop `≥1024px`.
 - Sheet z-index = 1000 (above Leaflet panes 400-700); FABs at 1001.
-- Stub buttons (Publish, +, +/−, Auto-sort, Search): `disabled title="Coming soon"`. KG-3 backend-deferred.
-- Promo banner gated on `stop.promo` field (KG-2, backend-deferred).
-- ALONGSIDE rendering for mobile cards — keeps desktop `<details>` intact (preserves drag-reorder, `_onStopSummaryClick`, keyboard nav).
+- ALONGSIDE rendering for mobile cards (preserves desktop `<details>`).
+- Auto-sort reuses existing reorder endpoint; new endpoints only for day add/remove.
+- Day add appends last; day remove only the last day. No mid-trip insertion/deletion.
 
 ---
 
-## Still Open
+## Still Open (Known Gaps)
 
-- **KG-2** — Promo banner (backend-deferred; no `stop.promo` field).
-- **KG-3** — Auto-sort / +/− day controls / Publish / orange `+` FAB (all backend-deferred).
+- **KG-2** — Promo banner gated on `stop.promo` field (backend-deferred).
+- **KG-3 (residual)** — Orange `+` add-stop FAB and Publish flow (both need UX decisions).
+- **KG-6** — Race condition on `+` day double-tap creates two days.
+- **KG-7** — Auto-sort doesn't handle `"HH:MM +1"` next-day notation.
 - No git remote configured — `git push` will fail.
 
 All other Known Gaps closed.

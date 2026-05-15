@@ -1,3 +1,4 @@
+from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -88,6 +89,43 @@ def delete_trip(trip_id: int, user: CurrentUser, db: Annotated[Session, Depends(
     t = _owned(db, user, trip_id)
     db.delete(t)
     db.commit()
+
+
+@router.post("/{trip_id}/days", response_model=schemas.TripDetail, status_code=201)
+def add_day(trip_id: int, user: CurrentUser, db: Annotated[Session, Depends(get_db)]):
+    t = _owned(db, user, trip_id)
+    next_n = (max((d.n for d in t.days), default=0)) + 1
+    new_date = t.start_date + timedelta(days=next_n - 1)
+    # Match seed_data format: "Fri 22 May"
+    label = new_date.strftime("%a %d %b")
+    d = Day(trip_id=t.id, n=next_n, date_label=label, theme="", mode="")
+    db.add(d)
+    # Extend trip end_date if needed
+    if t.end_date < new_date:
+        t.end_date = new_date
+    db.commit()
+    db.refresh(t)
+    return _trip_to_detail(t)
+
+
+@router.delete("/{trip_id}/days/{day_n}", response_model=schemas.TripDetail)
+def remove_day(trip_id: int, day_n: int, user: CurrentUser, db: Annotated[Session, Depends(get_db)]):
+    t = _owned(db, user, trip_id)
+    if len(t.days) <= 1:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "cannot remove the only day")
+    max_n = max(d.n for d in t.days)
+    if day_n != max_n:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "only the last day can be removed")
+    target = next((d for d in t.days if d.n == day_n), None)
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "day not found")
+    db.delete(target)
+    # Pull back end_date by 1 day
+    if t.end_date > t.start_date:
+        t.end_date = t.end_date - timedelta(days=1)
+    db.commit()
+    db.refresh(t)
+    return _trip_to_detail(t)
 
 
 @router.put("/days/{day_id}/stops/order")

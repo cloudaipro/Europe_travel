@@ -9,3 +9,6 @@ TourCompanion/server/.venv/
 # Large reference assets (kept locally, not versioned)
 *.MP4
 handoff/ref-frames/
+
+# Local SQLite db (regenerated on first run via seed)
+TourCompanion/server/tour.db

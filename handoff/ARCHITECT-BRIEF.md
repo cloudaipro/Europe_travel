@@ -1,71 +1,84 @@
-# Architect Brief — Step 2: Mobile Stop Card Redesign (KG-1)
+# Architect Brief — Step 3: Wire Auto-sort + Day Add/Remove
 
 ---
 
-## Step 2 — Re-template stop card in the mobile sheet per DESIGN-SPEC §3.5.1
+## Step 3 — Wire two of the disabled stubs from Step 1 (KG-3 partial close)
 
 ### Goal
 
-The existing `<details>` stop-card markup carries through to the mobile sheet via CSS reshape, but doesn't visually match the chicTrip reference (60×60 thumb left, red numbered shield badge overlay, center info column, **36×36 always-visible navigate arrow** on the right). Bring the mobile rendering to the spec literal layout WITHOUT breaking:
+Make the **Auto-sort** CTA pill and the **+ / −** day controls in the mobile day-strip do real work. Keep Publish + orange `+` stop FAB as stubs (they need UX decisions beyond this step).
 
-- Drag-reorder (currently wired on `<details>` row drag handles)
-- `_onStopSummaryClick` (toggles details open/closed)
-- Keyboard nav (`j/k/↑↓/←→/Esc`) — desktop only
-- Desktop ≥1024px layout (pixel-frozen)
+### Scope split
+
+- **Auto-sort = frontend-only.** Reuse the existing `PUT /api/trips/days/{day_id}/stops/order` endpoint. Frontend sorts the current day's stops by `time_label` ascending, then calls the reorder endpoint with the new order, then refreshes the trip.
+- **Day add = new endpoint.** `POST /api/trips/{trip_id}/days` — appends an empty day with `n = max(n)+1`, `date_label` computed from `trip.start_date + (n-1) days`, `theme = ""`, `mode = ""`. Also extends `trip.end_date` by 1 day.
+- **Day remove = new endpoint.** `DELETE /api/trips/{trip_id}/days/{day_n}` — removes the **last** day only (refuse if `day_n != max(n)` to avoid mid-trip gaps). Cascade deletes stops via existing relationship. Decrements `trip.end_date` by 1 day. Refuse with 400 if only 1 day remains.
 
 ### Source of truth
 
-- **DESIGN-SPEC §3.5.1** (lines covering "Stop card (`.plan-stop-card`)") — literal layout target.
-- **Reference frame:** `handoff/ref-frames/frame_01.jpg` — the expanded-sheet view shows the target stop card layout clearly.
-- **File under edit:** `TourCompanion/server/frontend/index.html` only.
+- Backend: `TourCompanion/server/app/routes/trips.py` — add 2 endpoints. Reuse `_owned()`, `_trip_to_detail()`. Use `from datetime import timedelta`.
+- Frontend: `TourCompanion/server/frontend/index.html` — wire 3 onclick handlers + add 3 small async functions.
 
 ### Decisions (locked)
 
-- **Approach:** ALONGSIDE rendering. Keep the existing `<details>`/`<summary>` markup untouched (desktop relies on it). In `renderPlanDayContent()`, append a *second* card representation — `.plan-stop-card-m` — per stop. Mobile CSS shows `.plan-stop-card-m`, hides `<details>`. Desktop ≥768px shows `<details>`, hides `.plan-stop-card-m`.
-- **Drag-reorder:** NOT required on mobile cards this step. Mobile users use the day-strip to switch days. Drag-reorder stays desktop-only via the existing markup.
-- **Navigate arrow:** 36×36 right-side button on `.plan-stop-card-m`, calls existing `gmapsUrl(stop)` via `window.open(url, '_blank')`.
-- **Tap card body:** calls existing `selectStop(idx, 'list')` so map flies + sheet snaps to half + flash highlight all still work.
-- **Transit row:** add a sibling `.plan-transit-row-m` between consecutive cards (already in current peek-strip implementation; reuse the styling pattern). Use existing per-stop transit data; if no transit data, render a generic "walk · ~Xm" using the existing `~Xm · Xkm` data already in the desktop card.
-- **Promo banner:** still gated on `stop.promo` (no backend), skip emission this step.
-- **Stop number badge:** red shield with `clip-path: polygon(0 0, 100% 0, 100% 75%, 75% 100%, 0 100%)` per DESIGN-SPEC §1.6 — already defined as `.psp-badge` for peek strip; reuse the class for the mobile card thumb overlay.
-- **Single file constraint.** Do NOT split.
+- **No schema migrations.** Day model already has all needed fields (`n`, `date_label`, `theme`, `mode`). Trip has `end_date` which we update.
+- **No `n` renumbering on day remove.** Since we only allow removing the LAST day, `n` stays gap-free naturally.
+- **No mid-day insertion.** + always appends after the last day.
+- **Auto-sort time parsing.** `time_label` can be "09:00", "9:00", "10:49", or empty. Parse as `HH:MM` to minutes-since-midnight; empty strings sort last. Stable sort.
+- **Confirmation modals: none.** Day remove on the LAST day is recoverable (user can re-add and re-paste stops). Auto-sort is reversible (manual drag-reorder still works). Keep UX fast.
+- **Frontend refresh strategy.** After each mutation, call existing trip-fetch path (`loadTrip(TRIP.id)` or equivalent — grep for it) and re-render via existing `renderPlan()` etc.
 
-### Build order
+### Backend endpoint specs
 
-1. Add CSS for `.plan-stop-card-m`, `.pscm-thumb`, `.pscm-badge`, `.pscm-info`, `.pscm-time-row`, `.pscm-name`, `.pscm-duration`, `.pscm-nav-arrow`, `.plan-transit-row-m`, `.pttrm-icon`, `.pttrm-dur`, `.pttrm-chev` — all scoped inside `@media (max-width: 767px)`.
-2. Hide existing `<details>` cards on mobile via CSS: `.plan-sheet-shell #plan-day-content details { display: none; }` inside the mobile media block (only when in mobile viewport).
-3. Hide `.plan-stop-card-m` and `.plan-transit-row-m` on tablet + desktop (`@media (min-width: 768px)`).
-4. Extend `renderPlanDayContent(n)` — for each stop, after emitting the existing `<details>` block, also emit `.plan-stop-card-m` and (between consecutive stops) `.plan-transit-row-m`. Both new nodes have `display:none` outside the mobile media query.
-5. Verify desktop visually identical to current.
+```
+POST /api/trips/{trip_id}/days
+Body: {}                                    # no body needed
+Response 201: TripDetail (full refreshed trip)
+Errors: 404 (trip not found / not owned)
+
+DELETE /api/trips/{trip_id}/days/{day_n}
+Response 200: TripDetail
+Errors: 404 (trip/day not found), 400 (day_n != max(n)), 400 (only 1 day left)
+```
+
+Both endpoints use `_owned()` for auth and return `_trip_to_detail()` to give the frontend a fully refreshed trip in one round-trip.
+
+### Frontend wiring
+
+- **Auto-sort CTA pill** — currently `disabled title="Coming soon"`. Remove the disabled attr; add `onclick="autoSortCurrentDay()"`. Implement:
+  - Get current day's stops by `time_label` ascending order.
+  - Call `PUT /api/trips/days/{day_id}/stops/order` with the new `stop_ids` list.
+  - On success, reload trip and re-render Plan tab. Keep current day selected.
+- **`+` day control** — currently `disabled title="Coming soon"`. Wire to `addDay()` async helper that POSTs the new endpoint and reloads.
+- **`−` day control** — wire to `removeLastDay()` — POSTs the DELETE endpoint with `max(n)`. Show a non-blocking `alert()` (existing pattern) if backend returns 400 (only 1 day left).
+- Show a brief loading state on the CTA pill (e.g. opacity 0.6, disabled) during the round-trip. Re-enable after.
 
 ### Flags — do not guess
 
-- **Time-icon glyph mapping.** Spec §3.5.1 row 1 says "category-icon + time". Existing data has `stop.icon` or category field. Grep for what `renderPlanDayContent` already pulls (e.g. `s.icon`, `s.category`). Use the same source. If no category data, fall back to a single 🕒 glyph.
-- **"(custom)" sub-label.** Spec mentions appending "(custom)" 12px when user-set. We have no `user_set` flag on stops. Skip the label — render time only.
-- **Notes indicator.** Spec says append " · noted" if notes exist. Stops have `voice_notes`/`journal`/`photos` arrays. Render " · noted" when any of those is non-empty.
-- **Transit row data source.** Existing markup emits `~X min · X.X km`. Reuse those values directly. Icon = walking/bus glyph based on what current markup uses, else 🚶.
-- **Drag handle column on the existing card** (left `≡` icon at line ~1873). Hide on mobile via the same `<details>` hide rule — don't worry about it.
+- **Existing trip-reload helper.** Grep frontend for `loadTrip(`, `fetchTrip(`, or the pattern that initially populates `TRIP`. Reuse it. If none, add a minimal `await refreshTrip()` that re-fetches and re-renders.
+- **Stop ID source.** `_stop_to_out()` returns `id`. Frontend `TRIP.days[i].stops[j].id` is the source for the reorder payload.
+- **time_label parse fail.** If `time_label` is unparseable (e.g. "morning"), treat as `Infinity` (sort to end). Don't throw.
+- **End-state of the disabled buttons.** Keep them styled identically (text, colors). Just remove `disabled` and `title="Coming soon"`.
+- **Don't touch Publish.** Stays a stub. Don't touch the orange `+` FAB (add-stop). Stays a stub.
 
 ### Definition of Done
 
-- [ ] At mobile <768px, sheet shows new `.plan-stop-card-m` cards: 60×60 thumb on left with red numbered badge overlay, center info column (time + name + duration + optional " · noted"), 36×36 nav-arrow button on right.
-- [ ] Tapping card body calls `selectStop(idx, 'list')`.
-- [ ] Tapping nav-arrow opens Google Maps (`gmapsUrl(stop)`).
-- [ ] Transit rows between consecutive cards show icon + duration + chevron.
-- [ ] Existing `<details>` cards are hidden on mobile.
-- [ ] Desktop ≥1024px shows existing `<details>` only — visually byte-identical to before. New mobile cards render with `display:none`.
-- [ ] Tablet 768–1023px also shows existing `<details>` (narrow side panel preserved).
+- [ ] `POST /api/trips/{trip_id}/days` added in `routes/trips.py`. Returns full `TripDetail`. 404 on bad trip.
+- [ ] `DELETE /api/trips/{trip_id}/days/{day_n}` added. Returns full `TripDetail`. 404 on bad trip/day, 400 on mid-trip or single-day attempt.
+- [ ] Frontend `autoSortCurrentDay()` wired to Auto-sort pill.
+- [ ] Frontend `addDay()` wired to `+` control.
+- [ ] Frontend `removeLastDay()` wired to `−` control.
+- [ ] Disabled-stub styling cleared on all three controls.
+- [ ] Test in browser: Auto-sort visibly reorders stops; + adds a new day at end of day strip; − removes last day; trip state survives a refresh.
 - [ ] No new console errors at any viewport.
-- [ ] Keyboard `j/k/↑↓/Esc` still works on desktop (it doesn't touch the new markup).
-- [ ] Drag-reorder still works on desktop.
-- [ ] `handoff/REVIEW-REQUEST.md` updated with Revision 3 — Step 2.
+- [ ] No backend test break (server reload-on-save will surface syntax issues; check uvicorn output).
+- [ ] `handoff/REVIEW-REQUEST.md` appended with Revision 4 — Step 3.
 
 ---
 
 ## Builder Plan
-*Bob writes here before building. Approve inline by Bob if no ambiguity — skip the round-trip for this small scope.*
 
-Architect approval (in advance, given the brief is unambiguous and ALONGSIDE approach removes most risk):
-- [x] **Pre-approved to build.** Bob: plan and code in one round. If you hit a genuine ambiguity not covered by the Flags section, stop and write the question into REVIEW-REQUEST.md instead.
+Architect pre-approval (scope is tight and decisions locked):
+- [x] **Pre-approved.** Bob: plan + build in one round. If you hit a real ambiguity, halt and write into REVIEW-REQUEST.md.
 
 ---

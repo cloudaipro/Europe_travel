@@ -5,13 +5,34 @@
 
 ## Current Status
 
-**Active step:** — (Step 2 closed)
-**Last cleared:** Step 2 — KG-1 mobile stop card redesign — 2026-05-14
+**Active step:** — (Step 3 closed)
+**Last cleared:** Step 3 — Wire Auto-sort + day add/remove — 2026-05-14
 **Pending deploy:** NO (committed locally; no remote configured)
 
 ---
 
 ## Step History
+
+### Step 3 — Wire Auto-sort + day add/remove (KG-3 partial close) — Status: COMPLETE
+*Date: 2026-05-14*
+
+Files changed:
+- `TourCompanion/server/app/routes/trips.py` — +38 lines (`timedelta` import + `POST /api/trips/{trip_id}/days` `add_day` + `DELETE /api/trips/{trip_id}/days/{day_n}` `remove_day`). Reuses `_owned()`, `_trip_to_detail()`.
+- `TourCompanion/server/frontend/index.html` — +65 lines (`refreshTrip()`, `autoSortCurrentDay()`, `addDay()`, `removeLastDay()` helpers; 3 onclick rewires; removed `disabled` + `title="Coming soon"` from Auto-sort CTA, `+`, `−`).
+
+Decisions:
+- Auto-sort is frontend-only — reuses existing `PUT /api/trips/days/{day_id}/stops/order` endpoint with stops re-sorted by `time_label` ascending.
+- Day add: appends after last, `date_label = trip.start_date + (n-1) days` formatted `"%a %d %b"` (matches existing seed format), extends `trip.end_date` if needed.
+- Day remove: only the last day, refuses if it's the only one. Cascade deletes stops via existing relationship. Pulls `trip.end_date` back by 1 day.
+- Both new endpoints return full `TripDetail` for single-round-trip refresh.
+
+Reviewer findings:
+- Richard: CLEAR — 0 blockers, 1 should-fix (log race condition on `+` double-tap as KG-6). All 5 of Bob's judgment calls approved.
+- Arch live sweep: add 10→11 days OK, remove 11→10 days OK, auto-sort verifiably re-orders stops (Day 1 demo data confirmed reordering after a manual mis-order). No console errors. Onclick handlers wired correctly. Discovered KG-7 (auto-sort parses "00:24 +1" as 24 min, sorting next-day timestamps to top).
+
+Deploy: committed locally 2026-05-14.
+
+---
 
 ### Step 2 — KG-1 mobile stop card redesign — Status: COMPLETE
 *Date: 2026-05-14*
@@ -64,7 +85,9 @@ Deploy: committed locally 2026-05-14. No remote push (no remote configured).
 
 - **KG-1** — Stop card in sheet uses existing `<details>` markup; spec §3.5.1 literal redesign deferred — logged 2026-05-14. **CLOSED 2026-05-14 (Step 2):** new `.plan-stop-card-m` markup added alongside `<details>`. Mobile shows new card (60×60 thumb + red shield badge + category-icon + time + name + duration + 36×36 nav arrow); transit row between consecutive stops. Desktop unchanged (16/16 details visible, 0/16 mobile cards visible at ≥768px).
 - **KG-2** — Promo banner markup not emitted (no `stop.promo` field in API) — logged 2026-05-14. **Status: backend-deferred.** CSS slot in place; will activate when API exposes `stop.promo`. No frontend work pending.
-- **KG-3** — Auto-sort CTA + `+` FAB + Publish + day `+`/`−` are disabled stubs (no backend) — logged 2026-05-14. **Status: backend-deferred.** Stubs render correctly with `title="Coming soon"`. No frontend work pending.
+- **KG-3** — Auto-sort CTA + `+` FAB + Publish + day `+`/`−` are disabled stubs (no backend) — logged 2026-05-14. **PARTIAL CLOSE 2026-05-14 (Step 3):** Auto-sort + day `+`/`−` wired. Remaining backend-deferred items: orange `+` add-stop FAB (needs new-stop UX) and Publish flow (needs share/access-control UX).
+- **KG-6** — Race condition on `+` day double-tap creates two days. Acceptable; will fix when needed — logged 2026-05-14.
+- **KG-7** — Auto-sort parses `"HH:MM +1"` (next-day timestamps) as plain `HH:MM` minutes-since-midnight, sorting next-day stops to top. Real-world impact minimal (most stops are same-day); fix later if needed — logged 2026-05-14.
 - **KG-4** — Visual scratch test at 1280px done via diff-read only — logged 2026-05-14. **CLOSED 2026-05-14:** verified live at 1280×800 in claude-in-chrome during runtime sweep; desktop pixel-identical to baseline.
 
 ---

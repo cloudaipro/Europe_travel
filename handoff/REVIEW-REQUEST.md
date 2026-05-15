@@ -402,3 +402,42 @@ Between consecutive stops: `.plan-transit-row-m` with the same connLabel + isWal
 ### Open questions for Arch
 
 - None blocking. If duration fallback "Stay 1h 00m" is wrong, easy 1-line change.
+
+---
+
+## Revision 4 — Step 3 auto-sort + day add/remove
+
+### Backend — `TourCompanion/server/app/routes/trips.py`
+
++38 lines (1 import line, 2 endpoint defs ~37 LOC).
+
+- Added `from datetime import timedelta` to existing imports.
+- `POST /api/trips/{trip_id}/days` → `add_day()` — appends Day with `n = max(n)+1`, `date_label` = `(start_date + (n-1) days).strftime("%a %d %b")` (matches seed format e.g. "Fri 22 May"), `theme=""`, `mode=""`. Extends `trip.end_date` if shorter than the new day's date. Returns full `TripDetail`. 404 via `_owned()`.
+- `DELETE /api/trips/{trip_id}/days/{day_n}` → `remove_day()` — 400 if only 1 day; 400 if `day_n != max(n)`; 404 if day not in trip. Cascade via existing `Day.stops` relationship. Decrements `trip.end_date` by 1 day (only if `end_date > start_date`).
+
+### Frontend — `TourCompanion/server/frontend/index.html`
+
++65 lines (3 helper functions + 3 button rewires).
+
+- Removed `disabled title="Coming soon"` and added `onclick` on 3 controls:
+  - `+` day button → `addDay()`
+  - `−` day button → `removeLastDay()`
+  - Auto-sort CTA pill → `autoSortCurrentDay()`
+- `refreshTrip()` — re-fetches trip via `apiCall("/trips/{TRIP_ID}")`, calls `adaptTrip()` then `renderPlan()`.
+- `autoSortCurrentDay()` — finds current day by `selectedPlanDay`, sorts stops by `time` ascending (`HH:MM` → minutes; unparseable → `Infinity`; stable). Skips API call if already sorted. PUTs to existing `/trips/days/{day_id}/stops/order`. Re-renders and re-selects same day. Pill grayed (opacity 0.6, disabled) during round-trip.
+- `addDay()` — POSTs new endpoint, adapts + re-renders.
+- `removeLastDay()` — short-circuits with snack if only 1 day. DELETEs last `n`. Snaps `selectedPlanDay` back if it was on the removed day. Adapts + re-renders.
+
+### Judgment calls
+
+1. **`date_label` format.** Brief example said `"05/22 Fri"` but seed data uses `"Fri 22 May"` (`%a %d %b`). Followed brief instruction to "match seed format if different" — used `%a %d %b`.
+2. **Frontend variable name.** Brief said `window._currentPlanDay`. Actual codebase uses `selectedPlanDay` (module-scoped `let`). Used that.
+3. **`TRIP.id`.** Brief said `TRIP.id`. Actual global is `TRIP_ID` (set inside `adaptTrip`). Used `TRIP_ID`. Stop IDs live at `s._stop_id`; day IDs at `d._day_id`. Stop time is `s.time` (not `s.time_label` — renamed in `adaptTrip`).
+4. **`authHeaders` helper.** Brief said grep for it. Codebase uses an existing `apiCall(path, opts)` wrapper that adds `Authorization: Bearer` and `Content-Type` automatically and handles 401 → logout. Reused that instead of crafting raw fetches — net token savings + consistent auth/error handling.
+5. **`loadTrip` signature.** `loadTrip()` takes no arg (uses localStorage) and also refreshes the picker list. Added `refreshTrip()` which only re-fetches the current trip + re-renders Plan, avoiding the trip-list refetch and picker re-render on every add/remove/auto-sort. `addDay` / `removeLastDay` inline the same adapt+render pattern so `selectedPlanDay` can be snapped back before render.
+6. **`removeLastDay` UX.** Used existing `showSnack("Can't remove the only day")` instead of `alert()` (snack pattern is already used elsewhere for delete feedback).
+7. **Loading state on `+`/`−`.** Brief only required it on Auto-sort CTA. Day add/remove are fast and immediately refresh the strip; skipped to keep edits surgical.
+
+### Uncertainty
+
+- `trip.end_date` semantics. Brief and current `start_date → end_date` rendering imply `end_date` is the last day inclusive. Add bumps it forward only if the new day falls past it; remove pulls it back by exactly 1 day if `end_date > start_date`. This means if user adds, removes, adds, removes, dates stay consistent. Will not survive heavy reorder schemes — but Step 3 doesn't allow those.

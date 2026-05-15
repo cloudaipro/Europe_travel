@@ -1,38 +1,34 @@
-# Review Feedback — Step 2 (Mobile Stop Card Redesign)
+# Review Feedback — Step 3 (Auto-sort + Day Add/Remove)
 Date: 2026-05-14
 Reviewer: Richard
 Verdict: CLEAR
 
 ## Tier 1 findings
-
-None blocking. All five Tier 1 checks pass:
-
-1. **Desktop ≥768px scoping.** Confirmed at index.html:725–728: `@media (min-width: 768px) { .plan-stop-card-m, .plan-transit-row-m { display: none !important; } }`. Existing `<details>` at desktop is untouched — the hide rule for `<details>` at index.html:440–441 lives inside `@media (max-width: 767px)` (mobile block 201–715), so it does not fire at ≥768px. Pixel-frozen.
-2. **Mobile <768px no double-render.** Inside mobile media: `.plan-sheet-shell #plan-day-content details.plan-stop-card, .plan-sheet-shell #plan-day-content .walk-connector { display: none; }` (lines 440–441). New `.plan-stop-card-m` and `.plan-transit-row-m` rendered alongside (pieces.push at 2092 and 2134). No overlap.
-3. **No undefined function calls.** `_catGlyph` defined at 2010, `_stopCategory` at 1920, `gmapsUrl` at 1289, `selectStop` at 1770. All reachable from the new render path.
-4. **Nav arrow stopPropagation.** index.html:2109 — `onclick="event.stopPropagation();"` on the `<a class="pscm-nav-arrow">`. Default link navigation (target="_blank") is preserved (no preventDefault). Card-body click does not fire.
-5. **No new console-error sources.** STATE is initialized in `loadTrip()` (line 1098) before any `renderPlanDayContent` call. Pattern reuse (`STATE.stop_photos[\`${n}-${i}\`] || []`) is identical to Tour tab at line 2396. No null deref risk in normal flow.
+- **Ownership check** — PASS. `add_day` (trips.py:96) and `remove_day` (trips.py:113) both call `_owned(db, user, trip_id)` as their first statement. Returns 404 on missing or non-owner before any mutation.
+- **Cascade integrity** — PASS. `Day.stops` relationship at models.py:73 has `cascade="all, delete-orphan"`. `db.delete(target)` on the Day cascades to its Stops; nested `Stop.check_ins/photos/voice_notes` (models.py:96–98) also cascade. No orphans possible.
+- **400 vs 404 distinction** — PASS. trips.py:114 returns 400 for "only day left", :117 returns 400 for non-last day, :120 returns 404 for missing day. `_owned` covers 404 for missing trip.
+- **No SQL injection / authz bypass** — PASS. `trip_id: int`, `day_n: int` typed path params; all DB access via SQLAlchemy ORM (`db.get`, `db.delete`, attribute writes). No raw SQL anywhere in the new code.
+- **No `await` outside async** — PASS. `refreshTrip`, `autoSortCurrentDay`, `addDay`, `removeLastDay` all declared `async`. Buttons call them via `onclick`; the returned promises are fire-and-forget which is fine.
+- **Auto-sort early-exit** — PASS. index.html:1286 — `if (sortedIds.every((id, i) => id === day.stops[i]._stop_id)) return;` short-circuits before the disable-button + apiCall block.
+- **`selectedPlanDay` consistency** — PASS. Module-scoped `let selectedPlanDay` at index.html:1029. All three new handlers reference it (1275, 1317, 1318). No `_currentPlanDay` references found.
 
 ## Tier 2 findings
-
-6. **Notes indicator data source.** Key format `${n}-${i}` at line 2087–2088 matches Tour tab (line 2396–2397) and Memory tab (line 2573, 2589) verbatim. Same data, same key shape. Approved.
-7. **Duration fallback.** `s.duration || s.stay || "Stay 1h 00m"` (line 2090) — hardcoded string is the right call for now: stop data has no duration field, so an empty third row would look broken. Spec §3.5.1 row 3 literally specifies "Stay 1h 00m" as the label format. Approved.
-8. **Badge clip-path.** Line 478 uses `polygon(0 0, 100% 0, 100% 75%, 75% 100%, 0 100%)` — matches DESIGN-SPEC §1.6 exactly. 24×26, top-left, white digit 13/800. Compliant.
-9. **Card body tap source.** Line 2094 — `onclick="selectStop(${i}, 'list')"`. `selectStop` mobile branch (line 1806) explicitly accepts `'list' | 'peek' | 'key'` and snaps the sheet to half. Correct routing.
-10. **Transit row data reuse.** Lines 2114–2127 reuse the same `next.transit` raw parse + haversine fallback as the existing `.walk-connector` block (2128–2132). Identical `connLabel` and `isWalk` values feed both. Not hardcoded.
+- **date_label format** — PASS. `%a %d %b` produces "Fri 22 May" exactly matching seed data (budapest.py:63 "Fri 22 May", vienna_budapest.py:82 "Mon 18 May").
+- **end_date adjustment** — PASS. Add: `if t.end_date < new_date: t.end_date = new_date` (only extends, never shrinks). Remove: `if t.end_date > t.start_date: t.end_date = end_date - 1 day` (guards against negative span, end never goes below start). Add/remove sequence is reversible with no drift.
+- **Stop ID source for reorder** — PASS. `_stop_to_out` returns backend `s.id` as `id` (trips.py:24). `adaptTrip` maps that to `_stop_id` (index.html:1085). `autoSortCurrentDay` uses `_stop_id` (1283, 1286) — consistent with the existing reorder endpoint contract.
+- **refreshTrip rebinds TRIP cleanly** — PASS. `adaptTrip(detail)` reassigns the module-level `TRIP` object fresh; old closures inside previous DOM handlers are discarded when `renderPlan` rebuilds the day content. No stale-TRIP risk in the new flow.
+- **Race conditions** — NOTED. Double-tap on `+` will fire two POSTs. Backend computes `next_n = max(...)+1` inside one request scope; with SQLite under concurrent writes both requests could compute the same `next_n` and produce two Days with the same `n`. Low-risk for single-user travel-planning UX. Not a blocker. Log as `KG-5` in BUILD-LOG so the next builder considers either a brief request-time disable on `+` or a uniqueness constraint.
 
 ## Tier 3 findings
-
-11. **Naming.** `.pscm-*` (mobile stop card) and `.pttrm-*` (mobile transit row) are consistent within each family. All classes used in the JS template are defined in CSS (verified: thumb, badge, info, time-row, cat-icon, name, duration, nav-arrow, icon, dur, chev).
-12. **Dead CSS / duplicates.** `.pscm-thumb` is given `overflow: visible` so the badge can bleed `left:-4px` — intentional per §1.6. `.pscm-thumb img` re-asserts 60×60 + radius — fine for box-model isolation, not dead. No duplicates.
+- **Error UX** — Acceptable for Step 3. `console.warn` on `addDay`/`autoSortCurrentDay` failures is bare-bones; `removeLastDay` does call `showSnack('Remove day failed')`, which is better UX. Consistency nit; do not block.
+- **Disabled styling residual** — PASS. Bob removed `disabled` and `title="Coming soon"` from all three controls (lines 865, 866, 889). The remaining `disabled title="Coming soon"` on lines 795, 797, 898 are unrelated Publish / Search / `+` stop-add buttons that are still stubs per spec. No leftover CSS targeting `[disabled]` on the wired controls.
 
 ## Bob's judgment calls — Richard's calls
-
-1. Notes indicator data source (`STATE.voice_notes[${n}-${i}]`, `STATE.stop_photos[${n}-${i}]`) — **yes**. Key format and access pattern match Tour and Memory tabs verbatim.
-2. Duration fallback "Stay 1h 00m" — **yes**. Spec §3.5.1 literally names this as the label format. Empty third row would look broken. Reconsider when real duration data exists.
-3. Hiding `.walk-connector` on mobile — **yes**. Without it, the dashed connector would double-render alongside `.plan-transit-row-m`. Scoped to `.plan-sheet-shell #plan-day-content` and to the mobile media block, so desktop is untouched.
-4. `_catGlyph` mapping via `_stopCategory` — **yes**. Spec §1.6 lists glyphs by semantic role; existing `_stopCategory` already classifies stops into the right buckets. Fallback to 🕒 on unrecognized category is safe. Mapping is correct: HOTEL→🏨, CAFÉ→☕, DINING→🍴, SPA→♨️, CHURCH→⛪, etc.
+1. date_label format `%a %d %b` — YES. Matches existing seed.
+2. apiCall vs authHeaders — YES. Reusing the existing wrapper is correct; it centralizes auth and 401 handling.
+3. `_stop_id` / `selectedPlanDay` identifier — YES. These are the actual codebase names; using the brief's names would have produced broken code.
+4. snack vs alert for "only day" failure — YES. Snack is the established pattern in this file.
+5. No loading state on `+`/`−` — YES, with a caveat. Acceptable for Step 3 since the operations are fast. The Tier-2 race-condition note covers the double-tap concern; log to BUILD-LOG or accept it. Not blocking.
 
 ## Summary for Arch
-
-Step 2 (KG-1 mobile stop card redesign) is clear. Bob added ~125 lines of mobile-scoped CSS and ~45 lines of JS, all additive — zero existing DOM or class modified. Desktop ≥768px pixel-frozen via `display: none !important` on the new `.plan-stop-card-m` / `.plan-transit-row-m`. Mobile <768px hides the existing `<details>` and `.walk-connector` (scoped inside `.plan-sheet-shell #plan-day-content` and the `max-width: 767px` media block) so no double-render. Badge shape matches DESIGN-SPEC §1.6 exactly. Nav arrow uses `event.stopPropagation()` so the card-body click does not double-fire. All function references (`_catGlyph`, `_stopCategory`, `gmapsUrl`, `selectStop`) are defined and reachable. Notes-indicator data source mirrors the Tour / Memory tab pattern verbatim. All four of Bob's judgment calls stand. No must-fix, no should-fix. Ready to ship.
+Step 3 is clean. Both new endpoints are authorization-checked, return correct status codes, use the ORM (no raw SQL), and rely on the existing `cascade="all, delete-orphan"` chain for safe Day deletion. The frontend wires the three controls correctly, uses the actual codebase identifiers (`TRIP_ID`, `selectedPlanDay`, `_stop_id`, `_day_id`), gracefully early-exits Auto-sort when the day is already sorted, and clamps `selectedPlanDay` before re-render on remove. One item worth logging (KG-5: double-tap race on `+` can create two days with the same `n` under concurrent writes). No blockers; Step 3 is clear.
