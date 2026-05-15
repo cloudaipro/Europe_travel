@@ -482,3 +482,45 @@ Between consecutive stops: `.plan-transit-row-m` with the same connLabel + isWal
 
 - Should `promo.url` get a stricter scheme allowlist (only `https:` allowed)? Currently `esc()` neutralises HTML metachars but not e.g. `javascript:` URLs. Demo URL is `https://example.com/esim` so safe, but the open question stands for user-typed promos in a later step.
 - Should `StopOut.promo` use a proper Pydantic submodel (`PromoOut(label, price, url)`) rather than `dict | None`? Cleaner contract, but more code for a shape that's likely to grow (CTA copy, expiry, image, …).
+
+---
+
+## Revision 6 — Step 5 add-stop modal (KG-3a)
+
+### Files changed (2)
+
+1. **`server/app/routes/trips.py`** — `+39 lines` total.
+   - Added `StopCreateIn(BaseModel)` next to `StopReorderIn` (`name: str`, `time_label: str = ""`, `address: str = ""`).
+   - Added `POST /api/trips/{trip_id}/days/{day_n}/stops` handler. Auth + ownership via `_owned()`. 400 on empty/whitespace `name`. 404 on missing day. Computes `next_idx = max(order_idx) + 1` (or `0` for the first stop). Best-effort geocode: imports `geocoder.geocode_query` *inside* the handler (kept the import lazy because `geocode_query` performs network I/O at call time — no value pulling it into the module-import path); swallows any exception, leaves `(0.0, 0.0)` so the existing `_has_real_seed`-aware background geocoder can fill in later. Returns full `TripDetail` via `_trip_to_detail(t)`, `status_code=201`.
+
+2. **`server/frontend/index.html`** — `+93 lines` total, across four contiguous sections.
+   - **FAB rewire** (line 935): removed `disabled` + `title="Coming soon"`, added `type="button" onclick="openAddStopModal()"`.
+   - **Modal markup** (~25 lines, inserted just above the existing `<!-- Snackbar -->`): new `#add-stop-modal.as-overlay.hidden` with `.as-card` containing three labeled `<input>`s (`#as-name`, `#as-time`, `#as-addr`) and Cancel / Save buttons (`#as-save`). The Save button is initially `disabled` and gets toggled by an `oninput="… !this.value.trim()"` on the name input.
+   - **CSS** (~30 lines, appended to the trailing `<style>` block right after `.quick-btn`): `.as-overlay` (fixed inset-0, `rgba(0,0,0,0.5)` + 4px blur, z-index 2000), `.as-overlay.hidden { display: none }`, `.as-card` (white, 16px radius, `min(92vw, 400px)`), `.as-field`/`.as-label` flex-column inputs, `.as-actions` flex row, `.as-btn-cancel` slate-100, `.as-btn-save` orange-500 (matches the FAB color), `:disabled` opacity 0.5.
+   - **JS** (~50 lines, inserted right after `refreshTrip()`): `openAddStopModal()` clears the three inputs, disables Save, removes `.hidden`, focuses `#as-name` after a 50ms tick. `closeAddStopModal()` re-adds `.hidden` (input values left in place — `openAddStopModal()` clears them on next open, which is cleaner than clearing on close because it preserves form state if a user accidentally hits Esc). `submitAddStop()` trims the three fields, guards on `!name` and `!TRIP_ID`, sets `save.disabled = true`, `POST`s via `apiCall` to `/trips/${TRIP_ID}/days/${selectedPlanDay || 1}/stops`, then `adaptTrip(detail); renderPlan(); closeAddStopModal(); showSnack("✓ Stop added")`. Catches errors → `console.warn` + `showSnack("Add stop failed")`. `finally` re-enables Save. A *separate* `keydown` listener at module scope handles Esc → `closeAddStopModal()` when the overlay is visible.
+
+### Decisions
+
+- **Own modal overlay, not the shared `#modal` element.** Grep showed `#modal` is templated by `openModal(kind)` — it overwrites `#modal-title` / `#modal-body` for every Tour-tab dialog. Hijacking it for a persistent form with field IDs would have broken the templating contract. The `as-` prefix on every new id/class keeps the namespace clean and discoverable.
+- **Esc handler is a second listener, not bolted onto the existing one.** The existing `keydown` (line 1777) is `matchMedia("(min-width: 1024px)")`-gated and bails on `modalOpen` — it's keyboard-nav scoped to desktop Plan tab. The FAB is *mobile-only*, so its modal must be Esc-closable even on small viewports / when no day is selected. New listener is 6 lines, no interference.
+- **`time_label` is free-form `String(20)`.** No validation. Matches the model column and what `autoSortCurrentDay()` already tolerates (`""` returns `+Infinity`, sinks to the bottom). Frontend placeholder hints `14:30` but accepts anything.
+- **`lat=0.0, lng=0.0` on miss, not `None`.** Brief locked this. Matches `geocoder._has_real_seed()` convention (treats `(0,0)` as "Null Island = no seed"). A future enhancement could schedule `geocode_trip_async` as a `BackgroundTasks` task on the response — flagged but out of scope.
+- **`apiCall` already throws on non-2xx**, so the `try/catch` only needs to log + snack. Verified the 401 flow still calls `logout()` automatically (existing behaviour in `apiCall`).
+- **Save-button enable-state via `oninput`**, not a separate validator. One line; no need to wire `addEventListener` from JS.
+
+### Verification
+
+- `./.venv/bin/python -c "from app.routes import trips"` → imports cleanly; route list shows `POST /api/trips/{trip_id}/days/{day_n}/stops` ✅
+- `curl POST /api/trips/2/days/1/stops` with `{"name":"Test Stop","time_label":"15:00"}` → **HTTP 201**, returns TripDetail with the new stop appended (`order_idx=16`, `lat=0.0`, `lng=0.0`, `address=""`) ✅
+- `curl POST … {"name":"  "}` → **HTTP 400** `{"detail":"name is required"}` ✅
+- `curl POST /api/trips/2/days/99/stops {"name":"X"}` → **HTTP 404** `{"detail":"day not found"}` ✅
+- `curl POST /api/trips/99999/days/1/stops {"name":"X"}` → **HTTP 404** `{"detail":"trip not found"}` ✅
+- `curl POST … (no Authorization)` → **HTTP 401** `{"detail":"missing token"}` ✅
+- Mental walk-through of frontend flow: tap FAB → modal opens, Save disabled, focus on name → type "Café" → Save enables → tap Save → `apiCall` POSTs → `adaptTrip(detail); renderPlan()` rebuilds Plan-tab DOM → `closeAddStopModal()` hides overlay → snack "✓ Stop added" ✅
+- Esc handler: only triggers when `#add-stop-modal` is visible; no conflict with the existing desktop keyboard-nav handler (different scope, different overlay check).
+
+### Open questions for reviewer
+
+- Should we kick off `geocode_trip_async` (or a single-stop variant) as a `BackgroundTasks` task on add-stop responses where `address` was given but `geocode_query` failed (e.g. Nominatim timeout, rate limit)? Right now a failed geocode just leaves `(0,0)` and the next full-trip geocode pass would pick it up — but there isn't a scheduled pass after Step 4 unless the user re-creates the trip. A short async catch-up would close that gap.
+- Should `time_label` be normalized server-side (regex `^\d{1,2}:\d{2}( \+\d+)?$` → fall back to `""` on miss)? Currently we accept anything. Frontend `autoSortCurrentDay` already handles malformed labels safely (sink to bottom), so the cost of garbage data is low — but it does mean users can type `"morning"` and the sort silently demotes the stop.
+- The demo DB now carries one "Test Stop" row from the curl verification (Day 1, `order_idx=16`). It's harmless but the reviewer may want to delete it manually or re-seed. There's no `DELETE /stops/{id}` endpoint yet; flagged as future work.

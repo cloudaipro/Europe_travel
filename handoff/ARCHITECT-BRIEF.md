@@ -1,91 +1,144 @@
-# Architect Brief — Step 4: KG-6 + KG-7 + KG-2
+# Architect Brief — Step 5: KG-3a Add-stop FAB
 
 ---
 
-## Step 4 — Three bundled fixes
+## Step 5 — Wire orange `+` FAB to add-stop modal + endpoint
 
-### 4.1 — KG-6: race on `+`/`−` day double-tap
+### Goal
 
-**Goal:** disable button during in-flight request; re-enable on response (success or error).
+Tapping the orange `+` FAB (in `.plan-fab-cluster .plan-fab-add`) opens a modal form. Submitting POSTs to a new endpoint and appends a stop to the currently-selected day. No lat/lng entry — backend geocodes from address if provided (Nominatim infrastructure already exists in the codebase).
 
-**Frontend only.** In `addDay()` and `removeLastDay()`:
-- Take the triggering button (find via `.dsm-end button[onclick*="addDay"]` and `[onclick*="removeLastDay"]`).
-- Set `btn.disabled = true` at start; `btn.disabled = false` in a `finally` block.
-- Wrap the fetch in `try/finally`.
+### Decisions (locked)
 
-### 4.2 — KG-7: auto-sort `"HH:MM +N"` parser
+- **Modal pattern.** Reuse the existing modal pattern (grep `openModal` and `closeModal` in `frontend/index.html` — Tour tab uses modals for Cheap eats / Phrasebook / Washroom / etc.). Add a new modal section `<dialog>` or `<div class="modal">` keyed to `add-stop`.
+- **Fields.** name (required), time_label (optional, free-form "HH:MM"), address (optional). Three text inputs + Cancel + Save.
+- **Backend.** `POST /api/trips/{trip_id}/days/{day_n}/stops` — body `{name, time_label?, address?}`. Returns full `TripDetail`. Auth + ownership via `_owned()`.
+- **Backend geocode.** If `address` provided, call existing `geocoder.geocode()` (grep for it) synchronously inside the handler. Best-effort: if it fails or address is empty, store `lat=0, lng=0` and let the existing background-geocode infrastructure pick it up later (look at `plan.py` for the pattern).
+- **order_idx.** New stop appended at the end: `order_idx = max(existing.order_idx) + 1`.
+- **Promo, category, hours, tickets, etc.** All left empty/null on creation — user can fill via separate edits (out of scope here).
+- **Frontend refresh.** Reuse `refreshTrip()` (or just call `adaptTrip(detail); renderPlan();`).
+- **Validation.** Frontend: name non-empty before allowing Save. Backend: 400 if name missing.
 
-**Goal:** Recognize next-day timestamps. `"00:24 +1"` should sort AFTER `23:42`, not before `09:00`.
+### Backend implementation
 
-**Frontend only.** In `autoSortCurrentDay()`, replace the `toMinutes` parser with:
-```js
-const toMinutes = (t) => {
-  if (!t) return Infinity;
-  const m = /^(\d{1,2}):(\d{2})(?:\s*\+(\d+))?/.exec(t);
-  if (!m) return Infinity;
-  const dayOffset = m[3] ? parseInt(m[3], 10) : 0;
-  return dayOffset * 1440 + parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
-};
-```
+In `app/routes/trips.py`:
 
-### 4.3 — KG-2: Stop.promo field + frontend rendering
-
-**Goal:** Render the orange promo banner per DESIGN-SPEC §3.5.1 inside `.plan-stop-card-m` when a stop carries promo data.
-
-**Data shape (decision locked):**
 ```python
-# JSON column, nullable
-promo = {
-    "label": str,    # "Vienna eSIM", "Fiaker tour", etc.
-    "price": str,    # "NT$69", "€1,200" — string keeps currency symbol flexible
-    "url": str,      # optional click-through URL
-}
+from pydantic import BaseModel
+
+class StopCreateIn(BaseModel):
+    name: str
+    time_label: str = ""
+    address: str = ""
+
+@router.post("/{trip_id}/days/{day_n}/stops", response_model=schemas.TripDetail, status_code=201)
+def add_stop(trip_id: int, day_n: int, payload: StopCreateIn,
+             user: CurrentUser, db: Annotated[Session, Depends(get_db)]):
+    t = _owned(db, user, trip_id)
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "name is required")
+    day = next((d for d in t.days if d.n == day_n), None)
+    if not day:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "day not found")
+    next_idx = max((s.order_idx for s in day.stops), default=-1) + 1
+    lat, lng = 0.0, 0.0
+    addr = payload.address.strip()
+    if addr:
+        try:
+            from ..geocoder import geocode_query  # adapt to actual function name — grep first
+            res = geocode_query(addr)  # may return (lat, lng) or None
+            if res:
+                lat, lng = res
+        except Exception:
+            pass  # swallow; existing background geocoder may retry later
+    s = Stop(day_id=day.id, order_idx=next_idx, name=name,
+             time_label=payload.time_label.strip(), address=addr,
+             lat=lat, lng=lng)
+    db.add(s)
+    db.commit()
+    db.refresh(t)
+    return _trip_to_detail(t)
 ```
 
-**Backend tasks:**
-1. Add `promo: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)` to `Stop` in `app/models.py`. Use `JSON` from `sqlalchemy` (SQLite supports JSON via TEXT under the hood — confirm by grepping for existing JSON-typed columns; e.g. `highlights` is `JSON`).
-2. Add `promo` field to `StopOut` schema in `app/schemas.py` — `Optional[dict]`.
-3. Update `_stop_to_out()` in `routes/trips.py` to pass through `s.promo`.
-4. Alembic migration: `cd server && ./migrate.sh revision --autogenerate -m "add stop.promo"`. Inspect the generated file — it should add one column. If migrate.sh autogen doesn't produce anything useful (autogen with SQLite + JSON sometimes fails), hand-write the migration body: `op.add_column('stops', sa.Column('promo', sa.JSON, nullable=True))`. Then `./migrate.sh upgrade head`.
-5. Seed one demo promo: in `app/seed_data/budapest.py` or `vienna_budapest.py`, on **one** stop (e.g. Day 1 stop 1 of vienna_budapest), set `promo={"label": "Vienna eSIM (demo)", "price": "€19", "url": "https://example.com/esim"}`. Just so the UI renders something on the demo. Document this in your revision note.
+**Grep first** for the actual geocoder function name in `app/geocoder.py` — adapt the import line.
 
-**Frontend tasks:**
-6. In `renderPlanDayContent()`'s mobile-card emit, after the `.plan-stop-card-m` block (and before the `.plan-transit-row-m` block), emit a `.plan-promo-m` banner row when `s.promo` is truthy:
+### Frontend implementation
+
+1. Find orange + FAB markup. Remove `disabled` + `title="Coming soon"`. Add `onclick="openAddStopModal()"`.
+2. Add modal markup. Place near existing modals or near end of body. Example structure:
    ```html
-   <a class="plan-promo-m" href="${url}" target="_blank" rel="noopener">
-     <span class="ppm-deal">DEAL</span>
-     <span class="ppm-label">${label}</span>
-     <span class="ppm-price">${price}</span>
-     <span class="ppm-chev">›</span>
-   </a>
+   <div id="add-stop-modal" class="modal-overlay hidden">
+     <div class="modal-card">
+       <h2>Add stop</h2>
+       <label>Name <input id="as-name" type="text" required></label>
+       <label>Time (HH:MM) <input id="as-time" type="text" placeholder="14:30"></label>
+       <label>Address <input id="as-addr" type="text" placeholder="Street, City"></label>
+       <div class="modal-actions">
+         <button onclick="closeAddStopModal()">Cancel</button>
+         <button id="as-save" onclick="submitAddStop()">Save</button>
+       </div>
+     </div>
+   </div>
    ```
-7. Add CSS for `.plan-promo-m` and children inside the mobile media block. Per DESIGN-SPEC §3.5.1 promo-banner section:
-   - Container: `margin: 6px 16px 0 76px` (indent under thumb), `background: var(--c-promo)`, `border-radius: 10px`, `padding: 8px 12px`, flex row, gap 8, `text-decoration: none`.
-   - `.ppm-deal`: 11px 800 `--c-promo-text`, white pill background `padding: 2px 6px`, `border-radius: 4px`.
-   - `.ppm-label`: 13px 600 `--c-promo-text`, `flex: 1`, truncate (`text-overflow: ellipsis`, `white-space: nowrap`, `overflow: hidden`).
-   - `.ppm-price`: 14px 800 `--c-promo-text`.
-   - `.ppm-chev`: 14px `--c-promo-text`.
+3. Add three JS functions:
+   ```js
+   function openAddStopModal() {
+     document.getElementById('add-stop-modal').classList.remove('hidden');
+     setTimeout(() => document.getElementById('as-name').focus(), 50);
+   }
+   function closeAddStopModal() {
+     document.getElementById('add-stop-modal').classList.add('hidden');
+     ['as-name','as-time','as-addr'].forEach(id => document.getElementById(id).value = '');
+   }
+   async function submitAddStop() {
+     const name = document.getElementById('as-name').value.trim();
+     if (!name) { showSnack('Name required'); return; }
+     const time_label = document.getElementById('as-time').value.trim();
+     const address = document.getElementById('as-addr').value.trim();
+     const save = document.getElementById('as-save');
+     save.disabled = true;
+     try {
+       const dayN = selectedPlanDay || 1;
+       const detail = await apiCall(`/trips/${TRIP_ID}/days/${dayN}/stops`, {
+         method: 'POST',
+         body: JSON.stringify({name, time_label, address}),
+       });
+       adaptTrip(detail);
+       renderPlan();
+       closeAddStopModal();
+     } catch (e) {
+       console.warn('add stop failed', e.message);
+       showSnack('Add stop failed');
+     } finally {
+       save.disabled = false;
+     }
+   }
+   ```
+4. CSS: minimal modal overlay (`.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 2000; }`, `.modal-overlay.hidden { display: none; }`, `.modal-card { background: white; padding: 20px; border-radius: 16px; width: min(90vw, 400px); display: flex; flex-direction: column; gap: 12px; }`, label flex stack, button styling).
+5. **Esc closes modal.** Add `keydown` listener that closes when modal is visible.
 
-### Flags / decisions
+### Flags
 
-- **JSON column on SQLite.** `JSON` type works via SQLAlchemy's `JSON` cross-DB type. Just import `from sqlalchemy import JSON`.
-- **Migration must run automatically on next boot** — `app/main.py` already runs `alembic upgrade head` on lifespan; no manual step needed after the migration file is in place.
-- **Seed promo on a stop owned by the demo user only.** Don't pollute every stop.
-- **HTML-escape promo content.** Use the existing `htmlEsc()` or whatever the codebase uses (grep). Promo `label` is user-typed; don't trust it.
-- **Don't touch existing `<details>` desktop markup.** Promo is mobile-only for this step.
+- **Reuse existing modal pattern if it exists** (Tour tab modals). Grep for the existing modal CSS — if so, just add a new modal entry rather than inventing a new system.
+- **`showSnack`** — already exists from prior steps. Reuse.
+- **`apiCall`** — already exists. Reuse.
+- **`selectedPlanDay`** — global. Reuse.
+- **`TRIP_ID`** — global. Reuse.
 
 ### Definition of Done
 
-- [ ] `addDay`/`removeLastDay` disable triggering button during request, re-enable after.
-- [ ] Auto-sort parser handles `"HH:MM +N"` — write a quick assert in a comment if helpful.
-- [ ] `Stop.promo` column added + migration generated + applied.
-- [ ] `StopOut.promo` passes through API.
-- [ ] One demo stop carries a promo; banner renders in the mobile sheet on that stop.
-- [ ] No new console errors. No new backend test failures (server reloads cleanly).
-- [ ] Desktop pixel-frozen (promo banner is mobile-only).
-- [ ] `handoff/REVIEW-REQUEST.md` updated with Revision 5.
+- [ ] `POST /api/trips/{trip_id}/days/{day_n}/stops` added; returns 201 + TripDetail; 400 on empty name; 404 on missing trip/day.
+- [ ] Orange `+` FAB no longer disabled; opens modal.
+- [ ] Modal has 3 inputs + Cancel + Save.
+- [ ] Save disabled when name empty.
+- [ ] Submit appends stop to current day, refreshes UI, closes modal.
+- [ ] Esc closes modal.
+- [ ] Address-based geocode best-effort (no crash if Nominatim down).
+- [ ] No new console errors.
+- [ ] Desktop pixel-frozen (modal only triggers from mobile FAB).
+- [ ] `handoff/REVIEW-REQUEST.md` updated with Revision 6.
 
 ---
 
-## Builder Plan
-Architect pre-approval: [x] Pre-approved. Plan + build in one round.
+Architect approval: [x] Pre-approved. Bob plan + build in one round.

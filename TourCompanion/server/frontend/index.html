@@ -932,7 +932,7 @@
     <button class="plan-reroute-fab" type="button" title="Reroute" aria-label="Reroute">🔀</button>
     <!-- FAB cluster (mobile only via CSS) -->
     <div class="plan-fab-cluster">
-      <button class="plan-fab-add" disabled title="Coming soon" aria-label="Add stop">+</button>
+      <button class="plan-fab-add" type="button" onclick="openAddStopModal()" aria-label="Add stop">+</button>
       <button class="plan-fab-toggle" type="button" onclick="sheetTogglePeekFull()" aria-label="Toggle map / list">
         <span class="pft-top">🗺</span>
         <span class="pft-div"></span>
@@ -1036,6 +1036,36 @@
   }
   .quick-btn:hover { background: #f1f5f9; }
   .quick-btn span { font-size: 20px; line-height: 1; }
+
+  /* KG-3a — add-stop modal */
+  .as-overlay {
+    position: fixed; inset: 0; z-index: 2000;
+    background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center; padding: 16px;
+  }
+  .as-overlay.hidden { display: none; }
+  .as-card {
+    background: #fff; border-radius: 16px; padding: 20px;
+    width: min(92vw, 400px); box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .as-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #475569; }
+  .as-label { font-weight: 600; }
+  .as-field input {
+    width: 100%; padding: 8px 10px; font-size: 14px; color: #0f172a;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+  }
+  .as-field input:focus { outline: none; border-color: #3b82f6; background: #fff; }
+  .as-actions { display: flex; gap: 8px; margin-top: 4px; }
+  .as-btn {
+    flex: 1; padding: 10px; border-radius: 12px; font-size: 13px; font-weight: 700;
+    border: none; cursor: pointer; transition: background .15s;
+  }
+  .as-btn-cancel { background: #f1f5f9; color: #334155; }
+  .as-btn-cancel:hover { background: #e2e8f0; }
+  .as-btn-save { background: #f97316; color: #fff; }
+  .as-btn-save:hover:not(:disabled) { background: #ea580c; }
+  .as-btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
 
 <!-- Modal -->
@@ -1047,6 +1077,31 @@
         class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-xl leading-none">&times;</button>
     </div>
     <div id="modal-body" class="p-5"></div>
+  </div>
+</div>
+
+<!-- Add-stop modal (KG-3a) — own overlay so it can host a persistent form
+     without colliding with the templated #modal used by Tour-tab dialogs. -->
+<div id="add-stop-modal" class="as-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="as-title">
+  <div class="as-card">
+    <h3 id="as-title" class="font-bold text-slate-800 text-base mb-2">Add stop</h3>
+    <label class="as-field">
+      <span class="as-label">Name</span>
+      <input id="as-name" type="text" required autocomplete="off"
+             oninput="document.getElementById('as-save').disabled = !this.value.trim()">
+    </label>
+    <label class="as-field">
+      <span class="as-label">Time (HH:MM)</span>
+      <input id="as-time" type="text" placeholder="14:30" autocomplete="off">
+    </label>
+    <label class="as-field">
+      <span class="as-label">Address</span>
+      <input id="as-addr" type="text" placeholder="Street, City" autocomplete="off">
+    </label>
+    <div class="as-actions">
+      <button type="button" onclick="closeAddStopModal()" class="as-btn as-btn-cancel">Cancel</button>
+      <button type="button" id="as-save" onclick="submitAddStop()" class="as-btn as-btn-save" disabled>Save</button>
+    </div>
   </div>
 </div>
 
@@ -1310,6 +1365,58 @@ async function refreshTrip() {
     renderPlan();
   } catch (e) { console.warn("refresh failed", e.message); }
 }
+
+/* ── KG-3a: Add-stop modal ──────────────────────────────────────────── */
+function openAddStopModal() {
+  const overlay = document.getElementById("add-stop-modal");
+  if (!overlay) return;
+  ["as-name", "as-time", "as-addr"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+  const save = document.getElementById("as-save");
+  if (save) save.disabled = true;          // name empty on open
+  overlay.classList.remove("hidden");
+  setTimeout(() => document.getElementById("as-name")?.focus(), 50);
+}
+function closeAddStopModal() {
+  document.getElementById("add-stop-modal")?.classList.add("hidden");
+}
+async function submitAddStop() {
+  const name = document.getElementById("as-name").value.trim();
+  if (!name) { showSnack("Name required"); return; }
+  if (!TRIP_ID) { showSnack("No trip selected"); return; }
+  const time_label = document.getElementById("as-time").value.trim();
+  const address    = document.getElementById("as-addr").value.trim();
+  const save = document.getElementById("as-save");
+  save.disabled = true;
+  try {
+    const dayN = selectedPlanDay || 1;
+    const detail = await apiCall(`/trips/${TRIP_ID}/days/${dayN}/stops`, {
+      method: "POST",
+      body: JSON.stringify({ name, time_label, address }),
+    });
+    adaptTrip(detail);
+    renderPlan();
+    closeAddStopModal();
+    showSnack("✓ Stop added");
+  } catch (e) {
+    console.warn("add stop failed", e.message);
+    showSnack("Add stop failed");
+  } finally {
+    save.disabled = false;
+  }
+}
+/* Esc closes the add-stop modal — own listener so it works regardless of
+   tab visibility / viewport size (the keyboard-nav handler above is desktop-only). */
+document.addEventListener("keydown", (ev) => {
+  if (ev.key !== "Escape") return;
+  const overlay = document.getElementById("add-stop-modal");
+  if (overlay && !overlay.classList.contains("hidden")) {
+    ev.preventDefault();
+    closeAddStopModal();
+  }
+});
 
 async function autoSortCurrentDay() {
   if (!TRIP || !TRIP.days) return;

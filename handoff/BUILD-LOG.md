@@ -5,13 +5,35 @@
 
 ## Current Status
 
-**Active step:** — (Step 4 closed)
-**Last cleared:** Step 4 — KG-6 race + KG-7 +1 parser + KG-2 promo — 2026-05-15
+**Active step:** — (Step 5 closed)
+**Last cleared:** Step 5 — KG-3a Add-stop FAB + endpoint — 2026-05-15
 **Pending deploy:** NO (committed locally; no remote configured)
 
 ---
 
 ## Step History
+
+### Step 5 — KG-3a Add-stop FAB + endpoint — Status: COMPLETE
+*Date: 2026-05-15*
+
+Files changed:
+- `app/routes/trips.py` — +39 lines: `StopCreateIn` pydantic model + `POST /api/trips/{trip_id}/days/{day_n}/stops`. Lazy import `geocode_query`; best-effort `(0,0)` fallback if geocode fails or address empty.
+- `frontend/index.html` — +93 lines: orange `+` FAB rewired; new `#add-stop-modal` overlay; `.as-*` CSS; `openAddStopModal`/`closeAddStopModal`/`submitAddStop` handlers; dedicated mobile-safe Esc listener.
+
+Decisions:
+- Own `#add-stop-modal` (separate namespace from the templated `#modal` system) — simpler than retrofitting `openModal(kind)`.
+- `lat/lng = 0.0` on geocode miss, matching existing `_has_real_seed` convention; background geocoder may retry later.
+- order_idx = `max(existing) + 1` (append).
+
+Live verification:
+- Modal opens via FAB tap, name required validation works.
+- Submit "Belvedere Palace" with address "Prinz-Eugen-Strasse 27, 1030 Wien" geocoded successfully → lat=48.1912, lng=16.3798 (correct Vienna coords).
+- Stop count incremented; UI refreshed; modal closed.
+- 401/400/404 paths all verified via curl.
+
+Deploy: committed locally 2026-05-15.
+
+---
 
 ### Step 4 — KG-6 race + KG-7 +1 parser + KG-2 promo — Status: COMPLETE
 *Date: 2026-05-15*

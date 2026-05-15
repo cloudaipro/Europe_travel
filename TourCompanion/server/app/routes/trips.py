@@ -16,6 +16,12 @@ class StopReorderIn(BaseModel):
     stop_ids: list[int]
 
 
+class StopCreateIn(BaseModel):
+    name: str
+    time_label: str = ""
+    address: str = ""
+
+
 router = APIRouter(prefix="/api/trips", tags=["trips"])
 
 
@@ -124,6 +130,43 @@ def remove_day(trip_id: int, day_n: int, user: CurrentUser, db: Annotated[Sessio
     # Pull back end_date by 1 day
     if t.end_date > t.start_date:
         t.end_date = t.end_date - timedelta(days=1)
+    db.commit()
+    db.refresh(t)
+    return _trip_to_detail(t)
+
+
+@router.post("/{trip_id}/days/{day_n}/stops", response_model=schemas.TripDetail, status_code=201)
+def add_stop(
+    trip_id: int, day_n: int, payload: StopCreateIn,
+    user: CurrentUser, db: Annotated[Session, Depends(get_db)],
+):
+    t = _owned(db, user, trip_id)
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "name is required")
+    day = next((d for d in t.days if d.n == day_n), None)
+    if not day:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "day not found")
+    next_idx = max((s.order_idx for s in day.stops), default=-1) + 1
+    lat: float = 0.0
+    lng: float = 0.0
+    addr = payload.address.strip()
+    if addr:
+        # Best-effort geocode. Leaves (0, 0) on miss/error; the existing
+        # background geocoder treats (0, 0) as "no seed" and can fill later.
+        try:
+            from ..geocoder import geocode_query
+            res = geocode_query(addr)
+            if res:
+                lat, lng = res
+        except Exception:
+            pass
+    s = Stop(
+        day_id=day.id, order_idx=next_idx, name=name,
+        time_label=payload.time_label.strip(), address=addr,
+        lat=lat, lng=lng,
+    )
+    db.add(s)
     db.commit()
     db.refresh(t)
     return _trip_to_detail(t)
