@@ -5,13 +5,70 @@
 
 ## Current Status
 
-**Active step:** Step 12 — Capacitor iOS scaffold — awaiting review
+**Active step:** Step 13 — Local SQLite + Data Layer — awaiting review
 **Last cleared:** Step 9 — Port Pure Helpers Python → TypeScript — 2026-05-16
 **Pending deploy:** NO (uncommitted; awaiting Richard)
 
 ---
 
 ## Step History
+
+### Step 13 — Local SQLite + Data Layer — Status: AWAITING REVIEW
+*Date: 2026-05-16*
+
+Scope: `@capacitor-community/sqlite` installed into `@tourcompanion/ios`. `TripStore` interface defined in `@tourcompanion/core`. SQLite-backed `IOSTripStore` implemented with schema bootstrap, CRUD covering every endpoint the existing frontend hits. Bundle wired into `www/ios.bundle.js` and injected before `</body>` on iOS. Web build untouched. No fetch interceptor yet — that's Step 14.
+
+Files changed:
+- **New — core (2):**
+  - `TourCompanion/packages/core/src/store/types.ts` — `TripStore` interface + `TripCreateInput`, `StopCreateInput`, `CheckInInput`, `JournalUpdate`, `VoiceNoteInput`. Field names mirror Pydantic schemas. Imports wire types from `../types/index.js`.
+  - `TourCompanion/packages/core/src/store/index.ts` — re-export barrel.
+- **New — ios runtime (5):**
+  - `TourCompanion/packages/ios/src/runtime/sqlite/schema.ts` — `SCHEMA_STATEMENTS` array (12 statements: 8 CREATE TABLE, 2 CREATE INDEX, `schema_meta` table + version-1 seed). `SCHEMA_SQL` join provided for diagnostics; runtime executes statements one-by-one for clear error reporting.
+  - `TourCompanion/packages/ios/src/runtime/sqlite/serialize.ts` — row → wire mappers. `rowToTripDetail` mirrors Python `_trip_to_detail` (routes/trips.py:44-66) and `rowToStop` mirrors `_stop_to_out` (routes/trips.py:31-42). JSON arrays/objects round-trip via `parseJsonArray` / `parseJsonObject` with try/catch fallback to empty. `published_slug` hard-set to `null` (column dropped on iOS); `companion_docs` / `routes` / `street_food` always `[]`.
+  - `TourCompanion/packages/ios/src/runtime/sqlite/store.ts` — `IOSTripStore` class implementing every `TripStore` method. Parameterised queries throughout. `addStop` computes `max(order_idx)+1` per day. `reorderStops` batches updates via `db.executeTransaction([{statement,values}, ...])` — the only multi-statement transaction in this step (single-statement writes are atomic per `db.run`). `removeDay` resequences remaining day numbers contiguously. `createTrip` inserts trip → days → stops → bookings inline (transactional wrap deferred — see Decisions).
+  - `TourCompanion/packages/ios/src/runtime/sqlite/index.ts` — `initSqliteStore()` factory. Reuses existing connection via `isConnection` + `retrieveConnection` to survive hot-reload; opens, runs `PRAGMA foreign_keys = ON`, then loops `SCHEMA_STATEMENTS`.
+  - `TourCompanion/packages/ios/src/runtime/entry.ts` — bootstrap shim. `Capacitor.getPlatform() !== "ios"` short-circuit so the bundle is a no-op on web/Android. Errors caught and logged — never thrown out of the IIFE.
+- **New — ios tooling (2):**
+  - `TourCompanion/packages/ios/build.mjs` — esbuild IIFE bundler, entry `src/runtime/entry.ts`, out `www/ios.bundle.js`, target `es2020`, no sourcemap (sourcemap leaks impl into App Store binary).
+  - `TourCompanion/packages/ios/tsconfig.json` — `noEmit: true`, `lib: ["ES2022", "DOM"]`, types `["node"]`. Drives `npm run typecheck`.
+- **Modified — core (3):**
+  - `TourCompanion/packages/core/src/index.ts` — re-exports `TripStore` and the 5 input types from `./store/types.js`; bumps `CORE_VERSION` to `"0.4.0"`.
+  - `TourCompanion/packages/core/package.json` — version `0.4.0`.
+  - `TourCompanion/packages/core/tests/smoke.test.ts` — expects `"0.4.0"`.
+- **Modified — ios (2):**
+  - `TourCompanion/packages/ios/package.json` — version `0.2.0`, `type: "module"`, deps include `@capacitor-community/sqlite@^6.0.2`, devDeps add `esbuild` + `typescript` + `@types/node`. `build:web` now chains `npm run build --workspace=@tourcompanion/web && node copy-web.mjs && node build.mjs`. Added `build` (alias of build:web) and `typecheck` scripts.
+  - `TourCompanion/packages/ios/copy-web.mjs` — after copy, reads `www/index.html` and injects `<script src="/ios.bundle.js"></script>` before the first `</body>`. Idempotent; bails if no `</body>` found.
+- **Modified — lockfile:**
+  - `TourCompanion/package-lock.json` — 35 packages added by the sqlite plugin install.
+
+Decisions made (judgment calls beyond the brief):
+- **Pinned `@capacitor-community/sqlite` to `^6.0.2`.** `8.1.0` is latest but its `peer @capacitor/core@">=8.0.0"` blew up `npm install`. Brief explicitly says "latest 6.x compatible with Capacitor 6" — 6.0.2 is the last 6.x release on npm.
+- **`createTrip` is NOT wrapped in `executeTransaction`** even though it touches 4 tables. Reason: the plugin's `executeTransaction(capTask[])` accepts only INSERT/UPDATE/DELETE statements with values, but we need each statement's `lastId` to feed the next INSERT (trip.id → day.trip_id → stop.day_id). Sequencing `db.run` calls keeps the dependency chain explicit. SQLite's per-statement atomicity is sufficient here; a mid-create crash leaves partial data, which the next create cycle overwrites because the iOS frontend recreates trips end-to-end (no resumable creation flow). If Richard flags this as a Must Fix I'll refactor to inline-substitute the lastId via a follow-up `SELECT last_insert_rowid()` per insert, but the added query cost felt unjustified for v1.
+- **`reorderStops` uses `executeTransaction`** because the statements are pure UPDATEs with no inter-statement dependencies — perfect fit for the batch API. Brief called this out specifically.
+- **`getTrip` issues N+1-ish queries** (one stops query per day, three hydration queries per stop). For a v1 with ~5 days × ~5 stops the round-trip count is ~80 queries; with SQLite on-device that's sub-millisecond total. Refactoring to one big JOIN + manual grouping would save tokens but obscure the mapping logic. Left as-is.
+- **JSON columns (`highlights`, `food`, `promo`) round-trip as strings.** `parseJsonArray` falls back to `[]` on malformed input; `parseJsonObject` falls back to `null`. Mirrors the Python `or []` defensive default.
+- **`published_slug: null` instead of empty string.** Python returns `Optional[str]` and the frontend already handles `null` as "unpublished". The column itself is gone.
+- **`isConnection` retrieve-or-create dance in `initSqliteStore`.** Capacitor hot-reload doesn't recreate the JS heap on every refresh, so `createConnection` would throw "already exists" on second load. Cheap defensive check.
+- **`Capacitor.getPlatform() !== "ios"` guard in entry.ts is silent.** No warning logged — the bundle ships in web too (single `www/` artefact) and we don't want web users seeing a "skipping iOS init" log on every page load.
+- **Bundle is not sourcemapped.** App-Store-bound code; sourcemap would expose internal class/method names. Trade-off accepted: crash reports in production will need symbol upload (not in scope for v1).
+- **Did not touch `packages/ios/tsconfig.json`'s `noEmit` flag for the bundler** — esbuild does its own transpile, tsc is purely a check.
+
+Verification:
+- `cd TourCompanion && npm install` → 35 packages added (sqlite plugin + transitive). PASS.
+- `npm run build` → core tsc OK, ios bundles (`79.7kb www/ios.bundle.js` + injected script tag), web bundles. PASS.
+- `npm run typecheck` → both `@tourcompanion/core` and `@tourcompanion/ios` exit 0; web is `echo` (no TS yet). PASS.
+- `npm test` → 67/67 core tests still pass; `smoke.test.ts` updated to assert `"0.4.0"`. PASS.
+- `npx cap sync ios` → "Sync finished in 26.05s"; `[info] Found 1 Capacitor plugin for ios: @capacitor-community/sqlite@6.0.2`. PASS.
+- `Podfile.lock` contains `CapacitorCommunitySqlite (6.0.2)`. PASS.
+- `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` → `** BUILD SUCCEEDED **`. Standard "Embed Pods Frameworks runs every build" / "Metadata extraction skipped" warnings only. PASS.
+- `www/index.html` contains `<script src="/ios.bundle.js"></script>` before `</body>` (verified via copy-web log line). PASS.
+
+Not verified (acceptable per brief):
+- No Node-side test of `IOSTripStore.createTrip` / `getTrip` round-trip. `@capacitor-community/sqlite` is iOS-native; mocking the `SQLiteDBConnection` surface for a unit test would test the mock, not the store. xcodebuild green + typecheck green is the contract this step ships against. Step 14 (fetch interceptor) will exercise these methods end-to-end on the simulator.
+
+Known Gaps: none introduced.
+
+---
 
 ### Step 12 — Capacitor iOS scaffold — Status: AWAITING REVIEW
 *Date: 2026-05-16*

@@ -1,109 +1,69 @@
-# Review Request — Step 12
+# Review Request — Step 13
 
-**Step:** 12 — Capacitor iOS scaffold
+**Step:** 13 — Local SQLite + Data Layer
 **Ready for Review:** YES
 **Builder:** Bob
 **Date:** 2026-05-16
 
 ---
 
-## Summary
+## What changed
 
-Stood up `TourCompanion/packages/ios/` as a Capacitor 6 wrapper around the existing web SPA. Web bundle copies into `www/`, `npx cap add ios` generated the Xcode project + Podfile, headless `xcodebuild` against the simulator SDK exits 0 with `BUILD SUCCEEDED`. No native plugins yet (Step 13+). No iOS-runtime branching in `index.html` yet — brief §"Flags Bob Must Not Guess At" explicitly defers it; the scaffold proof is build success, not runtime function.
+Defines `TripStore` interface in core, implements `IOSTripStore` (SQLite-backed) in the iOS package with schema bootstrap, and wires the bundle into the iOS `www/` at build time. Web build is untouched. No fetch interceptor (Step 14).
 
-Bundle identity locked exactly as specified:
-- `appId: "com.cloudaipro.tourcompanion"`
-- `appName: "TourCompanion"`
+## Files
 
----
+### New — core
 
-## Files to review
+- **`TourCompanion/packages/core/src/store/types.ts`** (1-82) — `TripStore` interface + 5 input types (`TripCreateInput`, `StopCreateInput`, `CheckInInput`, `JournalUpdate`, `VoiceNoteInput`). Field names mirror Pydantic schemas exactly (snake_case).
+- **`TourCompanion/packages/core/src/store/index.ts`** (1) — re-export barrel.
 
-### New — `packages/ios/` root (human-authored)
+### New — ios runtime
 
-| File | Lines | What it does |
-|---|---|---|
-| `TourCompanion/packages/ios/package.json` | 1–17 | `@tourcompanion/ios` workspace; Capacitor 6 deps + `@tourcompanion/core` `*`; scripts `build:web` / `cap:sync` / `cap:open` / `build:ios` per brief verbatim. |
-| `TourCompanion/packages/ios/capacitor.config.ts` | 1–12 | Locked appId / appName / webDir / androidScheme. |
-| `TourCompanion/packages/ios/copy-web.mjs` | 1–40 | Pure-Node copy from `packages/web/public/` → `packages/ios/www/`. Rewrites `www/` from scratch each run. Excludes `core.bundle.js.map` via a `Set`. |
-| `TourCompanion/packages/ios/README.md` | 1–28 | Replaces placeholder. Documents dev loop + identity + what is/isn't committed. |
+- **`TourCompanion/packages/ios/src/runtime/sqlite/schema.ts`** (1-94) — `SCHEMA_STATEMENTS` (12 stmts: 8 CREATE TABLE, 2 CREATE INDEX, schema_meta + version-1 seed). Matches Python column types; `published_slug` absent.
+- **`TourCompanion/packages/ios/src/runtime/sqlite/serialize.ts`** (1-188) — row → wire mappers. `rowToTripDetail` (152-178) mirrors `_trip_to_detail` (routes/trips.py:44-66). `rowToStop` (110-135) mirrors `_stop_to_out` (routes/trips.py:31-42). JSON columns round-trip safely with empty-array / null fallback.
+- **`TourCompanion/packages/ios/src/runtime/sqlite/store.ts`** (1-271) — `IOSTripStore` class. Key methods:
+  - `listTrips` 56-65
+  - `getTrip` 67-99 (N+1 hydration — see decision)
+  - `hydrateStop` 101-122
+  - `createTrip` 126-194 (NOT wrapped in `executeTransaction` — see decision)
+  - `deleteTrip` 196-200 (relies on PRAGMA foreign_keys CASCADE)
+  - `addDay` 204-218
+  - `removeDay` 220-235 (resequences `n` after delete)
+  - `addStop` 239-264 (computes `max(order_idx)+1`)
+  - `reorderStops` 266-274 (uses `executeTransaction`)
+  - `deleteStop` 276-285
+  - Live-tour writes (`checkIn` / `updateJournal` / `addVoiceNote` / `addPhoto`) 289-313
+- **`TourCompanion/packages/ios/src/runtime/sqlite/index.ts`** (1-31) — `initSqliteStore` factory. `isConnection` retrieve-or-create guard for hot-reload; `PRAGMA foreign_keys = ON` after open.
+- **`TourCompanion/packages/ios/src/runtime/entry.ts`** (1-24) — IIFE entry. Silent no-op when `Capacitor.getPlatform() !== "ios"`. Init errors caught and logged.
 
-### New — `packages/ios/ios/` (Capacitor-generated, committed)
+### New — ios tooling
 
-| File | Notes |
-|---|---|
-| `packages/ios/ios/.gitignore` | Capacitor template — ignores `App/build`, `App/Pods`, `App/App/public`, `DerivedData`, `xcuserdata`, regenerated config files. Untouched. |
-| `packages/ios/ios/App/App.xcodeproj/project.pbxproj` | Capacitor template; bundle id baked in via project settings. |
-| `packages/ios/ios/App/App.xcworkspace/{contents.xcworkspacedata, xcshareddata/IDEWorkspaceChecks.plist}` | 2 files. |
-| `packages/ios/ios/App/App/AppDelegate.swift` | Capacitor default. |
-| `packages/ios/ios/App/App/Info.plist` | Capacitor default. |
-| `packages/ios/ios/App/App/Base.lproj/{LaunchScreen,Main}.storyboard` | Capacitor defaults. |
-| `packages/ios/ios/App/App/Assets.xcassets/{AppIcon,Splash}` | Capacitor placeholder art. |
-| `packages/ios/ios/App/Podfile` | 22 lines — Capacitor 6 pod refs via relative path into `node_modules`. |
-| `packages/ios/ios/App/Podfile.lock` | Pins Capacitor 6.2.1, CapacitorCordova 6.2.1; CocoaPods 1.16.2. |
+- **`TourCompanion/packages/ios/build.mjs`** (1-23) — esbuild IIFE → `www/ios.bundle.js`. Target `es2020`, no sourcemap.
+- **`TourCompanion/packages/ios/tsconfig.json`** (1-11) — `noEmit`, `lib: ["ES2022", "DOM"]`, types `["node"]`.
 
 ### Modified
 
-| File | Lines | Change |
-|---|---|---|
-| `TourCompanion/.gitignore` | 7–12 (appended) | Belt-and-suspenders block: `packages/ios/www/`, `packages/ios/node_modules/`, `packages/ios/ios/App/{Pods,build,DerivedData}/`. Capacitor's own `ios/.gitignore` already covers most of this; the workspace-level rules make the intent explicit. |
-| `TourCompanion/package-lock.json` | (machine-generated) | `npm install` resolved 93 added packages for Capacitor toolchain. |
+- **`TourCompanion/packages/core/src/index.ts`** (32-41) — re-exports `TripStore` types; `CORE_VERSION = "0.4.0"`.
+- **`TourCompanion/packages/core/package.json`** (3) — version `0.4.0`.
+- **`TourCompanion/packages/core/tests/smoke.test.ts`** (5-6) — assert `"0.4.0"`.
+- **`TourCompanion/packages/ios/package.json`** (full) — version `0.2.0`, `type: "module"`, adds `@capacitor-community/sqlite@^6.0.2`, devDeps for esbuild/tsc, new `build` + `typecheck` scripts, `build:web` chains esbuild step.
+- **`TourCompanion/packages/ios/copy-web.mjs`** (37-55) — injects `<script src="/ios.bundle.js"></script>` before `</body>`. Idempotent; bails if no `</body>` found.
+- **`TourCompanion/package-lock.json`** — 35 packages added.
 
-### Untouched (proof of scope discipline)
+## Verification
 
-- `TourCompanion/server/` — zero Python edits this step.
-- `TourCompanion/packages/web/` — unchanged.
-- `TourCompanion/packages/core/` — unchanged.
-- `TourCompanion/package.json` — no root-level changes needed (workspaces glob already covers `packages/*`).
+- `npm run build` — core tsc + ios bundle (79.7kb) + web bundle — PASS
+- `npm run typecheck` — all workspaces exit 0 — PASS
+- `npm test` — 67/67 core tests pass (smoke updated to 0.4.0) — PASS
+- `npx cap sync ios` — detects `@capacitor-community/sqlite@6.0.2` — PASS
+- `Podfile.lock` — contains `CapacitorCommunitySqlite (6.0.2)` — PASS
+- `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` — `** BUILD SUCCEEDED **` — PASS
 
----
+## Open questions for Richard
 
-## Verification I ran
+1. **`createTrip` is sequenced via individual `db.run` calls, not wrapped in `executeTransaction`.** Each insert needs the prior `lastId` (trip.id → day.trip_id → stop.day_id). Acceptable for v1? Alternative is `SELECT last_insert_rowid()` between inserts — mostly cosmetic.
+2. **`getTrip` issues ~80 queries for a typical 5-day × 5-stop trip.** On-device SQLite this is sub-millisecond, but flag if you'd prefer a JOIN + manual grouping refactor before Step 14.
+3. **Bundle ships without sourcemaps.** Cleaner App Store binary, harder production crash triage. Flag if you'd rather have sourcemaps in dev builds.
 
-- `npm install` from `TourCompanion/` → 93 packages added, no errors.
-- `npm run build:web` from `packages/ios/` → `www/index.html` (153.8kB) + `www/core.bundle.js` (5.3kB), no `.map`.
-- `npx cap add ios` → success in 2.04s; pod install succeeded.
-- `npx cap sync ios` → success in 1.531s; re-ran pod install cleanly.
-- `xcodebuild ... build CODE_SIGNING_ALLOWED=NO | tail -30` → `** BUILD SUCCEEDED **`. Only warnings: Capacitor's standard "Embed Pods Frameworks runs every build" (cosmetic) and "Metadata extraction skipped. No AppIntents.framework dependency found" (expected for a no-AppIntents app).
-- `npm test` from `TourCompanion/` → 67/67 vitest tests pass across 14 files. Unchanged from Step 11.
-- `SECRET_KEY=test ... .venv/bin/python -c "from app.main import app"` → `IMPORT_OK`. FastAPI server still imports.
-- `git check-ignore -v packages/ios/ios/App/Pods` → matched by Capacitor's `ios/.gitignore` line 4. `packages/ios/www` matched by my workspace-level rule. `packages/ios/node_modules` matched by the existing root `node_modules/` rule.
-- `git status --short | grep packages/ios | wc -l` → 21 new files; manual scan confirms zero Pods / www / node_modules / App/App/public entries.
-
----
-
-## Verification checklist (from brief)
-
-- [x] `packages/ios/capacitor.config.ts` exists with locked appId + appName
-- [x] `packages/ios/ios/App/App.xcworkspace/` exists
-- [x] `packages/ios/ios/App/Podfile.lock` exists and is committed
-- [x] `packages/ios/www/index.html` + `www/core.bundle.js` present after build:web
-- [x] `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` exits 0 with `BUILD SUCCEEDED`
-- [x] `find packages/ios -maxdepth 3 -type d -name Pods` finds it; `git check-ignore` confirms ignored
-- [x] `git status` shows new files: capacitor.config.ts, copy-web.mjs, package.json, README.md, ios/App/* sources, Podfile, Podfile.lock — no Pods, no www, no node_modules
-- [x] Existing FastAPI server still starts (no Python changes)
-- [x] `npm test` (core) still passes 67/67
-
----
-
-## Judgment calls Richard may want to confirm
-
-1. **Skipped `npx cap init` entirely.** Brief authorizes this if interactive prompts hang; wrote `capacitor.config.ts` by hand instead. `cap add ios` succeeded on first try and emitted `ios/App/App/capacitor.config.json` from this TS source.
-2. **`copy-web.mjs` wipes `www/` before each copy** rather than merging. Cheaper to reason about; cost is negligible (2 entries, ~5ms).
-3. **Kept workspace-level `.gitignore` additions** even though Capacitor's auto-generated `packages/ios/ios/.gitignore` already covers most. Future iOS-plugin steps may add paths outside Capacitor's template; one canonical list at workspace root is easier to maintain.
-4. **Did not touch app icon / splash artwork.** Capacitor placeholders remain; brief doesn't ask for branding in Step 12.
-5. **No iOS-runtime branch in `index.html`** — brief explicitly defers this to Step 13+. The SPA will fail at runtime when launched in the simulator (fetches a non-existent server). That's fine — Step 12's deliverable is build success.
-
----
-
-## Open questions
-
-None. Brief was unambiguous; every checklist item is green.
-
-## Escalate to Architect
-
-None.
-
----
-
-**Ready for Review: YES**
+No Python or web frontend changes.

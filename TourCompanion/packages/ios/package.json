@@ -1,17 +1,26 @@
 {
   "name": "@tourcompanion/ios",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "build:web": "npm run build --workspace=@tourcompanion/web && node copy-web.mjs",
+    "build:web": "npm run build --workspace=@tourcompanion/web && node copy-web.mjs && node build.mjs",
+    "build": "npm run build:web",
+    "typecheck": "tsc --noEmit",
     "cap:sync": "npx cap sync ios",
     "cap:open": "npx cap open ios",
     "build:ios": "npm run build:web && npm run cap:sync && xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO | tail -30"
   },
   "dependencies": {
+    "@capacitor-community/sqlite": "^6.0.2",
+    "@capacitor/cli": "^6",
     "@capacitor/core": "^6",
     "@capacitor/ios": "^6",
-    "@capacitor/cli": "^6",
     "@tourcompanion/core": "*"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21",
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
   }
 }

@@ -2,110 +2,271 @@
 
 ## Initiative — Standalone iOS Version (continued)
 
-Steps 8-11 complete. Now Step 12.
+Steps 8-12 complete. Now Step 13.
 
 ---
 
-## Step 12 — Capacitor iOS Scaffold
+## Step 13 — Local SQLite + Data Layer
 
-**Scope:** Initialize Capacitor in `packages/ios/`. Bundle the existing web frontend into the iOS app. Generate the Xcode project. Successful `xcodebuild` against the iOS simulator SDK proves the scaffold builds. **Actual simulator launch + runtime testing is manual (Owner)** — out of scope for headless agent verification.
+**Scope:** Add `@capacitor-community/sqlite` to the iOS package. Define a `TripStore` interface in `@tourcompanion/core`. Implement `IOSTripStore` (SQLite-backed) in `packages/ios`. Add schema bootstrap that runs on app launch. Provide CRUD covering all endpoints the existing frontend hits. **Web is unchanged** — keeps using the FastAPI server. The fetch-interceptor wiring on iOS comes in Step 14/15.
 
-**App identity locked:**
-- Bundle ID: `com.cloudaipro.tourcompanion`
-- App name: `TourCompanion`
-- Display name: `TourCompanion`
+Reference: existing Python models at `TourCompanion/server/app/models.py`. v1 iOS skips: `users`, `email_tokens`, `companion_docs`, `route_assets`, `ingest_jobs`, `street_food`. Keep: `trips`, `days`, `stops`, `bookings`, `check_ins`, `photos`, `voice_notes`. Note: `published_slug` column dropped on iOS (no publish flow).
 
-Environment confirmed: Xcode 26.3, CocoaPods 1.16.2 installed on this machine.
+### TripStore Interface — `packages/core/src/store/types.ts`
 
-### Build Order
+```ts
+import type { TripDetail, TripSummary, Stop, Day } from "../types";
 
-1. `cd TourCompanion/packages/ios/`. Remove existing placeholder README contents (or replace).
+export interface TripCreateInput {
+  name: string;
+  destination: string;
+  start_date: string;   // ISO
+  end_date: string;     // ISO
+  season?: string;
+  style?: string;
+  pace?: string;
+  source_url?: string;
+  hotel_name?: string;
+  hotel_lat?: number | null;
+  hotel_lng?: number | null;
+  hotel_address?: string;
+  days?: Array<{
+    n: number;
+    date_label?: string;
+    theme?: string;
+    mode?: string;
+    stops?: Array<Omit<Stop, "id" | "check_in_count" | "photo_paths" | "voice_transcript">>;
+  }>;
+  bookings?: Array<{ label: string; url?: string; done?: boolean }>;
+}
 
-2. Create `package.json`:
-   ```json
-   {
-     "name": "@tourcompanion/ios",
-     "version": "0.1.0",
-     "private": true,
-     "scripts": {
-       "build:web": "npm run build --workspace=@tourcompanion/web && node copy-web.mjs",
-       "cap:sync": "npx cap sync ios",
-       "cap:open": "npx cap open ios",
-       "build:ios": "npm run build:web && npm run cap:sync && xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO | tail -30"
-     },
-     "dependencies": {
-       "@capacitor/core": "^6",
-       "@capacitor/ios": "^6",
-       "@capacitor/cli": "^6",
-       "@tourcompanion/core": "*"
-     }
-   }
-   ```
+export interface StopCreateInput {
+  day_id: number;
+  time_label?: string;
+  name: string;
+  address?: string;
+  lat?: number | null;
+  lng?: number | null;
+  hours?: string;
+  tickets?: string;
+  intro?: string;
+  highlights?: string[];
+  transit?: string;
+  washroom?: string;
+  food?: string[];
+}
 
-3. From `TourCompanion/` root, `npm install` to add Capacitor deps to the workspace.
+export interface CheckInInput { stop_id: number; lat?: number | null; lng?: number | null; }
+export interface JournalUpdate { trip_id: number; journal: string; }
+export interface VoiceNoteInput { stop_id: number; transcript: string; audio_path?: string; }
 
-4. Create `TourCompanion/packages/ios/capacitor.config.ts`:
-   ```ts
-   import type { CapacitorConfig } from "@capacitor/cli";
+export interface TripStore {
+  listTrips(): Promise<TripSummary[]>;
+  getTrip(id: number): Promise<TripDetail | null>;
+  createTrip(input: TripCreateInput): Promise<TripDetail>;
+  deleteTrip(id: number): Promise<void>;
 
-   const config: CapacitorConfig = {
-     appId: "com.cloudaipro.tourcompanion",
-     appName: "TourCompanion",
-     webDir: "www",
-     server: {
-       androidScheme: "https"
-     }
-   };
+  addDay(tripId: number): Promise<TripDetail>;
+  removeDay(tripId: number, dayN: number): Promise<TripDetail>;
 
-   export default config;
-   ```
+  addStop(input: StopCreateInput): Promise<TripDetail>;
+  reorderStops(dayId: number, stopIds: number[]): Promise<TripDetail>;
+  deleteStop(stopId: number): Promise<TripDetail>;
 
-5. Create `TourCompanion/packages/ios/copy-web.mjs` — copies `packages/web/public/*` → `packages/ios/www/` (recursive copy, overwrites; create `www/` if missing). Pure node, no extra deps. Excludes `core.bundle.js.map`.
+  checkIn(input: CheckInInput): Promise<void>;
+  updateJournal(input: JournalUpdate): Promise<void>;
+  addVoiceNote(input: VoiceNoteInput): Promise<void>;
+  addPhoto(stopId: number, path: string, caption?: string): Promise<void>;
+}
+```
 
-6. Run `npm run build:web` from `packages/ios/`. Verify `packages/ios/www/index.html` + `www/core.bundle.js` exist.
+Export from `packages/core/src/index.ts`. Bump `CORE_VERSION` to `0.4.0`.
 
-7. From `packages/ios/`: `npx cap init "TourCompanion" "com.cloudaipro.tourcompanion" --web-dir=www`. If the config file already exists (from step 4), `--web-dir=www` is the only thing this writes; check `cap init` behavior and skip if it errors out due to existing config.
+### IOSTripStore — `packages/ios/src/runtime/sqlite/`
 
-8. `npx cap add ios` — generates `packages/ios/ios/App/` Xcode project + runs `pod install`. May take 2-5 minutes.
+```
+packages/ios/src/runtime/sqlite/
+  schema.ts        # SQL CREATE TABLE statements + migration runner
+  store.ts         # IOSTripStore class implementing TripStore
+  serialize.ts     # row → TripDetail mapper, TripDetail → rows
+  index.ts         # initSqliteStore() factory
+```
 
-9. `npx cap sync ios` — copies `www/` into the iOS app + installs CocoaPods.
+### Schema (SQL)
 
-10. Verify `packages/ios/ios/App/App.xcworkspace/` exists and contains pods.
+Match Python column types and constraints. Use `INTEGER PRIMARY KEY AUTOINCREMENT` for ids. Use `TEXT` for JSON columns (`highlights`, `food`, `promo`) — serialize as JSON strings. ISO date/datetime stored as `TEXT`.
 
-11. `xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO` — must succeed. Pipe to `tail -30` to keep log readable. Confirm `BUILD SUCCEEDED` appears.
+```sql
+CREATE TABLE IF NOT EXISTS trips (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  destination TEXT NOT NULL,
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'planning',
+  season TEXT DEFAULT '',
+  style TEXT DEFAULT '',
+  pace TEXT DEFAULT '',
+  source_url TEXT DEFAULT '',
+  hotel_name TEXT DEFAULT '',
+  hotel_lat REAL,
+  hotel_lng REAL,
+  hotel_address TEXT DEFAULT '',
+  journal TEXT DEFAULT '',
+  created_at TEXT NOT NULL
+);
 
-12. Update `TourCompanion/.gitignore` (already exists) — add `packages/ios/ios/App/Pods/`, `packages/ios/ios/App/build/`, `packages/ios/www/`, `packages/ios/node_modules/`, `packages/ios/ios/App/DerivedData/`. CocoaPods + build artifacts are not committed; `Podfile.lock` IS committed.
+CREATE TABLE IF NOT EXISTS days (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+  n INTEGER NOT NULL,
+  date_label TEXT DEFAULT '',
+  theme TEXT DEFAULT '',
+  mode TEXT DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_days_trip ON days(trip_id);
 
-13. Update `packages/ios/README.md` — document the dev loop:
-    ```
-    npm run build:web    # bundle core + copy web/public → www/
-    npm run cap:sync     # sync www/ into iOS app
-    npm run cap:open     # open Xcode (manual run/debug)
-    npm run build:ios    # full headless build (CI / scaffold proof)
-    ```
+CREATE TABLE IF NOT EXISTS stops (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  day_id INTEGER NOT NULL REFERENCES days(id) ON DELETE CASCADE,
+  order_idx INTEGER DEFAULT 0,
+  time_label TEXT DEFAULT '',
+  name TEXT NOT NULL,
+  address TEXT DEFAULT '',
+  lat REAL,
+  lng REAL,
+  hours TEXT DEFAULT '',
+  tickets TEXT DEFAULT '',
+  intro TEXT DEFAULT '',
+  highlights TEXT DEFAULT '[]',
+  transit TEXT DEFAULT '',
+  washroom TEXT DEFAULT '',
+  food TEXT DEFAULT '[]',
+  note TEXT DEFAULT '',
+  promo TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_stops_day ON stops(day_id);
 
-### Flags Bob Must Not Guess At
+CREATE TABLE IF NOT EXISTS bookings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  url TEXT DEFAULT '',
+  done INTEGER DEFAULT 0
+);
 
-- **`cap add ios` writes Swift + Podfile + project.pbxproj.** All of these go in git (they ARE the iOS app source).
-- **Pods/ dir is gitignored.** Lockfile (`Podfile.lock`) is committed.
-- **Do NOT** run the simulator. `xcodebuild` headless build is the proof.
-- **Capacitor 6.x** — pin major to keep stable across the rest of the roadmap. iOS plugin packages added in later steps will match this major.
-- **`copy-web.mjs` is straightforward** — `fs.cp(src, dest, {recursive:true, force:true})` is enough on Node 20.
-- **`cap init` may be interactive** — pass all flags. If it still hangs, write `capacitor.config.ts` directly and skip `cap init` (Capacitor only needs the config file; `cap add ios` reads from it).
-- **Bundle ID + app name are locked.** Do not improvise.
-- **No iOS-runtime detection added to index.html in this step.** Step 13+ branches behavior. For Step 12 the page may fail at runtime (server fetch 404s) — that's fine. The scaffold proof is build success, not functional app.
+CREATE TABLE IF NOT EXISTS check_ins (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  stop_id INTEGER NOT NULL REFERENCES stops(id) ON DELETE CASCADE,
+  visited_at TEXT NOT NULL,
+  lat REAL,
+  lng REAL
+);
+
+CREATE TABLE IF NOT EXISTS photos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  stop_id INTEGER NOT NULL REFERENCES stops(id) ON DELETE CASCADE,
+  path TEXT NOT NULL,
+  caption TEXT DEFAULT '',
+  taken_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS voice_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  stop_id INTEGER NOT NULL REFERENCES stops(id) ON DELETE CASCADE,
+  transcript TEXT DEFAULT '',
+  audio_path TEXT DEFAULT '',
+  recorded_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS schema_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+```
+
+Insert `INSERT OR IGNORE INTO schema_meta(key, value) VALUES('version', '1')` after creates.
+
+### Schema Bootstrap
+
+`initSqliteStore()` returns a fully-initialized `IOSTripStore`. On first call:
+1. `CapacitorSQLite.createConnection({ database: "tourcompanion", encrypted: false, mode: "no-encryption" })`
+2. `db.open()`
+3. `db.execute(SCHEMA_SQL)` — runs all `CREATE TABLE IF NOT EXISTS` statements
+4. Returns store.
+
+Hook bootstrap from `packages/ios/src/runtime/entry.ts`:
+```ts
+import { Capacitor } from "@capacitor/core";
+import { initSqliteStore } from "./sqlite";
+
+declare global {
+  interface Window { TCStore?: import("@tourcompanion/core").TripStore; }
+}
+
+(async () => {
+  if (Capacitor.getPlatform() !== "ios") return;
+  window.TCStore = await initSqliteStore();
+  console.info("[TC iOS] TripStore ready");
+})();
+```
+
+### IOSTripStore Implementation
+
+Implement every method on `TripStore`. Use parameterized queries. Wrap multi-table writes (e.g. `createTrip`) in `BEGIN/COMMIT` transactions via `db.executeTransaction`. Return-shape parity with Python `_trip_to_detail()` — read the function in `TourCompanion/server/app/routes/trips.py` lines ~44-66 to mirror.
+
+`addStop` must compute the next `order_idx` for the day (max + 1).
+`reorderStops` updates `order_idx` for each id in the supplied list.
+`createTrip` inserts trip, then each day with stops, then bookings.
+
+### iOS Bundler
+
+Add `packages/ios/build.mjs` (esbuild) — bundles `packages/ios/src/runtime/entry.ts` → `packages/ios/www/ios.bundle.js` (IIFE). Update `copy-web.mjs` to NOT overwrite the iOS bundle (or have build:web copy web public, then build ios bundle into the same www). Build chain becomes:
+
+```
+npm run build:web    # 1. copy web/public → www/  2. build ios.bundle.js into www/
+```
+
+Update `package.json` scripts:
+```json
+"build:web": "npm run build --workspace=@tourcompanion/web && node copy-web.mjs && node build.mjs"
+```
+
+Frontend index.html — do NOT load `ios.bundle.js` automatically. iOS runs Capacitor which can be configured to inject a script. Simplest: append `<script src="/ios.bundle.js"></script>` to www/index.html during copy (a small post-process in `copy-web.mjs` that detects "is this the iOS www dir?"). Or pass through the same index.html and let it 404 on web — load conditionally.
+
+**Approach picked:** In `copy-web.mjs`, after copying, append a `<script src="/ios.bundle.js"></script>` tag right before `</body>` in `www/index.html`. This file is regenerated each run and lives only in `packages/ios/www/` (gitignored). Web's `packages/web/public/index.html` is never modified.
+
+### Add Dependency
+
+```bash
+npm install @capacitor-community/sqlite --workspace=@tourcompanion/ios
+```
+
+Then `npx cap sync ios` from `packages/ios/`.
 
 ### Verification Checklist
 
-- [ ] `packages/ios/capacitor.config.ts` exists with locked appId + appName
-- [ ] `packages/ios/ios/App/App.xcworkspace/` exists
-- [ ] `packages/ios/ios/App/Podfile.lock` exists and is committed
-- [ ] `packages/ios/www/index.html` + `www/core.bundle.js` present after build:web
-- [ ] `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` exits 0 with `BUILD SUCCEEDED`
-- [ ] `find packages/ios -maxdepth 3 -type d -name Pods` finds it; `git check-ignore packages/ios/ios/App/Pods` confirms ignored
-- [ ] `git status` shows new files: capacitor.config.ts, copy-web.mjs, package.json, README.md, ios/App/* sources, Podfile, Podfile.lock — no Pods, no www, no node_modules
-- [ ] Existing FastAPI server still starts (no Python changes)
-- [ ] `npm test` (core) still passes 67/67
+- [ ] `@capacitor-community/sqlite` installed and synced (visible in `packages/ios/ios/App/Podfile.lock`)
+- [ ] `packages/core/src/store/types.ts` exports `TripStore` and all input types
+- [ ] `CORE_VERSION === "0.4.0"`
+- [ ] `packages/ios/src/runtime/sqlite/` files exist
+- [ ] `npm run build` succeeds at workspace root (core builds, web bundle builds, ios bundle builds)
+- [ ] `npm run build:web --workspace=@tourcompanion/ios` produces `packages/ios/www/index.html` (with injected `<script src="/ios.bundle.js">` before `</body>`) and `packages/ios/www/ios.bundle.js`
+- [ ] `npm run cap:sync --workspace=@tourcompanion/ios` succeeds
+- [ ] `xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO` exits 0
+- [ ] `npm test` — 67 core tests still pass (TripStore types compile)
+- [ ] `npm run typecheck` exit 0 across all workspaces
+- [ ] No Python or web frontend changes
+
+### Flags Bob Must Not Guess At
+
+- **`@capacitor-community/sqlite`** version: latest 6.x compatible with Capacitor 6.
+- **Do not** add a fetch interceptor in this step. Just expose `window.TCStore`. Step 14 wires the interceptor.
+- **Do not** modify Python files, web frontend, or web bundle.
+- **`createTrip`** must seed `created_at` = `new Date().toISOString()`.
+- **Transactions:** `@capacitor-community/sqlite` API uses `db.executeTransaction([{ statement, values }, ...])`. Look at the plugin README in `node_modules/@capacitor-community/sqlite/README.md` if uncertain about exact API names — do NOT install the plugin twice.
+- **No Realm, no IndexedDB, no localStorage.** SQLite only.
+- **`Foreign Keys`** — SQLite requires `PRAGMA foreign_keys = ON` per connection. Run after `db.open()`.
 
 ---
 

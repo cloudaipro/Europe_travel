@@ -26,4 +26,14 @@ export type {
   StopPlan,
 } from "./planner/types.js";
 
-export const CORE_VERSION = "0.3.0";
+// Store interface (TripStore) — implementations live in platform packages.
+export type {
+  TripStore,
+  TripCreateInput,
+  StopCreateInput,
+  CheckInInput,
+  JournalUpdate,
+  VoiceNoteInput,
+} from "./store/types.js";
+
+export const CORE_VERSION = "0.4.0";
