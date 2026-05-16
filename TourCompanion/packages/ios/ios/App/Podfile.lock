@@ -6,21 +6,27 @@ PODS:
     - SQLCipher
     - ZIPFoundation
   - CapacitorCordova (6.2.1)
+  - CapacitorSecureStoragePlugin (0.10.0):
+    - Capacitor
+    - SwiftKeychainWrapper
   - SQLCipher (4.10.0):
     - SQLCipher/standard (= 4.10.0)
   - SQLCipher/common (4.10.0)
   - SQLCipher/standard (4.10.0):
     - SQLCipher/common
+  - SwiftKeychainWrapper (4.0.1)
   - ZIPFoundation (0.9.20)
 
 DEPENDENCIES:
   - "Capacitor (from `../../../../node_modules/@capacitor/ios`)"
   - "CapacitorCommunitySqlite (from `../../../../node_modules/@capacitor-community/sqlite`)"
   - "CapacitorCordova (from `../../../../node_modules/@capacitor/ios`)"
+  - CapacitorSecureStoragePlugin (from `../../../../node_modules/capacitor-secure-storage-plugin`)
 
 SPEC REPOS:
   trunk:
     - SQLCipher
+    - SwiftKeychainWrapper
     - ZIPFoundation
 
 EXTERNAL SOURCES:
@@ -30,14 +36,18 @@ EXTERNAL SOURCES:
     :path: "../../../../node_modules/@capacitor-community/sqlite"
   CapacitorCordova:
     :path: "../../../../node_modules/@capacitor/ios"
+  CapacitorSecureStoragePlugin:
+    :path: "../../../../node_modules/capacitor-secure-storage-plugin"
 
 SPEC CHECKSUMS:
   Capacitor: c95400d761e376be9da6be5a05f226c0e865cebf
   CapacitorCommunitySqlite: 0299d20f4b00c2e6aa485a1d8932656753937b9b
   CapacitorCordova: 8d93e14982f440181be7304aa9559ca631d77fff
+  CapacitorSecureStoragePlugin: 545b51d782d35e61a39231ecf99a966b060a2cbb
   SQLCipher: eb79c64049cb002b4e9fcb30edb7979bf4706dfc
+  SwiftKeychainWrapper: 807ba1d63c33a7d0613288512399cd1eda1e470c
   ZIPFoundation: dfd3d681c4053ff7e2f7350bc4e53b5dba3f5351
 
-PODFILE CHECKSUM: e288269ae21ed0571d7218d14825653ac9ce5999
+PODFILE CHECKSUM: d1c61a329359e8aaebafbfe2edfcfaf8d23bbeda
 
 COCOAPODS: 1.16.2

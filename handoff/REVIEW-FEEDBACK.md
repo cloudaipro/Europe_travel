@@ -1,4 +1,4 @@
-# Review Feedback — Step 13
+# Review Feedback — Step 14
 Date: 2026-05-16
 Ready for Builder: YES
 
@@ -6,29 +6,12 @@ Ready for Builder: YES
 None.
 
 ## Should Fix
-- `TourCompanion/packages/ios/src/runtime/sqlite/store.ts:131-206` — `createTrip` is not wrapped in a transaction. Acceptable for v1 as flagged, but log a one-line BUILD-LOG entry so future maintenance knows that a mid-flight crash can leave a partial trip (orphan `trips` row + some days/stops, with no automatic CASCADE recovery unless the user explicitly deletes that trip). When Step 14 wires the fetch interceptor and real users hit it, revisit using `executeTransaction` with `RETURNING id` (SQLite 3.35+) or by driving day/stop inserts off a single trip insert plus post-hoc id lookup. Not a blocker now.
-- `TourCompanion/packages/ios/src/runtime/sqlite/store.ts:67-105` — `getTrip` N+1 (~80 queries for a 5x5 trip). Accept for v1: on-device SQLite this is sub-millisecond. Revisit only if Step 14 profiling shows visible jank.
+- `TourCompanion/packages/ios/src/runtime/fetch-interceptor.ts:27` — `STUB_TOKEN_BODY` adds a `token_type: "bearer"` field that the real FastAPI auth endpoints do not return (see `server/app/routes/auth.py:64,90,104` which return `{access_token, user_id, email}`). Brief specifies `{"access_token":"local"}` only. Harmless drift today (frontend reads `access_token`), but the stub diverges from the brief and from server shape. Recommend dropping `token_type` to match the brief exactly, or extending to `{access_token:"local", user_id:1, email:""}` to mirror the server. Log to BUILD-LOG if not changed.
+- `TourCompanion/packages/ios/src/runtime/fetch-interceptor.ts:179` — `/api/plan/jobs/{id}` regex is `[^/]+` (any non-slash). FastAPI route is `\d+`. Functionally fine since both sides treat the path as inert (404), but `\d+` would mirror the server. Not blocking.
+- `TourCompanion/packages/web/public/index.html:879` — desktop `ts-settings-btn` lacks the `flex` utility class that the sibling buttons (lines 877, 881) carry, then relies on `body.is-ios .ts-settings-btn { display: inline-flex }` to both reveal and center it. Works, but couples the visibility rule to layout. Consider keeping `flex items-center justify-center` static (alongside CSS `display:none`) so the iOS reveal rule is a pure visibility toggle. Cosmetic.
 
 ## Escalate to Architect
-None. Brief was explicit; Bob followed it.
+None. All flagged items are code-level.
 
 ## Cleared
-Reviewed Step 13 (SQLite plugin install, `TripStore` interface, `IOSTripStore` impl, iOS bundle wiring).
-
-- **`TripStore` interface** — `packages/core/src/store/types.ts:1-82` matches brief signatures field-for-field. All 5 input types (`TripCreateInput`, `StopCreateInput`, `CheckInInput`, `JournalUpdate`, `VoiceNoteInput`) and all 13 methods present with exact snake_case field names that mirror the Pydantic schemas.
-- **`CORE_VERSION`** — `packages/core/src/index.ts:39` and `packages/core/package.json:3` both at `0.4.0`; `tests/smoke.test.ts:5-6` asserts the new value.
-- **Schema** — `packages/ios/src/runtime/sqlite/schema.ts` covers all 7 v1 tables (`trips`, `days`, `stops`, `bookings`, `check_ins`, `photos`, `voice_notes`) plus `schema_meta` with the version-1 seed. Both required indexes (`idx_days_trip`, `idx_stops_day`) present. `published_slug` correctly absent. JSON columns stored as `TEXT` with `'[]'` / `NULL` defaults. FK CASCADE wired on every child table.
-- **Bootstrap** — `packages/ios/src/runtime/sqlite/index.ts:11-32` runs `PRAGMA foreign_keys = ON` after `db.open()` (per brief). `isConnection` retrieve-or-create guard handles hot-reload.
-- **`IOSTripStore`** — `packages/ios/src/runtime/sqlite/store.ts` implements every `TripStore` method (listTrips, getTrip, createTrip, deleteTrip, addDay, removeDay, addStop, reorderStops, deleteStop, checkIn, updateJournal, addVoiceNote, addPhoto). Zero TODOs, zero `throw new Error("unimplemented")`, zero placeholder bodies (grepped). `addStop` correctly computes `MAX(order_idx) + 1`. `removeDay` resequences `n` after deletion (matches Python). `reorderStops` uses `executeTransaction` as required. `createTrip` seeds `created_at = new Date().toISOString()` per brief.
-- **Serialize parity** — `rowToTripDetail` (serialize.ts:174-200) mirrors `_trip_to_detail` field-for-field against `packages/core/src/types/trip.ts`. `published_slug` surfaces `null`. iOS-dropped tables (`companion_docs`, `routes`, `street_food`) return `[]`.
-- **Bundle injection** — `packages/ios/copy-web.mjs:42-55` injects `<script src="/ios.bundle.js"></script>` only into the staged `packages/ios/www/index.html`. Verified `packages/web/public/index.html` contains zero `ios.bundle.js` references (`grep -c` returned 0). Idempotent guard present.
-- **Bundle build** — `npm run build` produces `packages/ios/www/ios.bundle.js` at 79.7kb (IIFE, es2020, sourcemap: false). Confirmed via `git check-ignore` that both `packages/ios/www/` and `packages/ios/www/ios.bundle.js` are gitignored.
-- **Verification re-runs (from `TourCompanion/`)**:
-  - `npm test` — 14 files, **67/67 core tests pass**, smoke at 0.4.0.
-  - `npm run typecheck` — all workspaces exit 0.
-  - `npm run build` — core tsc + web bundle + ios bundle all green.
-- **`xcodebuild`** — not re-run (slow; brief allows trusting Bob's log when scaffold + Podfile.lock + bundle are intact). `Podfile.lock` pins `CapacitorCommunitySqlite (6.0.2)`.
-- **No fetch interceptor** — grepped `runtime/`; only forward-reference comments mentioning Step 14. `window.TCStore` is the only global exposed.
-- **Scope discipline** — `git status` shows zero edits under `TourCompanion/server/` (Python) and zero edits under `packages/web/public/`. Only expected files modified.
-
-No drift, no out-of-scope edits. Step 13 is clear.
+Reviewed: core settings module (`SecureStore`, `TCSettings`, `createSettings`, `SETTINGS_KEYS`, `DEFAULT_OPENAI_MODEL`), `CORE_VERSION === "0.5.0"` (smoke test + package.json + index.ts re-export), 6 new settings tests (73/73 passing locally), iOS keychain adapter against `capacitor-secure-storage-plugin@0.10.0` with documented Cap6-compat rationale, full `route()` table coverage of every endpoint in the brief — including the load-bearing `POST /api/trips/{id}/days/{n}/stops` body-shape resolution which correctly looks up `day.id` by matching `day.n` against the URL segment and overrides any caller-supplied `day_id` (frontend at `packages/web/public/index.html:1485` sends `{name, time_label, address}` only — matches the `StopCreateInput` contract requiring `day_id`+`name`), `/api/plan/ingest` → 503 + `/api/plan/jobs/{id}` → 404 as specified, auth stubs returning success, 204 special-case for `DELETE /api/trips/{id}`, interceptor idempotency guard (`__tcFetchPatched`), `entry.ts` boot order (storePromise + TCStore → TCSettings → installFetchInterceptor → body.is-ios with DOMContentLoaded fallback), promise-of-store union that justifies head injection, `copy-web.mjs` injecting after `</title>` with a hard-fail if `</title>` is missing (verified in staged `packages/ios/www/index.html:7`), `Podfile.lock` pinning `CapacitorSecureStoragePlugin (0.10.0)`, Settings UI additive-only in `packages/web/public/index.html` (git diff = +96/-0), `body.is-ios` CSS gating, modal copy matches brief, Escape-to-close listener, Save/Clear/Cancel wiring against `window.TCSettings`. Verified locally: `npm test --workspace=@tourcompanion/core` 73/73 pass, `npm run typecheck` exit 0 across both TS workspaces, `npm run build` green with `[copy-web] injected ios.bundle.js <script> after </title> (in <head>)` log line. No Python files touched (`git diff --stat HEAD` confirms). Step 14 is clear.

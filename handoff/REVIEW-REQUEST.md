@@ -1,69 +1,94 @@
-# Review Request — Step 13
+# Review Request — Step 14
 
-**Step:** 13 — Local SQLite + Data Layer
+**Step:** 14 — Settings, Keychain, Fetch Interceptor
 **Ready for Review:** YES
 **Builder:** Bob
-**Date:** 2026-05-16
 
 ---
 
-## What changed
+## Summary
 
-Defines `TripStore` interface in core, implements `IOSTripStore` (SQLite-backed) in the iOS package with schema bootstrap, and wires the bundle into the iOS `www/` at build time. Web build is untouched. No fetch interceptor (Step 14).
+Three subsystems land together so iOS can run end-to-end against on-device data:
 
-## Files
+1. **Core settings module** — new `SecureStore` interface + `TCSettings` facade backed by any keychain-style store. `CORE_VERSION` bumped to `0.5.0`.
+2. **iOS Keychain adapter** — `capacitor-secure-storage-plugin@0.10.0` (Cap 6 compatible) wrapped behind `SecureStore`. The `@capacitor-community/secure-storage` name in the brief is not published on npm — fallback documented in BUILD-LOG.
+3. **Fetch interceptor + settings UI** — `window.fetch` is patched at script-load (head injection) so the existing inline SPA JS keeps making `fetch("/api/...")` calls but they route to `window.TCStore` (or canned stubs for auth/health). A 🔑 gear in the app bar opens a modal for the user's OpenAI key; the gear is `display:none` unless `body.is-ios` is set.
 
-### New — core
+The copy-web injection point moved from before `</body>` to inside `<head>` after `</title>` — required so the interceptor exists before the SPA's inline boot runs.
 
-- **`TourCompanion/packages/core/src/store/types.ts`** (1-82) — `TripStore` interface + 5 input types (`TripCreateInput`, `StopCreateInput`, `CheckInInput`, `JournalUpdate`, `VoiceNoteInput`). Field names mirror Pydantic schemas exactly (snake_case).
-- **`TourCompanion/packages/core/src/store/index.ts`** (1) — re-export barrel.
+`/api/plan/ingest` returns 503 as instructed; Step 15 wires OpenAI.
 
-### New — ios runtime
+---
 
-- **`TourCompanion/packages/ios/src/runtime/sqlite/schema.ts`** (1-94) — `SCHEMA_STATEMENTS` (12 stmts: 8 CREATE TABLE, 2 CREATE INDEX, schema_meta + version-1 seed). Matches Python column types; `published_slug` absent.
-- **`TourCompanion/packages/ios/src/runtime/sqlite/serialize.ts`** (1-188) — row → wire mappers. `rowToTripDetail` (152-178) mirrors `_trip_to_detail` (routes/trips.py:44-66). `rowToStop` (110-135) mirrors `_stop_to_out` (routes/trips.py:31-42). JSON columns round-trip safely with empty-array / null fallback.
-- **`TourCompanion/packages/ios/src/runtime/sqlite/store.ts`** (1-271) — `IOSTripStore` class. Key methods:
-  - `listTrips` 56-65
-  - `getTrip` 67-99 (N+1 hydration — see decision)
-  - `hydrateStop` 101-122
-  - `createTrip` 126-194 (NOT wrapped in `executeTransaction` — see decision)
-  - `deleteTrip` 196-200 (relies on PRAGMA foreign_keys CASCADE)
-  - `addDay` 204-218
-  - `removeDay` 220-235 (resequences `n` after delete)
-  - `addStop` 239-264 (computes `max(order_idx)+1`)
-  - `reorderStops` 266-274 (uses `executeTransaction`)
-  - `deleteStop` 276-285
-  - Live-tour writes (`checkIn` / `updateJournal` / `addVoiceNote` / `addPhoto`) 289-313
-- **`TourCompanion/packages/ios/src/runtime/sqlite/index.ts`** (1-31) — `initSqliteStore` factory. `isConnection` retrieve-or-create guard for hot-reload; `PRAGMA foreign_keys = ON` after open.
-- **`TourCompanion/packages/ios/src/runtime/entry.ts`** (1-24) — IIFE entry. Silent no-op when `Capacitor.getPlatform() !== "ios"`. Init errors caught and logged.
+## Files Changed
 
-### New — ios tooling
+### New — Core settings module
+- **`TourCompanion/packages/core/src/settings/keys.ts`** (lines 1–9)
+  `SETTINGS_KEYS` constant (`openai_api_key`, `openai_model`) + `DEFAULT_OPENAI_MODEL = "gpt-4o"`.
+- **`TourCompanion/packages/core/src/settings/types.ts`** (lines 1–61)
+  `SecureStore` interface, `TCSettings` interface, `createSettings(store)` factory with trim/clear semantics for both key and model.
 
-- **`TourCompanion/packages/ios/build.mjs`** (1-23) — esbuild IIFE → `www/ios.bundle.js`. Target `es2020`, no sourcemap.
-- **`TourCompanion/packages/ios/tsconfig.json`** (1-11) — `noEmit`, `lib: ["ES2022", "DOM"]`, types `["node"]`.
+### New — Core tests
+- **`TourCompanion/packages/core/tests/settings/settings.test.ts`** (lines 1–75)
+  6 tests against an in-memory SecureStore — round-trip, trim, clear, model default + override.
 
-### Modified
+### New — iOS runtime
+- **`TourCompanion/packages/ios/src/runtime/keychain/index.ts`** (lines 1–37)
+  `keychainStore: SecureStore` wrapping `SecureStoragePlugin`. Soft-misses on `get` / `remove` (plugin throws on missing key).
+- **`TourCompanion/packages/ios/src/runtime/fetch-interceptor.ts`** (lines 1–266)
+  - `route(path, method, body, store)` (lines 25–168) — pure pattern-matcher covering every endpoint in the brief's table.
+  - `installFetchInterceptor(storeProvider)` (lines 170–266) — synchronous patch of `window.fetch`. Accepts a `TripStore` *or* a `() => Promise<TripStore>` so install can precede SQLite readiness. First /api/* request awaits the promise.
+- **`TourCompanion/packages/ios/src/runtime/global.d.ts`** (lines 1–15)
+  Ambient `Window` augmentation declaring `TCStore?` and `TCSettings?`.
 
-- **`TourCompanion/packages/core/src/index.ts`** (32-41) — re-exports `TripStore` types; `CORE_VERSION = "0.4.0"`.
-- **`TourCompanion/packages/core/package.json`** (3) — version `0.4.0`.
-- **`TourCompanion/packages/core/tests/smoke.test.ts`** (5-6) — assert `"0.4.0"`.
-- **`TourCompanion/packages/ios/package.json`** (full) — version `0.2.0`, `type: "module"`, adds `@capacitor-community/sqlite@^6.0.2`, devDeps for esbuild/tsc, new `build` + `typecheck` scripts, `build:web` chains esbuild step.
-- **`TourCompanion/packages/ios/copy-web.mjs`** (37-55) — injects `<script src="/ios.bundle.js"></script>` before `</body>`. Idempotent; bails if no `</body>` found.
-- **`TourCompanion/package-lock.json`** — 35 packages added.
+### Modified — Core
+- **`TourCompanion/packages/core/src/index.ts`** (lines 40–47)
+  Re-exports the new settings types/factory; `CORE_VERSION` → `"0.5.0"` (line 47).
+- **`TourCompanion/packages/core/package.json`** (line 3) — version `0.5.0`.
+- **`TourCompanion/packages/core/tests/smoke.test.ts`** (lines 5–7) — asserts `"0.5.0"`.
+
+### Modified — iOS
+- **`TourCompanion/packages/ios/src/runtime/entry.ts`** (full rewrite, lines 1–45)
+  On iOS: builds the store promise, sets `window.TCSettings`, installs interceptor, marks `body.is-ios` (deferred to `DOMContentLoaded` if body not yet present). Off-iOS the block is skipped.
+- **`TourCompanion/packages/ios/copy-web.mjs`** (header lines 1–8 + injection lines 39–60)
+  Injects `<script src="/ios.bundle.js"></script>` after `</title>` inside `<head>` instead of before `</body>`. Errors out if no `</title>` found.
+- **`TourCompanion/packages/ios/package.json`** (line 21)
+  Adds `"capacitor-secure-storage-plugin": "^0.10.0"`.
+
+### Modified — Web SPA (additive only)
+- **`TourCompanion/packages/web/public/index.html`** — five additive blocks:
+  - **Line 839** — 🔑 `ts-settings-btn` added inside `<div class="mab-right">` (mobile app bar).
+  - **Lines 878–879** — 🔑 `ts-settings-btn` added inside desktop header right-actions cluster.
+  - **Lines 1096–1108** — CSS for `.ts-settings-btn` (display gate), `.ts-help-link`, `.ts-sub` immediately before `</style>`.
+  - **Lines 1157–1179** — `#ts-settings-modal` HTML block (password key input, model input, Cancel/Clear/Save). Reuses `.as-overlay` / `.as-card` / `.as-field` / `.as-btn-*` classes.
+  - **Lines 3203–3263** — `openSettingsModal`, `closeSettingsModal`, `saveSettings`, `clearSettingsKey`, plus an Escape-to-close `keydown` listener immediately after `showSnack`.
+
+  No existing element rewired or removed.
+
+### Modified — Lockfile
+- **`TourCompanion/package-lock.json`** — 1 package added.
+
+---
 
 ## Verification
 
-- `npm run build` — core tsc + ios bundle (79.7kb) + web bundle — PASS
-- `npm run typecheck` — all workspaces exit 0 — PASS
-- `npm test` — 67/67 core tests pass (smoke updated to 0.4.0) — PASS
-- `npx cap sync ios` — detects `@capacitor-community/sqlite@6.0.2` — PASS
-- `Podfile.lock` — contains `CapacitorCommunitySqlite (6.0.2)` — PASS
-- `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` — `** BUILD SUCCEEDED **` — PASS
+- `npm run build` — green (core tsc + ios bundle 90.5kb + web esbuild + `[copy-web] injected ... after </title>`).
+- `npm run typecheck` — green across `@tourcompanion/core` and `@tourcompanion/ios`.
+- `npm test --workspace=@tourcompanion/core` — **73/73** passing (was 67; +6 in `settings/settings.test.ts`).
+- `npx cap sync ios` — both plugins reported: `@capacitor-community/sqlite@6.0.2`, `capacitor-secure-storage-plugin@0.10.0`.
+- `Podfile.lock` contains `CapacitorSecureStoragePlugin (0.10.0)`.
+- `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` — `** BUILD SUCCEEDED **`.
+- `packages/ios/www/index.html` line 7 (right after `</title>` at line 6) contains `<script src="/ios.bundle.js"></script>`. Head injection confirmed.
+- No Python files touched.
 
-## Open questions for Richard
+---
 
-1. **`createTrip` is sequenced via individual `db.run` calls, not wrapped in `executeTransaction`.** Each insert needs the prior `lastId` (trip.id → day.trip_id → stop.day_id). Acceptable for v1? Alternative is `SELECT last_insert_rowid()` between inserts — mostly cosmetic.
-2. **`getTrip` issues ~80 queries for a typical 5-day × 5-stop trip.** On-device SQLite this is sub-millisecond, but flag if you'd prefer a JOIN + manual grouping refactor before Step 14.
-3. **Bundle ships without sourcemaps.** Cleaner App Store binary, harder production crash triage. Flag if you'd rather have sourcemaps in dev builds.
+## Open Questions
 
-No Python or web frontend changes.
+1. **`/api/auth/me` stub fields.** Returned `{id:1, email:"", display_name:"local", email_verified_at:null, created_at:""}` per the brief. If the SPA later starts rendering `display_name` into a header, the placeholder may need a friendlier value. No frontend reads it today.
+2. **iOS WebView base URL.** `new URL(url, location.origin)` resolves under `capacitor://localhost`. Verified locally — flagging in case Richard wants an explicit test.
+3. **First-request latency.** The interceptor awaits the store promise before routing. SQLite init is sub-100ms on simulator; no user-visible regression expected.
+
+---
+
+**Ready for Review: YES**

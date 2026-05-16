@@ -2,271 +2,212 @@
 
 ## Initiative — Standalone iOS Version (continued)
 
-Steps 8-12 complete. Now Step 13.
+Steps 8-13 complete. Now Step 14.
 
 ---
 
-## Step 13 — Local SQLite + Data Layer
+## Step 14 — Settings, Keychain, Fetch Interceptor
 
-**Scope:** Add `@capacitor-community/sqlite` to the iOS package. Define a `TripStore` interface in `@tourcompanion/core`. Implement `IOSTripStore` (SQLite-backed) in `packages/ios`. Add schema bootstrap that runs on app launch. Provide CRUD covering all endpoints the existing frontend hits. **Web is unchanged** — keeps using the FastAPI server. The fetch-interceptor wiring on iOS comes in Step 14/15.
+**Scope:** Wire iOS to actually run. Add a Keychain-backed secure storage plugin. Build a Settings screen (iOS-only) where users paste their OpenAI key. Install a `fetch` interceptor on iOS that routes `/api/*` requests to `window.TCStore` so the existing inline frontend JS works without a server. **Plan ingest (`/api/plan/ingest`) is the only endpoint deferred — Step 15 wires it to the OpenAI client.**
 
-Reference: existing Python models at `TourCompanion/server/app/models.py`. v1 iOS skips: `users`, `email_tokens`, `companion_docs`, `route_assets`, `ingest_jobs`, `street_food`. Keep: `trips`, `days`, `stops`, `bookings`, `check_ins`, `photos`, `voice_notes`. Note: `published_slug` column dropped on iOS (no publish flow).
+### Plugin Pick: Keychain Storage
 
-### TripStore Interface — `packages/core/src/store/types.ts`
+Use **`@capacitor-community/secure-storage`** (current Cap 6 plugin, backs iOS storage with Keychain). If that exact name doesn't have a Capacitor 6-compatible release, fall back to **`capacitor-secure-storage-plugin`** (also Cap 6 compatible). Bob: pick whichever has a `^x.y.z` matching Capacitor 6, install via `npm install --workspace=@tourcompanion/ios`, then `npx cap sync ios`. Document the choice + version in BUILD-LOG.
+
+### New Core Module — `packages/core/src/settings/`
+
+```
+packages/core/src/settings/
+  types.ts        # interface TCSettings
+  keys.ts         # SETTINGS_KEYS = { openaiApiKey: "openai_api_key", openaiModel: "openai_model" }
+```
 
 ```ts
-import type { TripDetail, TripSummary, Stop, Day } from "../types";
-
-export interface TripCreateInput {
-  name: string;
-  destination: string;
-  start_date: string;   // ISO
-  end_date: string;     // ISO
-  season?: string;
-  style?: string;
-  pace?: string;
-  source_url?: string;
-  hotel_name?: string;
-  hotel_lat?: number | null;
-  hotel_lng?: number | null;
-  hotel_address?: string;
-  days?: Array<{
-    n: number;
-    date_label?: string;
-    theme?: string;
-    mode?: string;
-    stops?: Array<Omit<Stop, "id" | "check_in_count" | "photo_paths" | "voice_transcript">>;
-  }>;
-  bookings?: Array<{ label: string; url?: string; done?: boolean }>;
+export interface SecureStore {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string): Promise<void>;
+  remove(key: string): Promise<void>;
+  clear(): Promise<void>;
 }
 
-export interface StopCreateInput {
-  day_id: number;
-  time_label?: string;
-  name: string;
-  address?: string;
-  lat?: number | null;
-  lng?: number | null;
-  hours?: string;
-  tickets?: string;
-  intro?: string;
-  highlights?: string[];
-  transit?: string;
-  washroom?: string;
-  food?: string[];
+export interface TCSettings {
+  getOpenAIKey(): Promise<string | null>;
+  setOpenAIKey(key: string): Promise<void>;
+  clearOpenAIKey(): Promise<void>;
+  getOpenAIModel(): Promise<string>;   // default: "gpt-4o"
+  setOpenAIModel(model: string): Promise<void>;
 }
 
-export interface CheckInInput { stop_id: number; lat?: number | null; lng?: number | null; }
-export interface JournalUpdate { trip_id: number; journal: string; }
-export interface VoiceNoteInput { stop_id: number; transcript: string; audio_path?: string; }
-
-export interface TripStore {
-  listTrips(): Promise<TripSummary[]>;
-  getTrip(id: number): Promise<TripDetail | null>;
-  createTrip(input: TripCreateInput): Promise<TripDetail>;
-  deleteTrip(id: number): Promise<void>;
-
-  addDay(tripId: number): Promise<TripDetail>;
-  removeDay(tripId: number, dayN: number): Promise<TripDetail>;
-
-  addStop(input: StopCreateInput): Promise<TripDetail>;
-  reorderStops(dayId: number, stopIds: number[]): Promise<TripDetail>;
-  deleteStop(stopId: number): Promise<TripDetail>;
-
-  checkIn(input: CheckInInput): Promise<void>;
-  updateJournal(input: JournalUpdate): Promise<void>;
-  addVoiceNote(input: VoiceNoteInput): Promise<void>;
-  addPhoto(stopId: number, path: string, caption?: string): Promise<void>;
-}
+export function createSettings(store: SecureStore): TCSettings { /* impl */ }
 ```
 
-Export from `packages/core/src/index.ts`. Bump `CORE_VERSION` to `0.4.0`.
+Export from `packages/core/src/index.ts`. Bump `CORE_VERSION` to `"0.5.0"`.
 
-### IOSTripStore — `packages/ios/src/runtime/sqlite/`
+### iOS Plugin Adapter — `packages/ios/src/runtime/keychain/index.ts`
 
-```
-packages/ios/src/runtime/sqlite/
-  schema.ts        # SQL CREATE TABLE statements + migration runner
-  store.ts         # IOSTripStore class implementing TripStore
-  serialize.ts     # row → TripDetail mapper, TripDetail → rows
-  index.ts         # initSqliteStore() factory
-```
-
-### Schema (SQL)
-
-Match Python column types and constraints. Use `INTEGER PRIMARY KEY AUTOINCREMENT` for ids. Use `TEXT` for JSON columns (`highlights`, `food`, `promo`) — serialize as JSON strings. ISO date/datetime stored as `TEXT`.
-
-```sql
-CREATE TABLE IF NOT EXISTS trips (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
-  destination TEXT NOT NULL,
-  start_date TEXT NOT NULL,
-  end_date TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'planning',
-  season TEXT DEFAULT '',
-  style TEXT DEFAULT '',
-  pace TEXT DEFAULT '',
-  source_url TEXT DEFAULT '',
-  hotel_name TEXT DEFAULT '',
-  hotel_lat REAL,
-  hotel_lng REAL,
-  hotel_address TEXT DEFAULT '',
-  journal TEXT DEFAULT '',
-  created_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS days (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
-  n INTEGER NOT NULL,
-  date_label TEXT DEFAULT '',
-  theme TEXT DEFAULT '',
-  mode TEXT DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS idx_days_trip ON days(trip_id);
-
-CREATE TABLE IF NOT EXISTS stops (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  day_id INTEGER NOT NULL REFERENCES days(id) ON DELETE CASCADE,
-  order_idx INTEGER DEFAULT 0,
-  time_label TEXT DEFAULT '',
-  name TEXT NOT NULL,
-  address TEXT DEFAULT '',
-  lat REAL,
-  lng REAL,
-  hours TEXT DEFAULT '',
-  tickets TEXT DEFAULT '',
-  intro TEXT DEFAULT '',
-  highlights TEXT DEFAULT '[]',
-  transit TEXT DEFAULT '',
-  washroom TEXT DEFAULT '',
-  food TEXT DEFAULT '[]',
-  note TEXT DEFAULT '',
-  promo TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_stops_day ON stops(day_id);
-
-CREATE TABLE IF NOT EXISTS bookings (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
-  label TEXT NOT NULL,
-  url TEXT DEFAULT '',
-  done INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS check_ins (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  stop_id INTEGER NOT NULL REFERENCES stops(id) ON DELETE CASCADE,
-  visited_at TEXT NOT NULL,
-  lat REAL,
-  lng REAL
-);
-
-CREATE TABLE IF NOT EXISTS photos (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  stop_id INTEGER NOT NULL REFERENCES stops(id) ON DELETE CASCADE,
-  path TEXT NOT NULL,
-  caption TEXT DEFAULT '',
-  taken_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS voice_notes (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  stop_id INTEGER NOT NULL REFERENCES stops(id) ON DELETE CASCADE,
-  transcript TEXT DEFAULT '',
-  audio_path TEXT DEFAULT '',
-  recorded_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS schema_meta (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-);
-```
-
-Insert `INSERT OR IGNORE INTO schema_meta(key, value) VALUES('version', '1')` after creates.
-
-### Schema Bootstrap
-
-`initSqliteStore()` returns a fully-initialized `IOSTripStore`. On first call:
-1. `CapacitorSQLite.createConnection({ database: "tourcompanion", encrypted: false, mode: "no-encryption" })`
-2. `db.open()`
-3. `db.execute(SCHEMA_SQL)` — runs all `CREATE TABLE IF NOT EXISTS` statements
-4. Returns store.
-
-Hook bootstrap from `packages/ios/src/runtime/entry.ts`:
 ```ts
-import { Capacitor } from "@capacitor/core";
-import { initSqliteStore } from "./sqlite";
+import type { SecureStore } from "@tourcompanion/core";
+// Pick exact import based on plugin chosen:
+import { SecureStoragePlugin } from "capacitor-secure-storage-plugin";
+// OR:
+// import { SecureStorage } from "@capacitor-community/secure-storage";
 
+export const keychainStore: SecureStore = {
+  async get(key) { try { const r = await SecureStoragePlugin.get({ key }); return r.value ?? null; } catch { return null; } },
+  async set(key, value) { await SecureStoragePlugin.set({ key, value }); },
+  async remove(key) { try { await SecureStoragePlugin.remove({ key }); } catch {} },
+  async clear() { await SecureStoragePlugin.clear(); }
+};
+```
+
+### Wire Settings into iOS Boot — `packages/ios/src/runtime/entry.ts`
+
+After `initSqliteStore()`:
+```ts
+import { createSettings } from "@tourcompanion/core";
+import { keychainStore } from "./keychain";
+
+window.TCSettings = createSettings(keychainStore);
+```
+
+Declare on the Window global. `window.TCStore` already set in Step 13.
+
+### Fetch Interceptor — `packages/ios/src/runtime/fetch-interceptor.ts`
+
+Install on iOS boot. Intercepts requests where pathname starts with `/api/`. Maps to `window.TCStore` calls and returns synthetic `Response` objects (JSON body, correct status codes). Endpoints to handle:
+
+| Method | Path | Handler |
+|---|---|---|
+| GET | `/api/health` | `200 {"ok":true}` |
+| GET | `/api/auth/me` | `200 {"id":1,"email":"","display_name":"local","email_verified_at":null,"created_at":""}` (stub user — iOS skips login) |
+| POST | `/api/auth/signup` | `200 {"access_token":"local"}` |
+| POST | `/api/auth/login` | `200 {"access_token":"local"}` |
+| POST | `/api/auth/login-json` | `200 {"access_token":"local"}` |
+| GET | `/api/trips` | `store.listTrips()` |
+| POST | `/api/trips` | `store.createTrip(body)` |
+| GET | `/api/trips/{id}` | `store.getTrip(+id)` → 404 if null |
+| DELETE | `/api/trips/{id}` | `store.deleteTrip(+id)` → 204 |
+| POST | `/api/trips/{id}/days` | `store.addDay(+id)` |
+| DELETE | `/api/trips/{id}/days/{n}` | `store.removeDay(+id, +n)` |
+| POST | `/api/trips/{id}/days/{n}/stops` | `store.addStop({day_id: dayId, ...body})` — resolve dayId by reading current trip; if frontend already sends `day_id` use that. Read the frontend's add-stop call near `addStop`/`POST .../stops` to confirm body shape |
+| PUT | `/api/trips/days/{day_id}/stops/order` | `store.reorderStops(+day_id, body.stop_ids)` |
+| POST | `/api/stops/{id}/checkin` | `store.checkIn({stop_id: +id, ...body})` |
+| POST | `/api/stops/{id}/photos` | `store.addPhoto(+id, body.path or body.url, body.caption)` |
+| POST | `/api/stops/{id}/photos-link` | same as above |
+| POST | `/api/stops/{id}/voice` | `store.addVoiceNote({stop_id: +id, ...body})` |
+| PUT | `/api/trips/{id}/journal` | `store.updateJournal({trip_id:+id, journal: body.journal})` |
+| GET | `/api/trips/{id}/streetfood` | `200 []` (v1 — no street food on iOS) |
+| POST | `/api/plan/ingest` | `503 {"error":"not_wired_yet"}` (Step 15 implements) |
+| GET | `/api/plan/jobs/{id}` | `404 {"error":"not_found"}` (Step 15 — synchronous on iOS so no job poll) |
+
+Anything else under `/api/*` → `404 {"error":"unsupported","path":pathname}`.
+
+Implementation skeleton:
+
+```ts
+const origFetch = window.fetch.bind(window);
+
+export function installFetchInterceptor(store: TripStore) {
+  window.fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : (input as Request).url;
+    const u = new URL(url, location.origin);
+    if (!u.pathname.startsWith("/api/")) return origFetch(input, init);
+
+    const method = (init?.method ?? (typeof input === "string" ? "GET" : (input as Request).method)).toUpperCase();
+    const body = init?.body ? JSON.parse(String(init.body)) : null;
+
+    try {
+      const result = await route(u.pathname, method, body, store);
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { "content-type": "application/json" }
+      });
+    } catch (err: any) {
+      return new Response(JSON.stringify({ error: err.message ?? "error" }), {
+        status: 500, headers: { "content-type": "application/json" }
+      });
+    }
+  };
+}
+```
+
+Add `route(pathname, method, body, store)` as a pure function that returns `{ status, body }`. Pattern-match on the table above. Use regex or split path-segments.
+
+Wire from `entry.ts`:
+```ts
+import { installFetchInterceptor } from "./fetch-interceptor";
+// after window.TCStore is set:
+installFetchInterceptor(window.TCStore!);
+```
+
+### Settings UI in index.html (iOS-only)
+
+Add **minimal** UI to `packages/web/public/index.html`. The Settings entry must be hidden on web. Conditionally show via `body.is-ios` class set at boot by `ios.bundle.js`.
+
+Add to `entry.ts`:
+```ts
+document.body.classList.add("is-ios");
+```
+
+In `index.html`:
+1. Add a small gear/cog button in the existing app bar, hidden by default. Make it visible via CSS `body.is-ios .ts-settings-btn { display: ... }`.
+2. Add a modal `#ts-settings-modal` (hidden by default) with:
+   - Label + `<input type="password" id="ts-openai-key" placeholder="sk-...">`
+   - Optional `<input type="text" id="ts-openai-model" placeholder="gpt-4o">`
+   - Save button → `window.TCSettings.setOpenAIKey(value)`, close modal, toast "Key saved"
+   - Clear button → `window.TCSettings.clearOpenAIKey()`, clear input
+3. On modal open, populate inputs from `await window.TCSettings.getOpenAIKey()` / `getOpenAIModel()`.
+
+Minimal CSS — reuse existing modal classes if any (grep for `.modal-overlay`, `.modal-card`, etc.).
+
+**Do not** rewire any existing UI elements. Just add the new ones.
+
+### Public Surface Updates
+
+`packages/core/src/index.ts` adds:
+```ts
+export { type SecureStore, type TCSettings, createSettings } from "./settings/types";
+export { SETTINGS_KEYS } from "./settings/keys";
+```
+
+`window.TCSettings` declared in `packages/ios/src/runtime/global.d.ts`:
+```ts
+import type { TripStore, TCSettings } from "@tourcompanion/core";
 declare global {
-  interface Window { TCStore?: import("@tourcompanion/core").TripStore; }
+  interface Window {
+    TCStore?: TripStore;
+    TCSettings?: TCSettings;
+  }
 }
-
-(async () => {
-  if (Capacitor.getPlatform() !== "ios") return;
-  window.TCStore = await initSqliteStore();
-  console.info("[TC iOS] TripStore ready");
-})();
+export {};
 ```
-
-### IOSTripStore Implementation
-
-Implement every method on `TripStore`. Use parameterized queries. Wrap multi-table writes (e.g. `createTrip`) in `BEGIN/COMMIT` transactions via `db.executeTransaction`. Return-shape parity with Python `_trip_to_detail()` — read the function in `TourCompanion/server/app/routes/trips.py` lines ~44-66 to mirror.
-
-`addStop` must compute the next `order_idx` for the day (max + 1).
-`reorderStops` updates `order_idx` for each id in the supplied list.
-`createTrip` inserts trip, then each day with stops, then bookings.
-
-### iOS Bundler
-
-Add `packages/ios/build.mjs` (esbuild) — bundles `packages/ios/src/runtime/entry.ts` → `packages/ios/www/ios.bundle.js` (IIFE). Update `copy-web.mjs` to NOT overwrite the iOS bundle (or have build:web copy web public, then build ios bundle into the same www). Build chain becomes:
-
-```
-npm run build:web    # 1. copy web/public → www/  2. build ios.bundle.js into www/
-```
-
-Update `package.json` scripts:
-```json
-"build:web": "npm run build --workspace=@tourcompanion/web && node copy-web.mjs && node build.mjs"
-```
-
-Frontend index.html — do NOT load `ios.bundle.js` automatically. iOS runs Capacitor which can be configured to inject a script. Simplest: append `<script src="/ios.bundle.js"></script>` to www/index.html during copy (a small post-process in `copy-web.mjs` that detects "is this the iOS www dir?"). Or pass through the same index.html and let it 404 on web — load conditionally.
-
-**Approach picked:** In `copy-web.mjs`, after copying, append a `<script src="/ios.bundle.js"></script>` tag right before `</body>` in `www/index.html`. This file is regenerated each run and lives only in `packages/ios/www/` (gitignored). Web's `packages/web/public/index.html` is never modified.
-
-### Add Dependency
-
-```bash
-npm install @capacitor-community/sqlite --workspace=@tourcompanion/ios
-```
-
-Then `npx cap sync ios` from `packages/ios/`.
 
 ### Verification Checklist
 
-- [ ] `@capacitor-community/sqlite` installed and synced (visible in `packages/ios/ios/App/Podfile.lock`)
-- [ ] `packages/core/src/store/types.ts` exports `TripStore` and all input types
-- [ ] `CORE_VERSION === "0.4.0"`
-- [ ] `packages/ios/src/runtime/sqlite/` files exist
-- [ ] `npm run build` succeeds at workspace root (core builds, web bundle builds, ios bundle builds)
-- [ ] `npm run build:web --workspace=@tourcompanion/ios` produces `packages/ios/www/index.html` (with injected `<script src="/ios.bundle.js">` before `</body>`) and `packages/ios/www/ios.bundle.js`
-- [ ] `npm run cap:sync --workspace=@tourcompanion/ios` succeeds
-- [ ] `xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO` exits 0
-- [ ] `npm test` — 67 core tests still pass (TripStore types compile)
-- [ ] `npm run typecheck` exit 0 across all workspaces
-- [ ] No Python or web frontend changes
+- [ ] Secure storage plugin installed; visible in `packages/ios/ios/App/Podfile.lock`
+- [ ] `createSettings(keychainStore)` compiles + types match in iOS package
+- [ ] `CORE_VERSION === "0.5.0"`
+- [ ] `packages/core` exports `SecureStore`, `TCSettings`, `createSettings`, `SETTINGS_KEYS`
+- [ ] `packages/ios/src/runtime/fetch-interceptor.ts` handles every method/path in the table
+- [ ] `entry.ts` installs both `window.TCSettings` and the fetch interceptor after `window.TCStore`
+- [ ] Settings gear visible only when `body.is-ios` is set; modal opens; save/clear wired
+- [ ] `npm run build` succeeds across all workspaces
+- [ ] `npm run typecheck` exit 0
+- [ ] `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` exits 0
+- [ ] Core tests still pass (67+, may grow if settings.test.ts added)
+- [ ] No Python changes
+- [ ] Web `packages/web/public/index.html` modified only to add: settings button, settings modal, related CSS. Existing app behavior unchanged on web
 
 ### Flags Bob Must Not Guess At
 
-- **`@capacitor-community/sqlite`** version: latest 6.x compatible with Capacitor 6.
-- **Do not** add a fetch interceptor in this step. Just expose `window.TCStore`. Step 14 wires the interceptor.
-- **Do not** modify Python files, web frontend, or web bundle.
-- **`createTrip`** must seed `created_at` = `new Date().toISOString()`.
-- **Transactions:** `@capacitor-community/sqlite` API uses `db.executeTransaction([{ statement, values }, ...])`. Look at the plugin README in `node_modules/@capacitor-community/sqlite/README.md` if uncertain about exact API names — do NOT install the plugin twice.
-- **No Realm, no IndexedDB, no localStorage.** SQLite only.
-- **`Foreign Keys`** — SQLite requires `PRAGMA foreign_keys = ON` per connection. Run after `db.open()`.
+- **Auth endpoints on iOS return synthetic OK responses.** Don't crash the existing login flow code — let it call `/api/auth/me`, get the stub user, and proceed.
+- **`/api/plan/ingest`** returns 503 from the interceptor. The existing frontend will surface an error to the user. Step 15 will wire OpenAI.
+- **Settings modal copy:** keep it short. Title "OpenAI API Key", subtitle "Required for trip planning. Stored in iOS Keychain.", a small "Get a key →" link to `https://platform.openai.com/api-keys`.
+- **No model dropdown.** Free-text input with placeholder `gpt-4o`. Power-user feature.
+- **CSS reuse:** grep `index.html` for existing modal class names. Use them.
+- **Do not** touch web bundle behavior. The `body.is-ios` class is set by `ios.bundle.js` only.
+- **Don't bypass `await`** on `window.TCStore` if it's not yet ready when interceptor fires. Boot order in `entry.ts`: `await initSqliteStore() → set TCStore → set TCSettings → installFetchInterceptor → mark body is-ios`. Existing index.html boot will run before interceptor is ready; ensure your boot completes synchronously *before* the page's own boot code runs — load `ios.bundle.js` before existing inline scripts, and have its top-level `await` block all subsequent code. Use a `<script>` tag injection that places `ios.bundle.js` in `<head>` BEFORE the existing inline scripts. Update `copy-web.mjs` to inject in `<head>` (right after `<title>`) not before `</body>`.
+- **For Step 13 the injection point was before `</body>`** — change to head injection in this step. Update Step 13's BUILD-LOG entry accordingly (one-line note).
 
 ---
 

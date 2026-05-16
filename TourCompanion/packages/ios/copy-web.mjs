@@ -1,7 +1,10 @@
 // copy-web.mjs — copies packages/web/public/* -> packages/ios/www/
 // Pure Node 20+. No extra deps. Excludes core.bundle.js.map. After copy,
-// injects <script src="/ios.bundle.js"></script> before </body> in the
-// staged www/index.html so the iOS runtime shim loads after the web SPA.
+// injects <script src="/ios.bundle.js"></script> in <head> immediately
+// after </title> of the staged www/index.html. Head injection is required
+// (Step 14) so the iOS runtime initialises window.TCStore / TCSettings and
+// patches fetch BEFORE the SPA's inline scripts run — otherwise the inline
+// boot would call /api/auth/me against an un-patched fetch and 404.
 // The web build is never modified — only the iOS www/ copy.
 import { cp, mkdir, rm, readdir, stat, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -36,21 +39,23 @@ async function main() {
   }
   console.log(`[copy-web] copied ${copied} top-level entries -> ${DEST}`);
 
-  // Inject the iOS bundle <script> tag before </body>. Idempotent — the
-  // www/ dir is wiped each run, but guard anyway in case anyone re-runs
-  // this script without the rm step.
+  // Inject the iOS bundle <script> tag inside <head>, right after </title>.
+  // Head injection is required so window.TCStore / TCSettings exist and
+  // window.fetch is patched before the SPA's inline scripts run their
+  // top-level boot. Idempotent — the www/ dir is wiped each run, but the
+  // guard handles re-runs without the rm step.
   const indexPath = join(DEST, "index.html");
   if (existsSync(indexPath)) {
     const html = await readFile(indexPath, "utf8");
     if (html.includes(IOS_SCRIPT_TAG)) {
       console.log(`[copy-web] ios.bundle.js script tag already present`);
-    } else if (!html.includes("</body>")) {
-      console.error(`[copy-web] no </body> found in index.html — cannot inject ios bundle`);
+    } else if (!html.includes("</title>")) {
+      console.error(`[copy-web] no </title> found in index.html — cannot inject ios bundle into <head>`);
       process.exit(1);
     } else {
-      const patched = html.replace("</body>", `  ${IOS_SCRIPT_TAG}\n</body>`);
+      const patched = html.replace("</title>", `</title>\n  ${IOS_SCRIPT_TAG}`);
       await writeFile(indexPath, patched, "utf8");
-      console.log(`[copy-web] injected ios.bundle.js <script> before </body>`);
+      console.log(`[copy-web] injected ios.bundle.js <script> after </title> (in <head>)`);
     }
   }
 }

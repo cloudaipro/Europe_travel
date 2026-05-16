@@ -836,6 +836,7 @@
   <button class="mab-publish" type="button" onclick="openPublishModal()" title="Publish">Publish</button>
   <div class="mab-right">
     <button disabled title="Coming soon" aria-label="Search">🔍</button>
+    <button class="ts-settings-btn" onclick="openSettingsModal()" title="OpenAI key" aria-label="OpenAI key settings">🔑</button>
     <button onclick="toggleTripPicker(event)" title="Settings" aria-label="Settings">⚙</button>
     <button onclick="logout()" title="Log out" aria-label="Log out">⏻</button>
   </div>
@@ -874,6 +875,8 @@
     <!-- Right actions -->
     <div class="flex items-center gap-1">
       <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition text-sm">🔍</button>
+      <button onclick="openSettingsModal()" title="OpenAI key (iOS)" aria-label="OpenAI key settings"
+        class="ts-settings-btn w-8 h-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition text-sm">🔑</button>
       <button onclick="logout()" title="Log out"
         class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition text-sm">⏻</button>
     </div>
@@ -1091,6 +1094,18 @@
   body.is-public #trip-picker-btn,
   body.is-public .mab-left,
   body.is-public .mab-right { display: none !important; }
+
+  /* Step 14 — Settings gear + modal. iOS-only via body.is-ios. */
+  .ts-settings-btn { display: none; }
+  body.is-ios .ts-settings-btn { display: inline-flex; }
+  .ts-help-link {
+    font-size: 12px; color: #2563eb; text-decoration: none;
+    align-self: flex-start; margin-top: -4px;
+  }
+  .ts-help-link:hover { text-decoration: underline; }
+  .ts-sub {
+    font-size: 12px; color: #64748b; line-height: 1.5; margin: 0 0 4px;
+  }
 </style>
 
 <!-- Modal -->
@@ -1135,6 +1150,30 @@
   <div class="as-card">
     <h3 id="pub-title" class="font-bold text-slate-800 text-base mb-2">Publish trip</h3>
     <div id="pub-modal-body"></div>
+  </div>
+</div>
+
+<!-- Settings modal (Step 14) — iOS-only; reuses .as-overlay/.as-card styles.
+     Visibility of the trigger is gated by body.is-ios; the modal itself
+     just stays hidden on web since nothing opens it. -->
+<div id="ts-settings-modal" class="as-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="ts-settings-title">
+  <div class="as-card">
+    <h3 id="ts-settings-title" class="font-bold text-slate-800 text-base mb-1">OpenAI API Key</h3>
+    <p class="ts-sub">Required for trip planning. Stored in iOS Keychain — never sent to our servers.</p>
+    <a class="ts-help-link" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">Get a key →</a>
+    <label class="as-field">
+      <span class="as-label">API key</span>
+      <input id="ts-openai-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-...">
+    </label>
+    <label class="as-field">
+      <span class="as-label">Model (optional)</span>
+      <input id="ts-openai-model" type="text" autocomplete="off" spellcheck="false" placeholder="gpt-4o">
+    </label>
+    <div class="as-actions">
+      <button type="button" onclick="closeSettingsModal()" class="as-btn as-btn-cancel">Cancel</button>
+      <button type="button" onclick="clearSettingsKey()" class="as-btn as-btn-danger">Clear</button>
+      <button type="button" onclick="saveSettings()" class="as-btn as-btn-save">Save</button>
+    </div>
   </div>
 </div>
 
@@ -3199,6 +3238,63 @@ function showSnack(msg) {
   clearTimeout(snackTimer);
   snackTimer = setTimeout(() => s.classList.add("hidden"), 2400);
 }
+
+/* ════════════════════════════════════════════
+   Settings modal (Step 14 — iOS only)
+   ════════════════════════════════════════════ */
+async function openSettingsModal() {
+  if (!window.TCSettings) { showSnack("Settings unavailable"); return; }
+  const keyInput = document.getElementById("ts-openai-key");
+  const modelInput = document.getElementById("ts-openai-model");
+  try {
+    const [key, model] = await Promise.all([
+      window.TCSettings.getOpenAIKey(),
+      window.TCSettings.getOpenAIModel(),
+    ]);
+    if (keyInput) keyInput.value = key || "";
+    if (modelInput) modelInput.value = model || "";
+  } catch (e) {
+    console.warn("[settings] load failed", e);
+  }
+  document.getElementById("ts-settings-modal")?.classList.remove("hidden");
+}
+function closeSettingsModal() {
+  document.getElementById("ts-settings-modal")?.classList.add("hidden");
+}
+async function saveSettings() {
+  if (!window.TCSettings) { showSnack("Settings unavailable"); return; }
+  const keyInput = document.getElementById("ts-openai-key");
+  const modelInput = document.getElementById("ts-openai-model");
+  const key = (keyInput?.value || "").trim();
+  const model = (modelInput?.value || "").trim();
+  try {
+    await window.TCSettings.setOpenAIKey(key);
+    await window.TCSettings.setOpenAIModel(model);
+    closeSettingsModal();
+    showSnack(key ? "✓ Key saved" : "Key cleared");
+  } catch (e) {
+    console.warn("[settings] save failed", e);
+    showSnack("Save failed");
+  }
+}
+async function clearSettingsKey() {
+  if (!window.TCSettings) { showSnack("Settings unavailable"); return; }
+  try {
+    await window.TCSettings.clearOpenAIKey();
+    const keyInput = document.getElementById("ts-openai-key");
+    if (keyInput) keyInput.value = "";
+    showSnack("Key cleared");
+  } catch (e) {
+    console.warn("[settings] clear failed", e);
+    showSnack("Clear failed");
+  }
+}
+/* Esc closes the settings modal. */
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  const m = document.getElementById("ts-settings-modal");
+  if (m && !m.classList.contains("hidden")) closeSettingsModal();
+});
 
 /* ════════════════════════════════════════════
    Auth / login UI

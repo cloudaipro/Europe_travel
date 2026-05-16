@@ -16,11 +16,12 @@
     "@capacitor/cli": "^6",
     "@capacitor/core": "^6",
     "@capacitor/ios": "^6",
-    "@tourcompanion/core": "*"
+    "@tourcompanion/core": "*",
+    "capacitor-secure-storage-plugin": "^0.10.0"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
     "esbuild": "^0.21",
-    "typescript": "^5.0.0",
-    "@types/node": "^20.0.0"
+    "typescript": "^5.0.0"
   }
 }

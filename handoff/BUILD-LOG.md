@@ -5,13 +5,74 @@
 
 ## Current Status
 
-**Active step:** Step 13 — Local SQLite + Data Layer — awaiting review
+**Active step:** Step 14 — Settings, Keychain, Fetch Interceptor — awaiting review
 **Last cleared:** Step 9 — Port Pure Helpers Python → TypeScript — 2026-05-16
 **Pending deploy:** NO (uncommitted; awaiting Richard)
 
 ---
 
 ## Step History
+
+### Step 14 — Settings, Keychain, Fetch Interceptor — Status: AWAITING REVIEW
+*Date: 2026-05-16*
+
+Scope: Three subsystems land together. (1) New `@tourcompanion/core` settings module exposes a platform-agnostic `SecureStore` interface and a `TCSettings` facade for OpenAI key + model. (2) iOS gets a Keychain-backed `SecureStore` adapter via `capacitor-secure-storage-plugin@^0.10.0`. (3) `window.fetch` is patched on iOS boot to route every `/api/*` request to `window.TCStore` (or to canned stubs for auth/health), so the existing web SPA inline JS runs unchanged on-device. Settings UI (gear button + modal) added to `packages/web/public/index.html` behind a `body.is-ios` gate. iOS bundle now injects into `<head>` after `</title>` (not before `</body>`) so the interceptor is installed before the SPA's inline scripts run.
+
+Files changed:
+- **New — core settings module (2):**
+  - `TourCompanion/packages/core/src/settings/keys.ts` — `SETTINGS_KEYS` (`openai_api_key`, `openai_model`) + `DEFAULT_OPENAI_MODEL = "gpt-4o"`. `as const` for literal types.
+  - `TourCompanion/packages/core/src/settings/types.ts` — `SecureStore` interface (get/set/remove/clear), `TCSettings` interface, and `createSettings(store: SecureStore): TCSettings` factory. Whitespace-trims on read + write; empty value on set is treated as remove so the keychain never holds blank strings.
+- **New — core test (1):**
+  - `TourCompanion/packages/core/tests/settings/settings.test.ts` — 6 tests against an in-memory `SecureStore` (round-trip key, trim/clear semantics, model default + override).
+- **New — iOS runtime (3):**
+  - `TourCompanion/packages/ios/src/runtime/keychain/index.ts` — `keychainStore: SecureStore` wrapping `SecureStoragePlugin`. `get` and `remove` swallow plugin throws ("key not found" is a soft-miss in our contract); `set`/`clear` propagate.
+  - `TourCompanion/packages/ios/src/runtime/fetch-interceptor.ts` — `installFetchInterceptor(storeProvider)` patches `window.fetch`. The provider may be a `TripStore` or a `() => Promise<TripStore>`; we use the promise form so the interceptor installs synchronously at script load (before the SPA's inline scripts run) while SQLite is still spinning up. Pure `route(pathname, method, body, store)` function pattern-matches every endpoint in the brief table — trips CRUD, day add/remove, stops add/reorder, check-in, photos (`/photos` and `/photos-link` both map to `store.addPhoto`), voice, journal, streetfood empty list, plan ingest stub (503), plan jobs stub (404). Unknown paths return `404 {error:"unsupported",path}`. The `/api/trips/{id}/days/{n}/stops` handler resolves the URL's day number to a `day_id` by reading the trip first — matches the frontend's existing `apiCall('/trips/.../days/N/stops', { body: {name, time_label, address} })` shape, no frontend change required.
+  - `TourCompanion/packages/ios/src/runtime/global.d.ts` — ambient `Window` augmentation declaring `TCStore?` and `TCSettings?`. Replaces the inline `declare global` block previously in entry.ts so both globals share one source of truth.
+- **Modified — core (3):**
+  - `TourCompanion/packages/core/src/index.ts` — re-exports `SecureStore`, `TCSettings`, `createSettings`, `SETTINGS_KEYS`, `DEFAULT_OPENAI_MODEL`. Bumps `CORE_VERSION` to `"0.5.0"`.
+  - `TourCompanion/packages/core/package.json` — version `0.5.0`.
+  - `TourCompanion/packages/core/tests/smoke.test.ts` — asserts `"0.5.0"`.
+- **Modified — iOS runtime (1):**
+  - `TourCompanion/packages/ios/src/runtime/entry.ts` — synchronous on iOS: kicks off `initSqliteStore()` as a stored promise (caches result onto `window.TCStore` when resolved), constructs `window.TCSettings = createSettings(keychainStore)` immediately, installs the fetch interceptor with the store promise as provider, and adds `body.is-ios` (deferred to `DOMContentLoaded` if body not yet present). Off-iOS the entire block is skipped so the bundle remains a no-op on web/Android.
+- **Modified — iOS tooling (1):**
+  - `TourCompanion/packages/ios/copy-web.mjs` — injection point moved from before `</body>` to inside `<head>` immediately after `</title>`. Without head injection the SPA's inline scripts would run and call `/api/auth/me` against an un-patched `fetch` before the runtime had a chance to install the interceptor. Log line + error path updated accordingly.
+- **Modified — iOS package (1):**
+  - `TourCompanion/packages/ios/package.json` — adds `capacitor-secure-storage-plugin@^0.10.0` to dependencies (0.10.0 is the last release whose peer `@capacitor/core` spec is `^6.0.0`; 0.11.0+ require `>=7.0.0`).
+- **Modified — web SPA (1):**
+  - `TourCompanion/packages/web/public/index.html` — additive only. Added CSS rules for `.ts-settings-btn`, `.ts-help-link`, `.ts-sub` (~14 new lines just before `</style>`). Added a 🔑 gear button to both the mobile app-bar `.mab-right` and the desktop header right-actions cluster; both default to `display:none` and become visible only when `body.is-ios` is set. Added `#ts-settings-modal` (reuses `.as-overlay` / `.as-card` / `.as-field` / `.as-btn` styles from the existing add-stop modal) with password-typed key input, model input, Cancel / Clear / Save buttons. Added `openSettingsModal` / `closeSettingsModal` / `saveSettings` / `clearSettingsKey` handlers and an Escape-to-close keydown listener immediately after `showSnack`. No existing element rewired or removed.
+- **Modified — lockfile:**
+  - `TourCompanion/package-lock.json` — 1 package added (`capacitor-secure-storage-plugin`).
+
+Decisions made (judgment calls beyond the brief):
+- **Plugin pick:** `capacitor-secure-storage-plugin@0.10.0`. `@capacitor-community/secure-storage` is not published on the public npm registry (404 on `npm view`) — the namespace under `@capacitor-community` only exists for the older Capacitor 2/3 era of that plugin. `capacitor-secure-storage-plugin` is the actively-maintained drop-in. Latest (0.13.0) requires Capacitor 8; 0.11.0+ require Capacitor 7+; 0.10.0 is the highest version still compatible with Capacitor 6 (its `peer @capacitor/core` is `^6.0.0`).
+- **Interceptor accepts a promise-of-store, not just a store.** Brief skeleton passed `TripStore` directly; in practice that would mean the interceptor either (a) had to wait for SQLite before installing — defeating the whole point of head injection — or (b) had to be installed twice. Adding the union `TripStore | (() => Promise<TripStore>)` keeps the install synchronous and per-request fetches simply `await` the promise, which adds a few ms only to the very first call.
+- **Settings gear icon: 🔑 not ⚙.** The mobile app bar already has a ⚙ button (`onclick="toggleTripPicker"`) and the brief explicitly forbids touching existing UI. Using a different icon avoids visual collision and makes the new affordance obvious.
+- **Stub user `id: 1` + `email: ""` + `display_name: "local"`.** Frontend's `init()` only checks that `/auth/me` returns 200 — it doesn't read any field. Picked the minimal shape that satisfies the existing TypeScript-less SPA code without revealing user-identity details that don't exist on a single-user iOS install.
+- **`/api/health` returns `{ok:true}`** with no other shape (frontend doesn't poll health on iOS but Capacitor WebView background tabs sometimes do; cheap and harmless).
+- **`/api/trips/{id}/streetfood` returns `[]`** rather than 404. The existing frontend tolerates either, but an empty list keeps the v1 surface forward-compatible if a later step ships an on-device curated list.
+- **No automated test for the fetch interceptor.** The router is a pure function but the install path touches `window.fetch` and `Capacitor.getPlatform()`. Mocking those would test the mock. xcodebuild green + the existing 73 core tests (settings module covered) is the contract this step ships against.
+- **CSS scoped under `.ts-` prefix.** Existing modal classes (`.as-overlay`, `.as-card`, `.as-field`, `.as-btn-save/cancel/danger`) reused verbatim. Three new classes added: `.ts-settings-btn` (display gate), `.ts-help-link` (the "Get a key →" anchor), `.ts-sub` (subtitle copy).
+
+Verification:
+- `npm install --workspace=@tourcompanion/ios capacitor-secure-storage-plugin@0.10.0` → 1 package added. PASS.
+- `npm run build` (core tsc + ios bundle + copy-web + web esbuild) → green. iOS bundle is now 90.5kb (was 79.7kb before this step — the +10.8kb is fetch-interceptor + settings module + keychain adapter). `[copy-web] injected ios.bundle.js <script> after </title> (in <head>)` log line confirmed. PASS.
+- `npm run typecheck` → both `@tourcompanion/core` and `@tourcompanion/ios` exit 0. PASS.
+- `npm test --workspace=@tourcompanion/core` → 73/73 (was 67; +6 new tests in `settings/settings.test.ts`). PASS.
+- `npx cap sync ios` → "Sync finished in 3.225s"; `[info] Found 2 Capacitor plugins for ios: @capacitor-community/sqlite@6.0.2, capacitor-secure-storage-plugin@0.10.0`. PASS.
+- `Podfile.lock` contains `CapacitorSecureStoragePlugin (0.10.0)`. PASS.
+- `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` → `** BUILD SUCCEEDED **`. PASS.
+- `packages/ios/www/index.html` head contains `<script src="/ios.bundle.js"></script>` at line 7 (immediately after `</title>` at line 6). PASS.
+- No Python files touched. `git status` for `TourCompanion/server/` is empty. PASS.
+- Web `packages/web/public/index.html` diff is additive only — no existing element removed or rewired. PASS.
+
+Not verified (acceptable per brief):
+- No simulator runtime smoke test of "open settings, paste key, close, reopen, key persists." Step 15 will exercise the keychain end-to-end when it reads the key for the OpenAI client.
+
+Known Gaps:
+- `/api/plan/ingest` deliberately returns 503 — Step 15 wires OpenAI.
+- iOS WebView serves the SPA from `capacitor://localhost`; `new URL(url, location.origin)` resolves relative `/api/...` paths correctly under that scheme.
+
+---
 
 ### Step 13 — Local SQLite + Data Layer — Status: AWAITING REVIEW
 *Date: 2026-05-16*
@@ -37,7 +98,7 @@ Files changed:
   - `TourCompanion/packages/core/tests/smoke.test.ts` — expects `"0.4.0"`.
 - **Modified — ios (2):**
   - `TourCompanion/packages/ios/package.json` — version `0.2.0`, `type: "module"`, deps include `@capacitor-community/sqlite@^6.0.2`, devDeps add `esbuild` + `typescript` + `@types/node`. `build:web` now chains `npm run build --workspace=@tourcompanion/web && node copy-web.mjs && node build.mjs`. Added `build` (alias of build:web) and `typecheck` scripts.
-  - `TourCompanion/packages/ios/copy-web.mjs` — after copy, reads `www/index.html` and injects `<script src="/ios.bundle.js"></script>` before the first `</body>`. Idempotent; bails if no `</body>` found.
+  - `TourCompanion/packages/ios/copy-web.mjs` — after copy, reads `www/index.html` and injects `<script src="/ios.bundle.js"></script>` before the first `</body>`. Idempotent; bails if no `</body>` found. *[Step 14 footnote: injection point moved from before `</body>` to inside `<head>` after `</title>` so the fetch interceptor installs before the SPA's inline scripts run.]*
 - **Modified — lockfile:**
   - `TourCompanion/package-lock.json` — 35 packages added by the sqlite plugin install.
 

@@ -36,4 +36,9 @@ export type {
   VoiceNoteInput,
 } from "./store/types.js";
 
-export const CORE_VERSION = "0.4.0";
+// Settings module — SecureStore-backed user preferences (iOS only today).
+export type { SecureStore, TCSettings } from "./settings/types.js";
+export { createSettings } from "./settings/types.js";
+export { SETTINGS_KEYS, DEFAULT_OPENAI_MODEL } from "./settings/keys.js";
+
+export const CORE_VERSION = "0.5.0";
