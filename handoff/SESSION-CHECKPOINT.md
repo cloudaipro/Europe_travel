@@ -1,4 +1,4 @@
-# Session Checkpoint — 2026-05-15
+# Session Checkpoint — 2026-05-16
 *Read this before reading anything else. If it covers current state, skip BUILD-LOG.*
 
 ---
@@ -22,7 +22,7 @@
 None — all KG-1 through KG-9 closed.
 
 Operational notes:
-- No git remote configured — `git push` will fail.
+- Git remote: `origin` → `https://github.com/cloudaipro/Europe_travel`. Local synced with `origin/main` at `c840d15`.
 - `TourCompanion/server/tour.db` has test artifacts from runtime sweeps (Test Stop + Belvedere Palace on Day 1 of Vienna+Budapest trip + a published slug). To reset: `rm TourCompanion/server/tour.db && ./TourCompanion/server/run_local.sh`.
 
 ---
