@@ -1212,6 +1212,12 @@ async function apiCall(path, opts = {}) {
   if (API_TOKEN) headers["Authorization"] = `Bearer ${API_TOKEN}`;
   const res = await fetch(API_BASE + path, { ...opts, headers });
   if (res.status === 401) {
+    // Step 15: iOS plan ingest returns 401 with {error:"missing_openai_key"} —
+    // surface that to the caller without clobbering the session.
+    const text = await res.clone().text();
+    if (text.indexOf("missing_openai_key") !== -1) {
+      throw new Error("missing_openai_key");
+    }
     if (!PUBLIC_MODE) logout();
     throw new Error("unauthorized");
   }
@@ -1435,6 +1441,9 @@ async function submitIngest(ev) {
     closeModal(); showSnack(`✓ ${result.message} (${result.backend})`); await selectTrip(result.trip_id);
   } catch (e) {
     progEl.classList.add("hidden"); btn.disabled = false; btn.textContent = "Generate"; errEl.textContent = e.message;
+    if (e.message && e.message.indexOf("missing_openai_key") !== -1 && typeof openSettingsModal === "function") {
+      openSettingsModal();
+    }
   }
 }
 async function confirmDeleteTrip() {

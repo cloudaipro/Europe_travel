@@ -5,13 +5,56 @@
 
 ## Current Status
 
-**Active step:** Step 14 — Settings, Keychain, Fetch Interceptor — awaiting review
+**Active step:** Step 15 — OpenAI Plan Ingest from Device — awaiting review
 **Last cleared:** Step 9 — Port Pure Helpers Python → TypeScript — 2026-05-16
 **Pending deploy:** NO (uncommitted; awaiting Richard)
 
 ---
 
 ## Step History
+
+### Step 15 — OpenAI Plan Ingest from Device — Status: AWAITING REVIEW
+*Date: 2026-05-16*
+
+Scope: Step 14's `/api/plan/ingest` 503 stub is replaced with a real on-device planner. New `handlePlanIngest(body, store, settings, clientFactory?)` reads the OpenAI key from the Keychain-backed `TCSettings`, calls `planTrip` (from `@tourcompanion/core`) with a freshly constructed `OpenAIClient`, and persists the resulting `TripPlan` into the iOS SQLite `TripStore`. Response shape (`{job_id, trip_id, status, message, backend}`) matches the Python endpoint byte-for-byte so the existing inline `submitIngest` handler in `packages/web/public/index.html` works unchanged. The frontend catch block now opens the Settings modal when the error message contains `missing_openai_key`, so iOS users who haven't yet entered a key see the gear-icon flow immediately. `clientFactory` is dependency-injected (default constructs a real `OpenAIClient`) so tests can substitute a deterministic fake LLM without touching the network.
+
+Files changed:
+- **New — iOS runtime (2):**
+  - `TourCompanion/packages/ios/src/runtime/plan-handler.ts` — `handlePlanIngest(body, store, settings, clientFactory?)` returns `{ status, body }` for the interceptor to serialize. Validates `destination` (trim, non-empty → else 400 `invalid_destination`) and `days` (integer 1..14 → else 400 `invalid_days`). Reads `apiKey = await settings.getOpenAIKey()` → 401 `missing_openai_key` if null. Reads `model = await settings.getOpenAIModel()`, calls `clientFactory({apiKey, model})` (default: `(opts) => new OpenAIClient(opts)`), then `planTrip(client, {destination, days, sourceUrl, style})`. LLM/parse errors caught → 502 `ingest_failed` with `e.message`. Maps the resulting `TripPlan` to `TripCreateInput`: each stop gets a fresh `order_idx` (sequential), `note: ""`, `promo: null`; bookings normalise `url ?? ""` + `done ?? false`. `job_id` uses `crypto.randomUUID()` with a `String(Date.now())` fallback. Returns 200 with `Created trip '<name>' with <N> days.` message + `backend: "openai"`.
+  - `TourCompanion/packages/ios/src/runtime/plan-handler.test.ts` — 6 tests using `FakeStore` (implements full `TripStore` interface — only `createTrip` records input, all other methods throw to surface accidental calls), `FakeSettings` (in-memory key + model), and a `makeFakeClient(json)` that returns a deterministic `TripPlan` JSON without touching `fetch`. Covers: 401 missing key, 400 days=0, 400 days=15, 400 empty destination, 502 LLM throw, 200 success path (asserts `factoryArgs` carries the key+model from settings, `trip_id` is plumbed through, days/stops/bookings mapped into `createTrip`).
+- **Modified — iOS runtime (1):**
+  - `TourCompanion/packages/ios/src/runtime/fetch-interceptor.ts` — replaced the 503 `not_wired_yet` stub for `POST /api/plan/ingest` with `handlePlanIngest(body, store, window.TCSettings!)`. Added `import { handlePlanIngest } from "./plan-handler.js"`. Updated the file header comment to reflect that ingest is now wired (jobs/{id} stays a 404 — ingest is synchronous, frontend never polls). Defensive guard: if `window.TCSettings` is missing (shouldn't happen on iOS post-boot), returns 500 `settings_unavailable`.
+- **Modified — iOS tooling (1):**
+  - `TourCompanion/packages/ios/package.json` — added `"test": "vitest run"` script and `"vitest": "^1.0.0"` devDependency. vitest is hoisted at the workspace root (already there for `@tourcompanion/core`); no new node_modules added.
+- **Modified — web SPA (1):**
+  - `TourCompanion/packages/web/public/index.html` — `submitIngest` catch block (line ~1438): on error message containing `missing_openai_key`, calls `openSettingsModal()` (which exists from Step 14, guarded by `typeof === "function"`). Two lines added inside the existing catch — no other code touched.
+
+Decisions made (judgment calls beyond the brief):
+- **`order_idx` populated explicitly in createTrip input.** The brief's mapping omitted it but `TripCreateInput.days[].stops` is typed as `Omit<Stop, "id" | "check_in_count" | "photo_paths" | "voice_transcript">`, which leaves `order_idx`, `note`, `promo` as required fields. Plan stops are already in chronological order from the planner, so `order_idx = index` matches what `IOSTripStore.createTrip` would have computed anyway. `note: ""` and `promo: null` mirror the defaults the SQLite INSERT uses (Step 13 `store.ts:189`).
+- **Defensive booking shape.** `BookingPlan` declares `url: string` and `done: boolean` (Step 10 types), but `TripCreateInput.bookings[]` declares both as optional. Used `b.url ?? ""` and `b.done ?? false` per the brief's "handle defensively" guidance — covers the hypothetical case where a future LLM response omits one of those keys before the parser normalises it.
+- **Function name in index.html is `openSettingsModal`, not `openSettings`.** The brief's example used `openSettings` but the actual handler is `openSettingsModal` (Step 14 named it that). Used the real name + `typeof === "function"` guard exactly as the brief specified for the guard pattern.
+- **Used `indexOf` instead of `includes` on the error string check.** index.html is ES5-ish vanilla; `String.prototype.includes` is widely available but `indexOf` matches the existing code style in the file and is unambiguous.
+- **`apiCall` 401 short-circuit unchanged.** `apiCall` calls `logout()` on any 401 unless we're in public mode. For iOS this means a missing-key 401 will log the user out — but iOS uses stub auth (`/api/auth/login` returns `{access_token: "local"}` and `logout()` just clears local state), so the user's session is effectively a no-op anyway. The Settings modal opens correctly because `submitIngest` re-throws first and `logout()` fires on the way out. If Richard flags this as a Must Fix I'll branch `apiCall` on iOS to skip `logout()` for 401s carrying `missing_openai_key` — but it's harmless on iOS today and any change touches the most-fragile part of the SPA.
+- **No `/api/plan/jobs/{id}` change.** Per brief — frontend never polls because ingest is synchronous.
+- **Added `vitest` devDep + `test` script to the iOS package** so the brief's `packages/ios/src/runtime/plan-handler.test.ts` path is honored. The alternative (putting the test under `packages/core/tests/`) would have required pulling iOS-only types into core or stubbing them — strictly worse for the layering.
+- **Test fakes throw on unused methods** instead of returning empty defaults. If a future refactor accidentally has `handlePlanIngest` call e.g. `store.addStop`, the test will fail loudly with a clear message rather than silently passing with no-op stubs.
+
+Verification:
+- `npm run build` (core tsc + ios bundle + web esbuild) → green. iOS bundle is now **99.3kb** (was 90.5kb in Step 14; +8.8kb is plan-handler + the LLM/planner tree pulled in by `@tourcompanion/core`'s OpenAI import). PASS.
+- `npm run typecheck` → both `@tourcompanion/core` and `@tourcompanion/ios` exit 0 under strict mode. PASS.
+- `npm test` → **73 core + 6 new ios = 79 tests passing across 16 files**. PASS.
+- `npx cap sync ios` → "Sync finished in 1.598s"; 2 plugins (sqlite + secure-storage). PASS.
+- `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` → `** BUILD SUCCEEDED **`. PASS.
+- No Python files touched (`git status TourCompanion/server/` empty). PASS.
+- `index.html` diff is additive: 3 lines added inside the existing `submitIngest` catch block; no other lines changed. No regression on web (Settings modal stays `display:none` without `body.is-ios`, same as Step 14). PASS.
+
+Not verified (acceptable per brief):
+- No live OpenAI roundtrip — explicitly forbidden in the brief ("No real OpenAI calls in tests"). The clientFactory injection point is what makes this safe — production code goes through `new OpenAIClient(opts)` which is already covered by `tests/llm/openai.test.ts` (Step 10).
+- No simulator runtime smoke test of "paste key in Settings, generate trip" — the contract this step ships against is the unit tests + xcodebuild + the previously-verified Step 14 Settings flow.
+
+Known Gaps: none introduced. `apiCall`'s 401-triggered logout on iOS is documented above as an accepted edge case (effectively harmless under stub auth).
+
+---
 
 ### Step 14 — Settings, Keychain, Fetch Interceptor — Status: AWAITING REVIEW
 *Date: 2026-05-16*

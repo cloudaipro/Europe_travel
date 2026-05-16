@@ -6,6 +6,7 @@
   "scripts": {
     "build:web": "npm run build --workspace=@tourcompanion/web && node copy-web.mjs && node build.mjs",
     "build": "npm run build:web",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "cap:sync": "npx cap sync ios",
     "cap:open": "npx cap open ios",
@@ -22,6 +23,7 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "esbuild": "^0.21",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
   }
 }

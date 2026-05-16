@@ -3,12 +3,13 @@
 // keeps calling `fetch("/api/...")` and gets a synthetic Response back.
 //
 // Endpoints handled match server/app/routes/* one-for-one. Anything we
-// don't recognise drops through to a 404. Two endpoints are deliberately
-// stubbed for Step 15: /api/plan/ingest (returns 503) and the matching
-// /api/plan/jobs/{id} (returns 404) since the iOS implementation will be
-// synchronous and not job-based.
+// don't recognise drops through to a 404. /api/plan/ingest is wired to
+// the on-device OpenAI planner (Step 15) via handlePlanIngest. The matching
+// /api/plan/jobs/{id} stays a 404 — ingest is synchronous, so the frontend
+// never polls it.
 
 import type { TripStore } from "@tourcompanion/core";
+import { handlePlanIngest } from "./plan-handler.js";
 
 type Json = unknown;
 interface RouteResult {
@@ -172,9 +173,13 @@ async function route(
     return { status: 200, body: [] };
   }
 
-  // Plan endpoints — Step 15 wires OpenAI.
+  // Plan endpoints — Step 15 wires OpenAI through TCSettings + handlePlanIngest.
   if (path === "/api/plan/ingest" && method === "POST") {
-    return { status: 503, body: { error: "not_wired_yet" } };
+    const settings = window.TCSettings;
+    if (!settings) {
+      return { status: 500, body: { error: "settings_unavailable" } };
+    }
+    return handlePlanIngest(body, store, settings);
   }
   if (/^\/api\/plan\/jobs\/\d+$/.test(path) && method === "GET") {
     return { status: 404, body: { error: "not_found" } };

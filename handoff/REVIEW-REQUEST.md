@@ -1,6 +1,6 @@
-# Review Request — Step 14
+# Review Request — Step 15: OpenAI Plan Ingest from Device
 
-**Step:** 14 — Settings, Keychain, Fetch Interceptor
+**Step:** 15 — OpenAI Plan Ingest from Device
 **Ready for Review:** YES
 **Builder:** Bob
 
@@ -8,87 +8,72 @@
 
 ## Summary
 
-Three subsystems land together so iOS can run end-to-end against on-device data:
+Replaces the Step 14 `/api/plan/ingest` 503 stub with a real on-device OpenAI planner. Reads the OpenAI key from the Keychain-backed `TCSettings`, calls `planTrip` from `@tourcompanion/core`, persists the resulting `TripPlan` via `IOSTripStore.createTrip`. Response shape matches the Python endpoint so the existing inline `submitIngest` handler works unchanged. Frontend catch block now opens the Settings modal when the error message contains `missing_openai_key`. `clientFactory` injection point added for tests so no live network calls occur.
 
-1. **Core settings module** — new `SecureStore` interface + `TCSettings` facade backed by any keychain-style store. `CORE_VERSION` bumped to `0.5.0`.
-2. **iOS Keychain adapter** — `capacitor-secure-storage-plugin@0.10.0` (Cap 6 compatible) wrapped behind `SecureStore`. The `@capacitor-community/secure-storage` name in the brief is not published on npm — fallback documented in BUILD-LOG.
-3. **Fetch interceptor + settings UI** — `window.fetch` is patched at script-load (head injection) so the existing inline SPA JS keeps making `fetch("/api/...")` calls but they route to `window.TCStore` (or canned stubs for auth/health). A 🔑 gear in the app bar opens a modal for the user's OpenAI key; the gear is `display:none` unless `body.is-ios` is set.
-
-The copy-web injection point moved from before `</body>` to inside `<head>` after `</title>` — required so the interceptor exists before the SPA's inline boot runs.
-
-`/api/plan/ingest` returns 503 as instructed; Step 15 wires OpenAI.
+All `npm test` (79 tests), `npm run typecheck`, `npm run build`, and `xcodebuild` are green.
 
 ---
 
-## Files Changed
+## Files to Review
 
-### New — Core settings module
-- **`TourCompanion/packages/core/src/settings/keys.ts`** (lines 1–9)
-  `SETTINGS_KEYS` constant (`openai_api_key`, `openai_model`) + `DEFAULT_OPENAI_MODEL = "gpt-4o"`.
-- **`TourCompanion/packages/core/src/settings/types.ts`** (lines 1–61)
-  `SecureStore` interface, `TCSettings` interface, `createSettings(store)` factory with trim/clear semantics for both key and model.
+### New
 
-### New — Core tests
-- **`TourCompanion/packages/core/tests/settings/settings.test.ts`** (lines 1–75)
-  6 tests against an in-memory SecureStore — round-trip, trim, clear, model default + override.
+**`TourCompanion/packages/ios/src/runtime/plan-handler.ts`** (lines 1–133)
+The new handler. Key spots:
+- Lines 38–62 — request validation (destination + days range).
+- Lines 64–71 — missing-key 401 + client construction (uses `clientFactory` so tests inject a fake).
+- Lines 73–80 — LLM call wrapped in try/catch → 502 `ingest_failed` on throw.
+- Lines 82–115 — `TripPlan` → `TripCreateInput` mapping. `order_idx = idx`, `note: ""`, `promo: null`, `b.url ?? ""`, `b.done ?? false` cover the optional/required mismatches.
+- Lines 117–131 — `crypto.randomUUID()` with `Date.now()` fallback; 200 response shape matches Python `IngestOut`.
 
-### New — iOS runtime
-- **`TourCompanion/packages/ios/src/runtime/keychain/index.ts`** (lines 1–37)
-  `keychainStore: SecureStore` wrapping `SecureStoragePlugin`. Soft-misses on `get` / `remove` (plugin throws on missing key).
-- **`TourCompanion/packages/ios/src/runtime/fetch-interceptor.ts`** (lines 1–266)
-  - `route(path, method, body, store)` (lines 25–168) — pure pattern-matcher covering every endpoint in the brief's table.
-  - `installFetchInterceptor(storeProvider)` (lines 170–266) — synchronous patch of `window.fetch`. Accepts a `TripStore` *or* a `() => Promise<TripStore>` so install can precede SQLite readiness. First /api/* request awaits the promise.
-- **`TourCompanion/packages/ios/src/runtime/global.d.ts`** (lines 1–15)
-  Ambient `Window` augmentation declaring `TCStore?` and `TCSettings?`.
+**`TourCompanion/packages/ios/src/runtime/plan-handler.test.ts`** (lines 1–271)
+- Lines 22–40 — `FakeSettings` (in-memory key + model).
+- Lines 44–104 — `FakeStore` implementing the full `TripStore` interface; only `createTrip` records input, every other method throws to surface accidental calls.
+- Lines 107–115 — `makeFakeClient(json)` returns a deterministic stub `LLMClient` (no network).
+- Lines 117–155 — `validPlanJson(destination, days)` builds a parser-compatible `TripPlan` JSON.
+- Lines 157–172 — Test 1: 401 missing key (asserts `store.lastInput === null`).
+- Lines 174–183 — Test 2: 400 days=0.
+- Lines 185–194 — Test 3: 400 days=15.
+- Lines 196–205 — Test 4: 400 empty destination (`"   "` trimmed).
+- Lines 207–224 — Test 5: 502 when LLM throws.
+- Lines 226–266 — Test 6: 200 success — asserts `factoryArgs` carry key+model, `trip_id` plumbed through, days/stops/bookings mapped into `createTrip`.
 
-### Modified — Core
-- **`TourCompanion/packages/core/src/index.ts`** (lines 40–47)
-  Re-exports the new settings types/factory; `CORE_VERSION` → `"0.5.0"` (line 47).
-- **`TourCompanion/packages/core/package.json`** (line 3) — version `0.5.0`.
-- **`TourCompanion/packages/core/tests/smoke.test.ts`** (lines 5–7) — asserts `"0.5.0"`.
+### Modified
 
-### Modified — iOS
-- **`TourCompanion/packages/ios/src/runtime/entry.ts`** (full rewrite, lines 1–45)
-  On iOS: builds the store promise, sets `window.TCSettings`, installs interceptor, marks `body.is-ios` (deferred to `DOMContentLoaded` if body not yet present). Off-iOS the block is skipped.
-- **`TourCompanion/packages/ios/copy-web.mjs`** (header lines 1–8 + injection lines 39–60)
-  Injects `<script src="/ios.bundle.js"></script>` after `</title>` inside `<head>` instead of before `</body>`. Errors out if no `</title>` found.
-- **`TourCompanion/packages/ios/package.json`** (line 21)
-  Adds `"capacitor-secure-storage-plugin": "^0.10.0"`.
+**`TourCompanion/packages/ios/src/runtime/fetch-interceptor.ts`**
+- Lines 1–11 — header comment updated (ingest no longer 503-stubbed).
+- Line 12 — `import { handlePlanIngest } from "./plan-handler.js"`.
+- Lines 176–183 — replaced 503 stub with `handlePlanIngest(body, store, window.TCSettings!)` plus defensive `settings_unavailable` 500 if `window.TCSettings` is somehow missing.
 
-### Modified — Web SPA (additive only)
-- **`TourCompanion/packages/web/public/index.html`** — five additive blocks:
-  - **Line 839** — 🔑 `ts-settings-btn` added inside `<div class="mab-right">` (mobile app bar).
-  - **Lines 878–879** — 🔑 `ts-settings-btn` added inside desktop header right-actions cluster.
-  - **Lines 1096–1108** — CSS for `.ts-settings-btn` (display gate), `.ts-help-link`, `.ts-sub` immediately before `</style>`.
-  - **Lines 1157–1179** — `#ts-settings-modal` HTML block (password key input, model input, Cancel/Clear/Save). Reuses `.as-overlay` / `.as-card` / `.as-field` / `.as-btn-*` classes.
-  - **Lines 3203–3263** — `openSettingsModal`, `closeSettingsModal`, `saveSettings`, `clearSettingsKey`, plus an Escape-to-close `keydown` listener immediately after `showSnack`.
+**`TourCompanion/packages/ios/package.json`**
+- Line 10 — added `"test": "vitest run"`.
+- Line 26 — added `"vitest": "^1.0.0"` to devDependencies (hoisted from workspace root; no new install needed).
 
-  No existing element rewired or removed.
-
-### Modified — Lockfile
-- **`TourCompanion/package-lock.json`** — 1 package added.
+**`TourCompanion/packages/web/public/index.html`**
+- Lines ~1436–1441 — `submitIngest` catch block: 2 additional lines that check `e.message` for `missing_openai_key` and call `openSettingsModal()` if defined. No other code in the file touched.
 
 ---
 
-## Verification
+## Verification Run
 
-- `npm run build` — green (core tsc + ios bundle 90.5kb + web esbuild + `[copy-web] injected ... after </title>`).
-- `npm run typecheck` — green across `@tourcompanion/core` and `@tourcompanion/ios`.
-- `npm test --workspace=@tourcompanion/core` — **73/73** passing (was 67; +6 in `settings/settings.test.ts`).
-- `npx cap sync ios` — both plugins reported: `@capacitor-community/sqlite@6.0.2`, `capacitor-secure-storage-plugin@0.10.0`.
-- `Podfile.lock` contains `CapacitorSecureStoragePlugin (0.10.0)`.
-- `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` — `** BUILD SUCCEEDED **`.
-- `packages/ios/www/index.html` line 7 (right after `</title>` at line 6) contains `<script src="/ios.bundle.js"></script>`. Head injection confirmed.
-- No Python files touched.
+- `npm run build` → green. iOS bundle 99.3kb (was 90.5kb pre-Step-15; +8.8kb is plan-handler + the LLM/planner code pulled by the new `OpenAIClient` import).
+- `npm run typecheck` → green across both `@tourcompanion/core` and `@tourcompanion/ios`.
+- `npm test` → **79 tests** in 16 files (73 core + 6 new ios). All pass.
+- `npx cap sync ios` + `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` → `** BUILD SUCCEEDED **`.
+- No Python files touched; `git status TourCompanion/server/` empty.
 
 ---
 
 ## Open Questions
 
-1. **`/api/auth/me` stub fields.** Returned `{id:1, email:"", display_name:"local", email_verified_at:null, created_at:""}` per the brief. If the SPA later starts rendering `display_name` into a header, the placeholder may need a friendlier value. No frontend reads it today.
-2. **iOS WebView base URL.** `new URL(url, location.origin)` resolves under `capacitor://localhost`. Verified locally — flagging in case Richard wants an explicit test.
-3. **First-request latency.** The interceptor awaits the store promise before routing. SQLite init is sub-100ms on simulator; no user-visible regression expected.
+1. **`apiCall` 401 → `logout()`.** When the user hits Generate with no OpenAI key, the 401 makes `apiCall` call `logout()` on the way out. On iOS this is harmless because auth is stubbed and `logout()` just clears local state — the Settings modal opens because `submitIngest`'s catch fires first. But it's mildly ugly. Should we add an iOS-specific bypass in `apiCall` for `missing_openai_key` 401s, or accept the current behaviour? Documented in BUILD-LOG.
+
+2. **Auto-test for the `submitIngest` `openSettingsModal()` call.** index.html has no test infrastructure (vanilla JS in an HTML file). I left it untested. The catch block is 3 lines; visual/runtime testing on the simulator is straightforward but out of scope here.
+
+3. **`fetch-interceptor.ts` `window.TCSettings!` non-null assertion.** The defensive `settings_unavailable` 500 below it makes the `!` lossless at runtime, but stylistically it's a TS escape hatch. Alternative: take a `() => TCSettings | undefined` provider param like `storeProvider`. Did not change the function signature this step — let me know if it's worth restructuring.
 
 ---
 
-**Ready for Review: YES**
+## What I Need From Richard
+
+A standard review pass. Particularly: the mapping at lines 82–115 of `plan-handler.ts` is the largest single block, and the optional/required field handling there is where the biggest landmine sits if I missed a corner. The test exercises the booking + stops mapping but doesn't exhaustively cover every optional field.
