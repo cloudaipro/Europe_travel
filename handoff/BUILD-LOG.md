@@ -5,15 +5,55 @@
 
 ## Current Status
 
-**Active step:** Step 8 — Monorepo workspace skeleton — awaiting review
-**Last cleared:** Step 7 — KG-8 rate limit + KG-9 real 404 — 2026-05-15
+**Active step:** Step 9 — Port Pure Helpers Python → TypeScript — awaiting review
+**Last cleared:** Step 8 — Monorepo workspace skeleton — 2026-05-16
 **Pending deploy:** NO (committed locally; no remote configured)
 
 ---
 
 ## Step History
 
-### Step 8 — Monorepo workspace skeleton — Status: AWAITING REVIEW
+### Step 9 — Port Pure Helpers Python → TypeScript — Status: AWAITING REVIEW
+*Date: 2026-05-16*
+
+Scope: port all *pure* business helpers from `TourCompanion/server/app/{geocoder,planner,routes/trips}.py` and the KG-7 frontend +N parser into `TourCompanion/packages/core/src/`. TS interfaces for Pydantic schemas. Strict mode, full unit tests. Python and frontend left untouched — Step 11 will retire the duplicates.
+
+Files changed:
+- **New (11 source + 7 tests):**
+  - `packages/core/src/types/trip.ts` — `Stop`/`Day`/`Booking`/`CompanionDoc`/`RouteAsset`/`StreetFood`/`TripSummary`/`TripDetail` interfaces, snake_case fields, `| null` for Pydantic Optionals.
+  - `packages/core/src/types/api.ts` — `IngestIn`/`IngestOut`/`CheckInIn`/`JournalIn`/`VoiceNoteIn`.
+  - `packages/core/src/types/index.ts` — type barrel.
+  - `packages/core/src/geo/haversine.ts` — `haversineKm`.
+  - `packages/core/src/geo/name.ts` — `cleanName` (paren + leading-verb + trailing-suffix), `extractCity`, `buildQueries` (4-candidate order preserved).
+  - `packages/core/src/geo/viewbox.ts` — `viewboxAround` + exported `Viewbox` tuple type.
+  - `packages/core/src/planner/fence.ts` — `stripCodeFence`.
+  - `packages/core/src/trips/slug.ts` — `generateSlug` via Web Crypto `getRandomValues` → base64url → 10-char prefix.
+  - `packages/core/src/trips/sanitize.ts` — `sanitizeTripForPublic` (immutable copy).
+  - `packages/core/src/time/parse.ts` — `parseStopTime` + `stopTimeSortKey`.
+  - Tests: `tests/geo/haversine.test.ts`, `tests/geo/name.test.ts`, `tests/geo/viewbox.test.ts`, `tests/planner/fence.test.ts`, `tests/trips/slug.test.ts`, `tests/trips/sanitize.test.ts`, `tests/time/parse.test.ts`.
+- **Modified (3):**
+  - `packages/core/src/index.ts` — replaced placeholder with the full public surface from the brief; `CORE_VERSION = "0.2.0"`.
+  - `packages/core/package.json` — version `0.1.0` → `0.2.0`.
+  - `packages/core/tests/smoke.test.ts` — assertion bumped to `"0.2.0"`.
+
+Key decisions:
+- `Stop.highlights` and `Stop.food` typed as `unknown[]` because Pydantic declares them as bare `list` with no inner type — preserved the openness rather than guessing a string element type.
+- `Stop.promo` typed `Record<string, unknown> | null` to match Pydantic `dict | None`.
+- `start_date` / `end_date` left as `string` (ISO date) — that's the wire form; pure helpers shouldn't force `Date` parsing.
+- `parseStopTime` **throws** on malformed input rather than returning `Infinity` (which the frontend `toMinutes` used as a soft fallback). Pure helper should signal cleanly; the Step 11 caller composes any fallback.
+- `sanitizeTripForPublic` returns a fresh object via spread (Python mutates in place, but the brief specifies "returning a new sanitized one"). Mutation guard test included.
+- `Viewbox` exported as a readonly tuple type alias so consumers get a typed handle without leaking implementation details.
+
+Verification:
+- `cd TourCompanion && npm test` → 38/38 vitest tests across 8 files (haversine 4, name 13, viewbox 3, fence 6, slug 2, sanitize 3, parse 6, smoke 1). PASS.
+- `npm run typecheck` → exits 0 under strict mode. PASS.
+- `npm run build` → tsc emits `.d.ts` + `.js` + `.js.map` for every module under `packages/core/dist/`. PASS.
+- File layout: `find TourCompanion/packages/core/src -type f` matches the brief's layout exactly (11 files). PASS.
+- `grep -rn "from \"node:\|require(\"node:\|from 'node:" packages/core/src packages/core/tests` → zero hits. PASS.
+- `git diff --stat -- TourCompanion/server/` → empty. PASS (no Python or frontend mods).
+- FastAPI server import: `SECRET_KEY=test DATABASE_URL=sqlite:///tmp/test.db UPLOAD_DIR=/tmp/tc-uploads .venv/bin/python -c "from app.main import app"` → `IMPORT_OK`. PASS.
+
+### Step 8 — Monorepo workspace skeleton — Status: COMPLETE
 *Date: 2026-05-16*
 
 Scope: introduce npm-workspaces monorepo layout under `TourCompanion/packages/` to set up the standalone-iOS initiative. No server/frontend code moved; no business logic ported.

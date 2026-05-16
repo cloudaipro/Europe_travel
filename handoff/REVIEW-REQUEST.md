@@ -1,33 +1,47 @@
-# Review Request — Step 8 — Monorepo Workspace Skeleton
+# Review Request — Step 9 — Port Pure Helpers Python → TypeScript
 
 **Ready for Review: YES**
 **Builder:** Bob
 **Date:** 2026-05-16
-**Step:** 8 (Monorepo workspace skeleton — no logic, no Capacitor)
+**Step:** 9 (Pure helpers ported into `@tourcompanion/core`; no Python/frontend changes)
 
 ---
 
 ## Summary
 
-Set up npm-workspaces monorepo under `TourCompanion/packages/` with a `core` TS skeleton plus `ios` and `web` placeholder dirs. No server or frontend code moved. FastAPI app verified to still start.
+Ported all pure business helpers from the Python backend + KG-7 frontend parser into `packages/core/src/`. Strict TS, pure functions, snake_case wire types, camelCase exports, comprehensive vitest coverage. Public surface and `CORE_VERSION` bumped per brief. Web/server still use the Python originals — Step 11 rewires them.
 
 ---
 
-## Files Added (all new — no existing files modified)
+## Files Added (11 new)
 
 | Path | Lines | One-sentence rationale |
 |------|-------|------------------------|
-| `TourCompanion/package.json` | 1–10 | Root workspaces manifest; fan-out scripts for `build`/`test`/`typecheck` via `--workspaces --if-present`. |
-| `TourCompanion/tsconfig.base.json` | 1–15 | Shared strict TS config (ES2022, declaration, sourceMap, esModuleInterop, skipLibCheck) extended by every package. |
-| `TourCompanion/.gitignore` | 1–5 | Standard ignores: `node_modules/`, `dist/`, `*.log`, `.DS_Store`, `coverage/`. |
-| `TourCompanion/package-lock.json` | (generated) | Committed per brief — locks the 80 transitive deps pulled in by npm install. |
-| `TourCompanion/packages/core/package.json` | 1–19 | Defines `@tourcompanion/core@0.1.0` (private, ESM) with `typescript@^5`, `vitest@^1`, `@types/node@^20` dev deps and `build`/`test`/`typecheck` scripts. |
-| `TourCompanion/packages/core/tsconfig.json` | 1–8 | Extends base; sets `rootDir: ./src`, `outDir: ./dist`, `include: ["src/**/*"]`. |
-| `TourCompanion/packages/core/src/index.ts` | 1 | Sole placeholder export `CORE_VERSION = "0.1.0"`. |
-| `TourCompanion/packages/core/tests/smoke.test.ts` | 1–8 | Vitest smoke test asserts `CORE_VERSION === "0.1.0"`. |
-| `TourCompanion/packages/core/README.md` | 1–5 | "Empty in Step 8; logic ports in Step 9." Notes Node 20 LTS as runtime target. |
-| `TourCompanion/packages/ios/README.md` | 1–3 | Placeholder — Capacitor scaffold in Step 12. |
-| `TourCompanion/packages/web/README.md` | 1–3 | Placeholder — frontend moves here in Step 11. |
+| `TourCompanion/packages/core/src/types/trip.ts` | 1–96 | TS interfaces mirroring Pydantic `StopOut`/`DayOut`/`BookingOut`/`CompanionDocOut`/`RouteAssetOut`/`StreetFoodOut`/`TripSummary`/`TripDetail` — snake_case fields, `\| null` for Optional. |
+| `TourCompanion/packages/core/src/types/api.ts` | 1–26 | `IngestIn`/`IngestOut`/`CheckInIn`/`JournalIn`/`VoiceNoteIn` — request/response payload shapes. |
+| `TourCompanion/packages/core/src/types/index.ts` | 1–2 | Re-exports all types. |
+| `TourCompanion/packages/core/src/geo/haversine.ts` | 1–23 | `haversineKm(aLat, aLng, bLat, bLng): number` — direct port of Python `haversine_km`. |
+| `TourCompanion/packages/core/src/geo/name.ts` | 1–55 | `cleanName`/`extractCity`/`buildQueries` — POI name normalization + Nominatim query candidate order preserved. |
+| `TourCompanion/packages/core/src/geo/viewbox.ts` | 1–13 | `viewboxAround(lat,lng,delta)` → `[lonMin,latMin,lonMax,latMax]`; exported `Viewbox` tuple type. |
+| `TourCompanion/packages/core/src/planner/fence.ts` | 1–15 | `stripCodeFence(text)` — unwraps ```json/``` fences with the same edge-case handling as the Python original. |
+| `TourCompanion/packages/core/src/trips/slug.ts` | 1–27 | `generateSlug()` — Web Crypto `getRandomValues` → base64url → first 10 chars; matches Python `secrets.token_urlsafe(8)[:10]`. |
+| `TourCompanion/packages/core/src/trips/sanitize.ts` | 1–28 | `sanitizeTripForPublic(detail)` — immutable copy that zeros IDs and drops journal/bookings/published_slug + per-stop note/check_in_count/photo_paths/voice_transcript. |
+| `TourCompanion/packages/core/src/time/parse.ts` | 1–33 | `parseStopTime("HH:MM [+N]")` + `stopTimeSortKey(time)` — KG-7 parser; throws on malformed input. |
+| `TourCompanion/packages/core/tests/geo/haversine.test.ts` | 1–28 | Identity, Berlin→Paris (≈878 km ±5), antipodal half-circumference, symmetry. |
+| `TourCompanion/packages/core/tests/geo/name.test.ts` | 1–79 | cleanName paren/verb/suffix/unicode + extractCity postal + buildQueries order/dedupe/empty cases. |
+| `TourCompanion/packages/core/tests/geo/viewbox.test.ts` | 1–22 | Bounds around (48.2,16.4)±0.1, zero-delta collapse, ordering invariant. |
+| `TourCompanion/packages/core/tests/planner/fence.test.ts` | 1–30 | ```json fence unwrap, plain text passthrough, whitespace handling, inline-fence edge case. |
+| `TourCompanion/packages/core/tests/trips/slug.test.ts` | 1–25 | Length 10, urlsafe alphabet, 1000-call no-collision. |
+| `TourCompanion/packages/core/tests/trips/sanitize.test.ts` | 1–98 | Strips listed fields, leaves public fields intact, does not mutate input. |
+| `TourCompanion/packages/core/tests/time/parse.test.ts` | 1–45 | Same-day, +N next-day, malformed throws, sort-key ordering (00:24+1 > 23:42). |
+
+## Files Modified (3)
+
+| Path | Lines | Change |
+|------|-------|--------|
+| `TourCompanion/packages/core/src/index.ts` | 1–13 | Replaced placeholder with full public surface per brief; `CORE_VERSION = "0.2.0"`. |
+| `TourCompanion/packages/core/package.json` | 3 | Version bumped `0.1.0` → `0.2.0`. |
+| `TourCompanion/packages/core/tests/smoke.test.ts` | 5–7 | Updated assertion to `"0.2.0"`. |
 
 ---
 
@@ -35,22 +49,26 @@ Set up npm-workspaces monorepo under `TourCompanion/packages/` with a `core` TS 
 
 | Check | Result |
 |-------|--------|
-| `find TourCompanion/packages -type f -not -path '*/node_modules/*' -not -path '*/dist/*'` lists exactly the 8 brief-specified files | PASS — listing matches verbatim (3 READMEs + core pkg.json + core tsconfig + src/index.ts + tests/smoke.test.ts) |
-| `cd TourCompanion && npm install` | PASS — 80 packages added, no errors |
-| `cd TourCompanion && npm test` exits 0 | PASS — 1/1 vitest test passing |
-| `cd TourCompanion && npm run build` exits 0, produces `packages/core/dist/index.js` | PASS — `dist/index.js`, `dist/index.d.ts`, `dist/index.js.map` emitted |
-| `cd TourCompanion && npm run typecheck` exits 0 | PASS |
-| Existing FastAPI server starts cleanly via `./TourCompanion/server/run_local.sh` | PASS — verified equivalent: `from app.main import app` imports cleanly with run_local.sh env vars; `uvicorn app.main:app --port 8765` bound the port and `/docs` returned HTTP 200; process killed after verification |
-| No files outside the brief's allowed scope modified | PASS — only the 11 files above were added; no existing file mutated |
+| `cd TourCompanion && npm test` exits 0 with ≥ 20 test cases | PASS — 38/38 tests across 8 files |
+| `cd TourCompanion && npm run typecheck` exits 0 (strict mode) | PASS |
+| `cd TourCompanion && npm run build` produces `packages/core/dist/` with `.d.ts` per exported symbol | PASS — `.d.ts` emitted for every module (index, types/*, geo/*, planner/*, trips/*, time/*) |
+| `find TourCompanion/packages/core/src -type f` matches brief layout | PASS — 11/11 source files exactly as specified |
+| No `import` from `node:*` modules | PASS — grep returns zero matches |
+| No Python files modified | PASS — `git diff --stat TourCompanion/server/` empty |
+| No frontend files modified | PASS — `git diff --stat TourCompanion/server/frontend/` empty |
+| Existing FastAPI server still starts | PASS — `from app.main import app` returns `IMPORT_OK` under venv with `SECRET_KEY` + `DATABASE_URL` + `UPLOAD_DIR` env |
 
 ---
 
 ## Decisions Made (Inside Builder's Authority)
 
-1. **`@tourcompanion/core` is `private: true`.** Brief did not specify. Safer default — prevents accidental publish. Easy to flip later if owner wants public registry.
-2. **`"type": "module"` on the core package.** With `module: ES2022` emit, ESM at runtime is the cleanest path for Node 20 + iOS/web consumers. Test file imports `../src/index.js` (TypeScript-friendly with vitest; build-only path resolution).
-3. **Added `forceConsistentCasingInFileNames`, `resolveJsonModule`, `isolatedModules`** to `tsconfig.base.json` beyond the brief's enumerated list. Standard hygiene for strict TS in a monorepo; no impact on consumers since they only extend.
-4. **Did not modify or create repo-root `package.json`** — brief flag respected (`/Users/alex/data/work/Europe_travel/package.json` does not exist; left that way).
+1. **`Stop.highlights` and `Stop.food` typed as `unknown[]`** — Pydantic declares them as bare `list` with no inner type; preserved that shape rather than guessing (no `: list[str]` annotation in `schemas.py`). Consumers can refine when the schema tightens.
+2. **`Stop.promo` typed as `Record<string, unknown> | null`** — Pydantic uses `dict | None`; chose the most permissive but well-formed shape.
+3. **`start_date` / `end_date` typed as `string` (ISO date)** — Pydantic's `date` becomes a `YYYY-MM-DD` string at the JSON boundary; using `string` avoids forcing `Date` parsing in pure helpers.
+4. **`parseStopTime` throws on malformed input** rather than returning `Infinity` like the frontend `toMinutes`. The frontend sort wraps the call in a permissive sentinel; the pure helper should signal bad input clearly. `stopTimeSortKey` is the building block the new sort caller will compose with whatever fallback they need.
+5. **`sanitizeTripForPublic` does not mutate input** — Python mutates in place; the brief says "returning a new sanitized one", so the TS version is immutable via spread. Verified by a dedicated test.
+6. **`Viewbox` exported as a readonly tuple type alias** alongside `viewboxAround` — gives consumers a typed handle for the 4-tuple without leaking implementation details.
+7. **`CORE_VERSION` bumped to `0.2.0` in both `src/index.ts` and `package.json`** and the smoke test updated, per brief instruction.
 
 ---
 
@@ -68,7 +86,7 @@ None.
 
 ## Out of Scope (Not Touched)
 
-- `TourCompanion/server/` — untouched (verified still boots).
-- `TourCompanion/server/frontend/` — untouched (Step 11 move).
-- Capacitor / iOS deps — untouched (Step 12).
-- Root repo `.gitignore`, `CLAUDE.md`, `docker-compose.yml`, etc. — untouched.
+- `TourCompanion/server/app/geocoder.py` / `planner.py` / `routes/trips.py` / `schemas.py` — untouched (Step 11 retires duplicates).
+- `TourCompanion/server/frontend/index.html` — untouched (Step 11 swaps `toMinutes` to `stopTimeSortKey`).
+- `TourCompanion/packages/ios/` and `TourCompanion/packages/web/` — still placeholder READMEs.
+- Root `package.json`, `docker-compose.yml`, `CLAUDE.md` — untouched.
