@@ -2,167 +2,110 @@
 
 ## Initiative — Standalone iOS Version (continued)
 
-Steps 8-10 complete. Now Step 11.
+Steps 8-11 complete. Now Step 12.
 
 ---
 
-## Step 11 — Web Frontend Uses `@tourcompanion/core`
+## Step 12 — Capacitor iOS Scaffold
 
-**Scope:** Move the existing `server/frontend/` into `packages/web/` and have it consume the shared `@tourcompanion/core` package. Add a small esbuild bundling step that produces a single browser IIFE exposing the core API on `window.TC` (concise namespace). Replace the inline KG-7 `toMinutes` function in `index.html` with a `window.TC.stopTimeSortKey` call to prove the wiring. Update FastAPI to serve from the new path. **Server-side LLM/Anthropic path stays in Python** — the web stack keeps server-side plan ingestion (no API key exposed in browser). All existing endpoints + features must continue to work.
+**Scope:** Initialize Capacitor in `packages/ios/`. Bundle the existing web frontend into the iOS app. Generate the Xcode project. Successful `xcodebuild` against the iOS simulator SDK proves the scaffold builds. **Actual simulator launch + runtime testing is manual (Owner)** — out of scope for headless agent verification.
 
-### What Moves
+**App identity locked:**
+- Bundle ID: `com.cloudaipro.tourcompanion`
+- App name: `TourCompanion`
+- Display name: `TourCompanion`
 
-```
-TourCompanion/server/frontend/index.html  →  TourCompanion/packages/web/public/index.html
-```
+Environment confirmed: Xcode 26.3, CocoaPods 1.16.2 installed on this machine.
 
-After move, the on-disk path `TourCompanion/server/frontend/` is **deleted** (no symlink, no duplicate).
+### Build Order
 
-### New Files
+1. `cd TourCompanion/packages/ios/`. Remove existing placeholder README contents (or replace).
 
-```
-TourCompanion/packages/web/
-  package.json          # name @tourcompanion/web, depends on @tourcompanion/core (workspace:*) + esbuild
-  build.mjs             # esbuild script: bundles core → public/core.bundle.js as IIFE on globalThis.TC
-  public/
-    index.html          # moved from server/frontend
-    core.bundle.js      # generated; gitignored at packages/web/public/core.bundle.js
-  .gitignore            # public/core.bundle.js, node_modules/, dist/
-  README.md
-```
-
-### `packages/web/package.json`
-
-```json
-{
-  "name": "@tourcompanion/web",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "build": "node build.mjs",
-    "typecheck": "echo 'no TS in web yet'",
-    "test": "echo 'no tests yet'"
-  },
-  "dependencies": {
-    "@tourcompanion/core": "*"
-  },
-  "devDependencies": {
-    "esbuild": "^0.21"
-  }
-}
-```
-
-### `packages/web/build.mjs`
-
-```js
-import { build } from "esbuild";
-import { mkdir } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
-
-const here = dirname(fileURLToPath(import.meta.url));
-await mkdir(resolve(here, "public"), { recursive: true });
-
-await build({
-  entryPoints: [resolve(here, "src/entry.ts")],
-  bundle: true,
-  format: "iife",
-  globalName: "TC",
-  target: ["es2020"],
-  outfile: resolve(here, "public/core.bundle.js"),
-  sourcemap: true,
-  logLevel: "info"
-});
-```
-
-### `packages/web/src/entry.ts`
-
-```ts
-// Re-export the slice of @tourcompanion/core that the web frontend needs.
-// Exposed on globalThis.TC by the IIFE bundle.
-export {
-  stopTimeSortKey,
-  parseStopTime,
-  cleanName,
-  extractCity,
-  buildQueries,
-  haversineKm,
-  viewboxAround,
-  generateSlug,
-  sanitizeTripForPublic,
-  CORE_VERSION,
-} from "@tourcompanion/core";
-```
-
-### Frontend Wiring Changes (`packages/web/public/index.html`)
-
-**Single targeted change** in this step — prove the bundle works. Do not rewrite the SPA.
-
-1. Add `<script src="/core.bundle.js"></script>` in `<head>` (before existing inline `<script>` blocks).
-2. Replace the inline KG-7 helper near line 1559:
-   ```js
-   const toMinutes = (t) => { /* current inline impl */ };
+2. Create `package.json`:
+   ```json
+   {
+     "name": "@tourcompanion/ios",
+     "version": "0.1.0",
+     "private": true,
+     "scripts": {
+       "build:web": "npm run build --workspace=@tourcompanion/web && node copy-web.mjs",
+       "cap:sync": "npx cap sync ios",
+       "cap:open": "npx cap open ios",
+       "build:ios": "npm run build:web && npm run cap:sync && xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO | tail -30"
+     },
+     "dependencies": {
+       "@capacitor/core": "^6",
+       "@capacitor/ios": "^6",
+       "@capacitor/cli": "^6",
+       "@tourcompanion/core": "*"
+     }
+   }
    ```
-   with:
-   ```js
-   const toMinutes = (t) => {
-     // Delegate to @tourcompanion/core (KG-7 +1 parser).
-     try { return TC.stopTimeSortKey(t); } catch { return Infinity; }
+
+3. From `TourCompanion/` root, `npm install` to add Capacitor deps to the workspace.
+
+4. Create `TourCompanion/packages/ios/capacitor.config.ts`:
+   ```ts
+   import type { CapacitorConfig } from "@capacitor/cli";
+
+   const config: CapacitorConfig = {
+     appId: "com.cloudaipro.tourcompanion",
+     appName: "TourCompanion",
+     webDir: "www",
+     server: {
+       androidScheme: "https"
+     }
    };
+
+   export default config;
    ```
-   The `try/catch` preserves the old `Infinity`-on-bad-input contract that callers relied on.
 
-That is the only frontend code edit in this step. Further migrations happen incrementally in later phases (out of scope for Step 11).
+5. Create `TourCompanion/packages/ios/copy-web.mjs` — copies `packages/web/public/*` → `packages/ios/www/` (recursive copy, overwrites; create `www/` if missing). Pure node, no extra deps. Excludes `core.bundle.js.map`.
 
-### Server Wiring Changes (`TourCompanion/server/app/main.py`)
+6. Run `npm run build:web` from `packages/ios/`. Verify `packages/ios/www/index.html` + `www/core.bundle.js` exist.
 
-Update `frontend_dir`:
+7. From `packages/ios/`: `npx cap init "TourCompanion" "com.cloudaipro.tourcompanion" --web-dir=www`. If the config file already exists (from step 4), `--web-dir=www` is the only thing this writes; check `cap init` behavior and skip if it errors out due to existing config.
 
-```python
-# OLD:
-frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
+8. `npx cap add ios` — generates `packages/ios/ios/App/` Xcode project + runs `pod install`. May take 2-5 minutes.
 
-# NEW: points at the monorepo packages/web/public bundle.
-frontend_dir = (
-    Path(__file__).resolve().parent.parent.parent / "packages" / "web" / "public"
-)
-```
+9. `npx cap sync ios` — copies `www/` into the iOS app + installs CocoaPods.
 
-`server/app/main.py` is the only Python file modified. No other Python changes.
+10. Verify `packages/ios/ios/App/App.xcworkspace/` exists and contains pods.
 
-### Build / Run Sequence
+11. `xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO` — must succeed. Pipe to `tail -30` to keep log readable. Confirm `BUILD SUCCEEDED` appears.
 
-1. From `TourCompanion/`: `npm install` (picks up new web package).
-2. `npm run build` — builds core first, then web bundles `core.bundle.js`.
-3. `./TourCompanion/server/run_local.sh` — server now serves the relocated frontend.
+12. Update `TourCompanion/.gitignore` (already exists) — add `packages/ios/ios/App/Pods/`, `packages/ios/ios/App/build/`, `packages/ios/www/`, `packages/ios/node_modules/`, `packages/ios/ios/App/DerivedData/`. CocoaPods + build artifacts are not committed; `Podfile.lock` IS committed.
 
-### `run_local.sh` Update
-
-If the script references `server/frontend/`, update path. If not, leave alone.
-Grep: `grep -n "frontend" TourCompanion/server/run_local.sh`.
+13. Update `packages/ios/README.md` — document the dev loop:
+    ```
+    npm run build:web    # bundle core + copy web/public → www/
+    npm run cap:sync     # sync www/ into iOS app
+    npm run cap:open     # open Xcode (manual run/debug)
+    npm run build:ios    # full headless build (CI / scaffold proof)
+    ```
 
 ### Flags Bob Must Not Guess At
 
-- **Do NOT rewrite index.html.** One inline replacement (KG-7 `toMinutes`). Everything else stays inline JS.
-- **Do NOT modify Python planner.py.** Server-side LLM path stays. Only `main.py` `frontend_dir` line changes.
-- **Do NOT remove the Anthropic dependency from server.** Web is server-side-LLM.
-- **No new server-side auth changes, no new endpoints.**
-- **Verify `core.bundle.js` exposes `window.TC`** — open generated file, grep for `var TC = `.
-- **Bundle is gitignored.** `packages/web/public/core.bundle.js` and `.js.map` not committed. CI / dev builds regenerate.
-- **`run_local.sh` must build the bundle** before starting uvicorn, OR document that the user must `npm run build` first. Pick: add `(cd .. && npm run build --workspace=@tourcompanion/web)` to the top of `run_local.sh` IF the script is in `server/` and a relative `cd ..` reaches `TourCompanion/`. Verify by reading the script first.
+- **`cap add ios` writes Swift + Podfile + project.pbxproj.** All of these go in git (they ARE the iOS app source).
+- **Pods/ dir is gitignored.** Lockfile (`Podfile.lock`) is committed.
+- **Do NOT** run the simulator. `xcodebuild` headless build is the proof.
+- **Capacitor 6.x** — pin major to keep stable across the rest of the roadmap. iOS plugin packages added in later steps will match this major.
+- **`copy-web.mjs` is straightforward** — `fs.cp(src, dest, {recursive:true, force:true})` is enough on Node 20.
+- **`cap init` may be interactive** — pass all flags. If it still hangs, write `capacitor.config.ts` directly and skip `cap init` (Capacitor only needs the config file; `cap add ios` reads from it).
+- **Bundle ID + app name are locked.** Do not improvise.
+- **No iOS-runtime detection added to index.html in this step.** Step 13+ branches behavior. For Step 12 the page may fail at runtime (server fetch 404s) — that's fine. The scaffold proof is build success, not functional app.
 
 ### Verification Checklist
 
-- [ ] `find TourCompanion/server/frontend` — fails (directory removed)
-- [ ] `find TourCompanion/packages/web -type f -not -path '*/node_modules/*' -not -name 'core.bundle.js*'` — lists exactly the new files
-- [ ] `cd TourCompanion && npm install && npm run build` succeeds
-- [ ] `TourCompanion/packages/web/public/core.bundle.js` exists and starts with `var TC` (or contains `globalThis.TC`)
-- [ ] `npm test` still passes (67 core tests, no web tests yet)
-- [ ] `npm run typecheck` exit 0
-- [ ] `./TourCompanion/server/run_local.sh` starts; `curl http://127.0.0.1:<port>/` returns the index.html (or 200 with html body)
-- [ ] `curl http://127.0.0.1:<port>/core.bundle.js` returns 200 with JS body
-- [ ] No other Python files modified
+- [ ] `packages/ios/capacitor.config.ts` exists with locked appId + appName
+- [ ] `packages/ios/ios/App/App.xcworkspace/` exists
+- [ ] `packages/ios/ios/App/Podfile.lock` exists and is committed
+- [ ] `packages/ios/www/index.html` + `www/core.bundle.js` present after build:web
+- [ ] `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` exits 0 with `BUILD SUCCEEDED`
+- [ ] `find packages/ios -maxdepth 3 -type d -name Pods` finds it; `git check-ignore packages/ios/ios/App/Pods` confirms ignored
+- [ ] `git status` shows new files: capacitor.config.ts, copy-web.mjs, package.json, README.md, ios/App/* sources, Podfile, Podfile.lock — no Pods, no www, no node_modules
+- [ ] Existing FastAPI server still starts (no Python changes)
+- [ ] `npm test` (core) still passes 67/67
 
 ---
 

@@ -3,3 +3,10 @@ dist/
 *.log
 .DS_Store
 coverage/
+
+# Capacitor iOS (packages/ios)
+packages/ios/www/
+packages/ios/node_modules/
+packages/ios/ios/App/Pods/
+packages/ios/ios/App/build/
+packages/ios/ios/App/DerivedData/

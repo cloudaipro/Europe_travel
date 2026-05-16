@@ -1,63 +1,109 @@
-# Review Request — Step 11
+# Review Request — Step 12
 
-**Step:** 11 — Web frontend consumes `@tourcompanion/core` via esbuild IIFE bundle
+**Step:** 12 — Capacitor iOS scaffold
+**Ready for Review:** YES
 **Builder:** Bob
 **Date:** 2026-05-16
-**Ready for Review: YES**
 
 ---
 
-## What changed (one sentence per file)
+## Summary
 
-### Moved
-- `TourCompanion/server/frontend/index.html` → `TourCompanion/packages/web/public/index.html` — relocate the SPA into the monorepo `packages/web/` workspace (git mv); old directory removed.
+Stood up `TourCompanion/packages/ios/` as a Capacitor 6 wrapper around the existing web SPA. Web bundle copies into `www/`, `npx cap add ios` generated the Xcode project + Podfile, headless `xcodebuild` against the simulator SDK exits 0 with `BUILD SUCCEEDED`. No native plugins yet (Step 13+). No iOS-runtime branching in `index.html` yet — brief §"Flags Bob Must Not Guess At" explicitly defers it; the scaffold proof is build success, not runtime function.
 
-### New
-- `TourCompanion/packages/web/package.json` (lines 1–17) — `@tourcompanion/web` workspace package, depends on `@tourcompanion/core` and `esbuild ^0.21`.
-- `TourCompanion/packages/web/build.mjs` (lines 1–18) — esbuild driver: bundles `src/entry.ts` → `public/core.bundle.js`, IIFE, `globalName: "TC"`, target `es2020`, sourcemap on.
-- `TourCompanion/packages/web/src/entry.ts` (lines 1–14) — re-exports the curated core slice the SPA needs (stopTimeSortKey, parseStopTime, cleanName, extractCity, buildQueries, haversineKm, viewboxAround, generateSlug, sanitizeTripForPublic, CORE_VERSION).
-- `TourCompanion/packages/web/.gitignore` (lines 1–4) — gitignores generated bundle + map, node_modules/, dist/.
-- `TourCompanion/packages/web/README.md` (lines 1–28) — overwrites placeholder with build/serve instructions; documents Step 11 scope.
-
-### Edited (Python — exactly one file as required by brief)
-- `TourCompanion/server/app/main.py` line 79 (+3/-1) — `frontend_dir` now resolves to `parent.parent.parent / "packages" / "web" / "public"`. No other Python changes.
-
-### Edited (shell)
-- `TourCompanion/server/run_local.sh` after line 30 (added 7 lines) — pre-uvicorn web bundle build: `(cd .. && npm install --silent && npm run build --workspace=@tourcompanion/web --silent)` guarded by `command -v npm` so the API still boots in minimal envs.
-
-### Edited (SPA — exactly two surgical edits as required by brief)
-- `TourCompanion/packages/web/public/index.html` line 7 — inserted `<script src="/core.bundle.js"></script>` after `<title>`, before Tailwind CDN.
-- `TourCompanion/packages/web/public/index.html` lines 1559–1565 — replaced the 7-line inline KG-7 `toMinutes` impl with a 3-line version that delegates to `TC.stopTimeSortKey(t)` and falls back to `Infinity` in a `try/catch` so callers in `applyAutoSortToDay` (line 1567) keep their numeric-sort contract.
-
-**No other SPA edits.** Inline JS volume unchanged everywhere else in `index.html`.
+Bundle identity locked exactly as specified:
+- `appId: "com.cloudaipro.tourcompanion"`
+- `appName: "TourCompanion"`
 
 ---
 
-## Verification results
+## Files to review
 
-- `find TourCompanion/server/frontend` → "No such file or directory" — pass.
-- `find TourCompanion/packages/web -type f -not -path '*/node_modules/*' -not -name 'core.bundle.js*'` → lists exactly the 6 expected files — pass.
-- `cd TourCompanion && npm install && npm run build` → succeeds; emits `packages/web/public/core.bundle.js` (5.3KB) + `.js.map` (10.3KB).
-- `head -c 100 packages/web/public/core.bundle.js` → `var TC = (() => { ... })` — pass (IIFE exposes `window.TC`).
-- `npm test` → 67/67 core tests pass; web/ios placeholders no-op.
-- `npm run typecheck` → exit 0 across all workspaces.
-- Live server smoke (`PORT=8765 ./run_local.sh`):
-  - `GET /` → 200, `text/html`, 157493 bytes (index.html with `/core.bundle.js` script tag visible in head).
-  - `GET /core.bundle.js` → 200, `text/javascript`, 5441 bytes; body starts `var TC = (() => {`.
-- `git diff --stat HEAD -- '*.py'` → only `server/app/main.py | 4 +++-` — pass.
+### New — `packages/ios/` root (human-authored)
+
+| File | Lines | What it does |
+|---|---|---|
+| `TourCompanion/packages/ios/package.json` | 1–17 | `@tourcompanion/ios` workspace; Capacitor 6 deps + `@tourcompanion/core` `*`; scripts `build:web` / `cap:sync` / `cap:open` / `build:ios` per brief verbatim. |
+| `TourCompanion/packages/ios/capacitor.config.ts` | 1–12 | Locked appId / appName / webDir / androidScheme. |
+| `TourCompanion/packages/ios/copy-web.mjs` | 1–40 | Pure-Node copy from `packages/web/public/` → `packages/ios/www/`. Rewrites `www/` from scratch each run. Excludes `core.bundle.js.map` via a `Set`. |
+| `TourCompanion/packages/ios/README.md` | 1–28 | Replaces placeholder. Documents dev loop + identity + what is/isn't committed. |
+
+### New — `packages/ios/ios/` (Capacitor-generated, committed)
+
+| File | Notes |
+|---|---|
+| `packages/ios/ios/.gitignore` | Capacitor template — ignores `App/build`, `App/Pods`, `App/App/public`, `DerivedData`, `xcuserdata`, regenerated config files. Untouched. |
+| `packages/ios/ios/App/App.xcodeproj/project.pbxproj` | Capacitor template; bundle id baked in via project settings. |
+| `packages/ios/ios/App/App.xcworkspace/{contents.xcworkspacedata, xcshareddata/IDEWorkspaceChecks.plist}` | 2 files. |
+| `packages/ios/ios/App/App/AppDelegate.swift` | Capacitor default. |
+| `packages/ios/ios/App/App/Info.plist` | Capacitor default. |
+| `packages/ios/ios/App/App/Base.lproj/{LaunchScreen,Main}.storyboard` | Capacitor defaults. |
+| `packages/ios/ios/App/App/Assets.xcassets/{AppIcon,Splash}` | Capacitor placeholder art. |
+| `packages/ios/ios/App/Podfile` | 22 lines — Capacitor 6 pod refs via relative path into `node_modules`. |
+| `packages/ios/ios/App/Podfile.lock` | Pins Capacitor 6.2.1, CapacitorCordova 6.2.1; CocoaPods 1.16.2. |
+
+### Modified
+
+| File | Lines | Change |
+|---|---|---|
+| `TourCompanion/.gitignore` | 7–12 (appended) | Belt-and-suspenders block: `packages/ios/www/`, `packages/ios/node_modules/`, `packages/ios/ios/App/{Pods,build,DerivedData}/`. Capacitor's own `ios/.gitignore` already covers most of this; the workspace-level rules make the intent explicit. |
+| `TourCompanion/package-lock.json` | (machine-generated) | `npm install` resolved 93 added packages for Capacitor toolchain. |
+
+### Untouched (proof of scope discipline)
+
+- `TourCompanion/server/` — zero Python edits this step.
+- `TourCompanion/packages/web/` — unchanged.
+- `TourCompanion/packages/core/` — unchanged.
+- `TourCompanion/package.json` — no root-level changes needed (workspaces glob already covers `packages/*`).
 
 ---
 
-## Open Questions
+## Verification I ran
 
-None. Brief was pre-approved by Architect; scope-locked to the relocation, bundle wiring, and single inline KG-7 delegation. No ambiguity arose during build.
+- `npm install` from `TourCompanion/` → 93 packages added, no errors.
+- `npm run build:web` from `packages/ios/` → `www/index.html` (153.8kB) + `www/core.bundle.js` (5.3kB), no `.map`.
+- `npx cap add ios` → success in 2.04s; pod install succeeded.
+- `npx cap sync ios` → success in 1.531s; re-ran pod install cleanly.
+- `xcodebuild ... build CODE_SIGNING_ALLOWED=NO | tail -30` → `** BUILD SUCCEEDED **`. Only warnings: Capacitor's standard "Embed Pods Frameworks runs every build" (cosmetic) and "Metadata extraction skipped. No AppIntents.framework dependency found" (expected for a no-AppIntents app).
+- `npm test` from `TourCompanion/` → 67/67 vitest tests pass across 14 files. Unchanged from Step 11.
+- `SECRET_KEY=test ... .venv/bin/python -c "from app.main import app"` → `IMPORT_OK`. FastAPI server still imports.
+- `git check-ignore -v packages/ios/ios/App/Pods` → matched by Capacitor's `ios/.gitignore` line 4. `packages/ios/www` matched by my workspace-level rule. `packages/ios/node_modules` matched by the existing root `node_modules/` rule.
+- `git status --short | grep packages/ios | wc -l` → 21 new files; manual scan confirms zero Pods / www / node_modules / App/App/public entries.
 
 ---
 
-## Out-of-scope reminders for Richard
+## Verification checklist (from brief)
 
-- Other inline call-sites for `parseStopTime`, `cleanName`, `generateSlug`, etc. were NOT switched in this step (brief: "That is the only frontend code edit in this step"). They are exposed on `TC` ready for future incremental migration.
-- Python `planner.py` and Anthropic dependency are intentionally untouched — web stays server-side-LLM.
-- iOS bundling is Step 15.
+- [x] `packages/ios/capacitor.config.ts` exists with locked appId + appName
+- [x] `packages/ios/ios/App/App.xcworkspace/` exists
+- [x] `packages/ios/ios/App/Podfile.lock` exists and is committed
+- [x] `packages/ios/www/index.html` + `www/core.bundle.js` present after build:web
+- [x] `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` exits 0 with `BUILD SUCCEEDED`
+- [x] `find packages/ios -maxdepth 3 -type d -name Pods` finds it; `git check-ignore` confirms ignored
+- [x] `git status` shows new files: capacitor.config.ts, copy-web.mjs, package.json, README.md, ios/App/* sources, Podfile, Podfile.lock — no Pods, no www, no node_modules
+- [x] Existing FastAPI server still starts (no Python changes)
+- [x] `npm test` (core) still passes 67/67
+
+---
+
+## Judgment calls Richard may want to confirm
+
+1. **Skipped `npx cap init` entirely.** Brief authorizes this if interactive prompts hang; wrote `capacitor.config.ts` by hand instead. `cap add ios` succeeded on first try and emitted `ios/App/App/capacitor.config.json` from this TS source.
+2. **`copy-web.mjs` wipes `www/` before each copy** rather than merging. Cheaper to reason about; cost is negligible (2 entries, ~5ms).
+3. **Kept workspace-level `.gitignore` additions** even though Capacitor's auto-generated `packages/ios/ios/.gitignore` already covers most. Future iOS-plugin steps may add paths outside Capacitor's template; one canonical list at workspace root is easier to maintain.
+4. **Did not touch app icon / splash artwork.** Capacitor placeholders remain; brief doesn't ask for branding in Step 12.
+5. **No iOS-runtime branch in `index.html`** — brief explicitly defers this to Step 13+. The SPA will fail at runtime when launched in the simulator (fetches a non-existent server). That's fine — Step 12's deliverable is build success.
+
+---
+
+## Open questions
+
+None. Brief was unambiguous; every checklist item is green.
+
+## Escalate to Architect
+
+None.
+
+---
 
 **Ready for Review: YES**

@@ -5,13 +5,63 @@
 
 ## Current Status
 
-**Active step:** Step 11 — Web frontend uses `@tourcompanion/core` (esbuild bundle on `window.TC`) — awaiting review
+**Active step:** Step 12 — Capacitor iOS scaffold — awaiting review
 **Last cleared:** Step 9 — Port Pure Helpers Python → TypeScript — 2026-05-16
-**Pending deploy:** NO (committed locally; no remote configured)
+**Pending deploy:** NO (uncommitted; awaiting Richard)
 
 ---
 
 ## Step History
+
+### Step 12 — Capacitor iOS scaffold — Status: AWAITING REVIEW
+*Date: 2026-05-16*
+
+Scope: stand up `packages/ios/` as a Capacitor 6 wrapper around `@tourcompanion/web`. Bundle web SPA into `www/`, generate the iOS Xcode project + Podfile via `npx cap add ios`, and prove the scaffold with a headless `xcodebuild` against the simulator SDK. No runtime detection / native plugins yet — Step 13+.
+
+Files changed:
+- **New (4 in `packages/ios/` root):**
+  - `TourCompanion/packages/ios/package.json` — `@tourcompanion/ios` workspace; deps `@capacitor/core`, `@capacitor/ios`, `@capacitor/cli` (all `^6`) + `@tourcompanion/core` (`*`); scripts `build:web` / `cap:sync` / `cap:open` / `build:ios` per brief.
+  - `TourCompanion/packages/ios/capacitor.config.ts` — locks `appId: "com.cloudaipro.tourcompanion"`, `appName: "TourCompanion"`, `webDir: "www"`, `server.androidScheme: "https"`.
+  - `TourCompanion/packages/ios/copy-web.mjs` — pure Node 20+ (no deps); wipes + recreates `www/`, copies `packages/web/public/*` recursively with `fs.cp({recursive,force})`, excludes `core.bundle.js.map`.
+  - `TourCompanion/packages/ios/README.md` — replaced placeholder; documents the 4-step dev loop, locked identity, what is/isn't committed.
+- **New (Capacitor-generated, committed under `packages/ios/ios/`):**
+  - `ios/.gitignore` (Capacitor template — already covers `App/build`, `App/Pods`, `App/App/public`, `DerivedData`, `xcuserdata`, regenerated config files)
+  - `ios/App/App.xcodeproj/project.pbxproj`
+  - `ios/App/App.xcworkspace/` (2 files)
+  - `ios/App/App/AppDelegate.swift`, `Info.plist`, `Base.lproj/{LaunchScreen,Main}.storyboard`, `Assets.xcassets/` (AppIcon + Splash)
+  - `ios/App/Podfile` + `ios/App/Podfile.lock` (Capacitor 6.2.1, CapacitorCordova 6.2.1, CocoaPods 1.16.2)
+- **Modified:**
+  - `TourCompanion/.gitignore` — appended a Capacitor-iOS block ignoring `packages/ios/www/`, `packages/ios/node_modules/`, `packages/ios/ios/App/Pods/`, `packages/ios/ios/App/build/`, `packages/ios/ios/App/DerivedData/`. Belt-and-suspenders on top of the Capacitor-generated `ios/.gitignore`.
+  - `TourCompanion/package-lock.json` — npm install resolved 93 added packages (Capacitor + cli toolchain).
+
+Decisions made (judgment calls beyond the brief):
+- **Skipped `npx cap init` entirely.** Wrote `capacitor.config.ts` directly; brief explicitly authorizes this if the interactive step misbehaves, and the resulting JSON-equivalent config is read identically by `cap add ios`. `cap add ios` succeeded on the first try and emitted `ios/App/App/capacitor.config.json` from this TS source.
+- **`copy-web.mjs` rebuilds `www/` from scratch** (rm + mkdir) instead of merging. The brief says "create `www/` if missing"; a clean rebuild every run avoids stale files from a prior `index.html` rename — costs ~5ms, removes a class of bugs.
+- **Source-map exclusion implemented as a `Set` lookup in `copy-web.mjs`.** Brief calls out `core.bundle.js.map`; the Set is one line and trivially extended later (e.g. for icon-source SVGs).
+- **Did not touch the Capacitor-generated `packages/ios/ios/.gitignore`.** Capacitor already ignores everything the brief asked for (`App/build`, `App/Pods`, `App/App/public`, `DerivedData`, `xcuserdata`). My additions to `TourCompanion/.gitignore` are the workspace-level enforcement.
+- **Kept the workspace-level `.gitignore` additions even though they're partially redundant** with the Capacitor-generated one. Future iOS plugin steps may add paths that don't fit Capacitor's template; one canonical list at the workspace root is easier to reason about.
+
+Verification:
+- `cd TourCompanion && npm install` → 93 packages added (Capacitor toolchain), no errors.
+- `npm run build:web` from `packages/ios/` → web bundle built (`5.3kb core.bundle.js` + 153.8kB index.html); `copy-web` logged "copied 2 top-level entries"; `www/` contains `index.html` + `core.bundle.js`, no `.map`. PASS.
+- `npx cap add ios` → "✔ ios platform added" in 2.04s; emitted `ios/App/{App,App.xcodeproj,App.xcworkspace,Pods,Podfile,Podfile.lock}`; pod install succeeded; CocoaPods 1.16.2 resolved Capacitor 6.2.1 + CapacitorCordova 6.2.1. PASS.
+- `npx cap sync ios` → "Sync finished in 1.531s"; re-copied www → `ios/App/App/public/` and re-ran pod install. PASS.
+- `xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO` → `** BUILD SUCCEEDED **`. iPhoneSimulator26.2.sdk, deployment target 13.0, bundle id `com.cloudaipro.tourcompanion`. Only warnings are Capacitor's standard "Embed Pods Frameworks runs every build" (cosmetic) and "Metadata extraction skipped" (no AppIntents — expected). PASS.
+- `git check-ignore packages/ios/ios/App/Pods packages/ios/www packages/ios/node_modules` → all 3 match; verbose check shows Capacitor's own `ios/.gitignore` covers `Pods` first. PASS.
+- `git status --short | grep packages/ios` → 21 new files: `package.json`, `capacitor.config.ts`, `copy-web.mjs`, `README.md`, plus 17 under `ios/` (project.pbxproj, Swift sources, Info.plist, storyboards, assets, Podfile, Podfile.lock, Capacitor's `ios/.gitignore`). No Pods, no www, no node_modules, no App/App/public. PASS.
+- `npm test` from `TourCompanion/` → 67/67 vitest tests still pass across 14 files. PASS.
+- FastAPI import smoke (`SECRET_KEY=test DATABASE_URL=sqlite:///tmp/test.db UPLOAD_DIR=/tmp/tc-uploads .venv/bin/python -c "from app.main import app"`) → `IMPORT_OK`. Python untouched. PASS.
+
+Out-of-scope (later phases):
+- Native plugins (Filesystem, Geolocation, etc.) — Step 13+.
+- iOS-runtime branching in `index.html` so the SPA points at offline data instead of FastAPI — Step 13+.
+- App icon / splash artwork swap — out of brief. Capacitor defaults remain.
+
+Reviewer findings: pending.
+
+Deploy: uncommitted — awaiting Richard.
+
+---
 
 ### Step 11 — Web frontend consumes `@tourcompanion/core` via esbuild IIFE bundle — Status: AWAITING REVIEW
 *Date: 2026-05-16*
