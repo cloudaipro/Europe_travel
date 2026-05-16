@@ -1,4 +1,4 @@
-# Review Feedback — Step 9
+# Review Feedback — Step 10
 Date: 2026-05-16
 Ready for Builder: YES
 
@@ -8,90 +8,107 @@ None.
 
 ## Should Fix
 
-- `TourCompanion/packages/core/src/time/parse.ts:26-28` — `parseStopTime` throws on
-  `hours > 23 || mins > 59` (e.g. `"99:99"`), but neither the Python source nor the
-  frontend `toMinutes` (index.html ~1559) does any range check. The frontend regex
-  `^(\d{1,2}):(\d{2})(?:\s*\+(\d+))?` happily matches `"99:99"` and returns
-  `99*60+99 = 5999`. Bob's added range check is a behavior strictening the brief
-  did not request. Low impact in practice (the UI never produces 99:99), but it
-  diverges from the documented "port the KG-7 parser" mandate. Recommend either
-  (a) drop the range check to preserve parity, or (b) note the deviation in
-  BUILD-LOG as an intentional hardening. Not a blocker.
-
-- `TourCompanion/packages/core/src/trips/slug.ts:8,23` — the `URLSAFE_RE` sanity
-  check uses `/[A-Za-z0-9_-]+/` (unanchored), so any slug containing at least one
-  urlsafe char would pass the guard even if it contained other characters.
-  base64url output cannot produce such a slug, so this is defense-in-depth that
-  is currently ineffective. Anchor it as `/^[A-Za-z0-9_-]+$/` if the guard is
-  meant to actually validate. Not a blocker.
+None.
 
 ## Escalate to Architect
 
-None.
+None. (One observation, not a defect — flagged here for visibility only, no action
+required from Bob:)
+
+- TS Anthropic adapter defaults to `claude-sonnet-4-6` per brief.
+  Python `server/app/config.py:39` still defaults to `claude-haiku-4-5-20251001`.
+  Step 11 retires Python so this divergence is by design; flagging only so Arch
+  confirms Step 11 keeps the TS default rather than carrying the Python default
+  forward.
 
 ## Cleared
 
-Reviewed 11 new source files + 7 new test files + 3 modified files against
-ARCHITECT-BRIEF Step 9.
+Reviewed 8 new source files + 6 new test files + 3 modified files against
+ARCHITECT-BRIEF Step 10. Cross-referenced `server/app/planner.py` for parity.
 
 Verification results (run from `TourCompanion/`):
 
-- `npm test` — 38/38 tests pass across 8 files (>= 20 required).
+- `npm test` — 67/67 pass across 14 files (38 prior + 29 new; brief required ≥ 18).
 - `npm run typecheck` — strict mode, exits 0.
-- `npm run build` — `packages/core/dist/` produced with `.d.ts` for every module
-  (index, types/{trip,api,index}, geo/{haversine,name,viewbox},
-  planner/fence, trips/{slug,sanitize}, time/parse).
-- `grep -r "node:" packages/core/src` — zero matches.
-- `grep -r ": any\b\|as any\b" packages/core/src` — zero matches.
-- `git diff --stat TourCompanion/server/` — empty. No Python files touched.
-- `git diff --stat TourCompanion/server/frontend/` — empty. No frontend touched.
+- `npm run build` — `.d.ts` emitted for every new symbol under `dist/llm/`
+  (anthropic, openai, mock, types) and `dist/planner/` (plan, parse, prompt, types).
+- `grep "anthropic@\|@anthropic-ai\|openai@" packages/core/package.json` — 0 hits.
+  devDependencies = `@types/node`, `typescript`, `vitest` only. No SDKs.
+- `git status` — `server/` and `server/frontend/` untouched. No Python files
+  modified.
+- No real network in tests: every adapter test injects `fetchImpl = vi.fn(...)`;
+  planner tests use `MockLLMClient` and an inline `FixedClient`.
+- Strict TS: only `any` occurrence in `src/llm/` + `src/planner/` is the literal
+  string `"any"` for `season` in `buildMockPlan` (matches Python).
 
-Behavioral parity spot-checks vs Python originals:
+Behavioral parity spot-checks vs Python `planner.py`:
 
-- `haversineKm` — formula matches `haversine_km` line-for-line; Berlin->Paris
-  test asserts ~878km within +/-5.
-- `cleanName` / `extractCity` / `buildQueries` — regexes and trailing-suffix
-  list match `_PAREN_RE` / `_LEADING_VERB_RE` / `clean_name` / `extract_city` /
-  `build_queries` exactly. **`buildQueries` order matches Python exactly:**
-  `cleaned+city`, `cleaned`, `cleaned+address`, `address`, deduped first-seen.
-  Confirmed via test `tests/geo/name.test.ts:54-65`.
-- `viewboxAround` — returns `[lng-d, lat-d, lng+d, lat+d]` matching Python
-  `_viewbox_around` 4-tuple ordering.
-- `stripCodeFence` — handles `\n` split / fall-through and trailing-fence
-  `rsplit` semantics matching `_strip_code_fence` (planner.py:91-98).
-- `generateSlug` — 8 random bytes -> base64url -> first 10 chars, mirroring
-  `secrets.token_urlsafe(8)[:10]`. Uses Web Crypto (`crypto.getRandomValues` +
-  global `btoa`), no Node-only deps; works in Node 20, browsers, and Capacitor
-  WebView. 1000-call no-collision test passes.
-- `sanitizeTripForPublic` — drops exactly the fields the brief lists
-  (`journal`, `bookings`, `published_slug`, plus per-stop `note` /
-  `check_in_count` / `photo_paths` / `voice_transcript`); zeros trip / day /
-  stop IDs; does not mutate input (verified by dedicated test). Decision #5
-  per spec — brief says "returning a new sanitized one".
-- `parseStopTime` / `stopTimeSortKey` — KG-7 invariant
-  `"00:24 +1"` (1464) > `"23:42"` (1422) preserved (test parse.test.ts:32-37).
+- **`SYSTEM_PROMPT` byte-for-byte** — Python `len = 1300`, TS `len = 1300`,
+  full string equality confirmed by Python diff harness comparing
+  `planner.py:11-47` against the TS template literal. Includes leading line
+  (Python `"""\` suppresses the leading newline) and trailing `\n`.
+- **`buildUserMessage` byte-for-byte** vs `_call_anthropic` user-msg builder
+  (planner.py:104-110): `Destination:`, `Number of days:`, `Style:` (default
+  `mixed`), optional `Source URL:`, blank line, `Return the JSON object.` Pinned
+  by tests at `tests/planner/prompt.test.ts:5-30` for URL-present and URL-absent
+  forms.
+- **`AnthropicClient`** — POST `https://api.anthropic.com/v1/messages`; headers
+  `x-api-key`, `anthropic-version: 2023-06-01`, `content-type: application/json`;
+  body `{model, max_tokens, system, messages, temperature?}`; joins
+  `content[].text` blocks (filtered by `typeof b.text === "string"`, matching
+  Python `hasattr(b, "text")`). Default model `claude-sonnet-4-6`. Non-200 →
+  `LLMError("anthropic", status, message)`. `fetchImpl` injectable. Six tests.
+- **`OpenAIClient`** — POST `https://api.openai.com/v1/chat/completions`; header
+  `Authorization: Bearer <key>`; system merged into `messages[]` as
+  `{role:"system", content:system}` ahead of caller messages; default model
+  `gpt-4o`; extracts `choices[0].message.content`; missing/empty choices → `""`.
+  Non-200 → `LLMError("openai", status, …)`. Five tests.
+- **`MockLLMClient`** — `_mock_plan` port matches Python field-for-field: name
+  template `${dest} ${days}-day ${style} (mock)`, hotel placeholder, exactly 2
+  bookings, `9 + 2*j` time labels (`09:00, 11:00, 13:00, 15:00`), 4 stops/day,
+  identical literals for `hours`, `tickets`, `washroom`, `food`, `transit`,
+  `intro`. Recovers `PlanInput` by reversing the fixed `buildUserMessage` format
+  — lossless because that format is itself under test. `provider = "mock"`.
+- **`parsePlanResponse`** — reuses Step 9 `stripCodeFence`, then `JSON.parse`,
+  throws `PlanParseError` with `text.slice(0, 500)`. Matches Python `text[:500]`
+  in `_call_anthropic` (planner.py:122) — both truncate after fence strip.
+  Excerpt-length test pins `≤ 500` and `== 500` on a 1000-char payload.
+- **`planTrip`** — rejects `days = 0` and `days = 15` with `RangeError("days must
+  be 1..14")` matching Python `ValueError("days must be 1..14")` (modulo type —
+  brief explicitly upgrades to RangeError). Accepts `days = 1` (test:
+  `start_date === end_date`) and `days = 14` (implicit via mock path). UTC date
+  math: `start = Date.UTC(today)`, `end = start + (days - 1) * 86400000 ms`,
+  ISO `YYYY-MM-DD`. Setdefault semantics preserved — model-supplied
+  `start_date`/`end_date`/`source_url` are not overwritten
+  (test `plan.test.ts:59-78`, mirrors Python `plan.setdefault(...)`).
+  `source_url` defaults to `""` when input omits it (matches Python).
+- **`LLMError`** — public `provider`, `status` + super `message`,
+  `name = "LLMError"`. **`PlanParseError`** — super `message`, public `excerpt`,
+  `name = "PlanParseError"`. Both match brief shapes verbatim.
 
-Type shape parity vs `schemas.py`:
+Public surface — `src/index.ts:13-27`:
 
-- All field names preserved snake_case (`order_idx`, `time_label`, `date_label`,
-  `start_date`, `end_date`, `published_slug`, `companion_docs`, `street_food`,
-  `hotel_lat`, `hotel_lng`, `hotel_address`, `check_in_count`, `photo_paths`,
-  `voice_transcript`, `price_band`, `price_huf`, `locality_score`, `photo_url`,
-  `pdf_path`, `map_url`, `day_n`, `file_path`).
-- `Optional[X]` -> `X | null` (not `| undefined`) — matches JSON wire format.
-- Pydantic bare `list` -> `unknown[]` (decision #1); `dict | None` ->
-  `Record<string, unknown> | null` (decision #2); `date` -> ISO `string`
-  (decision #3). All reasonable boundary-type decisions; documented in
-  REVIEW-REQUEST.
-- `TripDetail` field set matches `schemas.py:128-150` exactly (21 fields incl.
-  arrays).
+- Types: `LLMClient`, `LLMMessage`, `LLMOptions`, `PlanInput`, `TripPlan`,
+  `BookingPlan`, `DayPlan`, `StopPlan`.
+- Classes: `LLMError`, `PlanParseError`, `AnthropicClient`, `OpenAIClient`,
+  `MockLLMClient`.
+- Functions: `planTrip`, `parsePlanResponse`, `buildUserMessage`.
+- Constants: `SYSTEM_PROMPT`, `CORE_VERSION = "0.3.0"`. `package.json:3`
+  also bumped to `"0.3.0"`. `tests/smoke.test.ts:5-7` asserts new version.
 
-Out-of-scope confirmed untouched: `server/app/geocoder.py`,
-`server/app/planner.py`, `server/app/routes/trips.py`, `server/app/schemas.py`,
-`server/frontend/index.html`, `packages/ios/`, `packages/web/`,
-`docker-compose.yml`, `CLAUDE.md`.
+Out-of-scope confirmed untouched: `server/app/planner.py`, all of `server/`,
+`server/frontend/index.html`, `packages/ios/`, `packages/web/`.
 
-`CORE_VERSION` consistent: `src/index.ts:12 = "0.2.0"`,
-`package.json:3 = "0.2.0"`, `tests/smoke.test.ts` updated.
+Decision audit — all six "Key Decisions" in REVIEW-REQUEST.md are
+defensible:
 
-Step 9 is clear.
+1. Raw `fetch` + `fetchImpl` — matches brief mandate "no SDK deps".
+2. `SYSTEM_PROMPT` byte-for-byte — verified above.
+3. `buildUserMessage` byte-for-byte — verified above.
+4. Mock client parses the user message — lossless given format is under test.
+5. UTC date math — brief said "produce ISO date strings, use `new Date()` for
+   today, compute end via ms math". UTC is the right call for a portable core
+   (web/iOS/CI all behave identically). Pinned by test computing the same way.
+6. Setdefault semantics — pinned by `plan.test.ts:59-78`.
+
+Step 10 is clear.

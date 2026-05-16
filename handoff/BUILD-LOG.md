@@ -5,15 +5,54 @@
 
 ## Current Status
 
-**Active step:** Step 9 — Port Pure Helpers Python → TypeScript — awaiting review
-**Last cleared:** Step 8 — Monorepo workspace skeleton — 2026-05-16
+**Active step:** Step 10 — LLM Provider Abstraction + plan-ingest port — awaiting review
+**Last cleared:** Step 9 — Port Pure Helpers Python → TypeScript — 2026-05-16
 **Pending deploy:** NO (committed locally; no remote configured)
 
 ---
 
 ## Step History
 
-### Step 9 — Port Pure Helpers Python → TypeScript — Status: AWAITING REVIEW
+### Step 10 — LLM Provider Abstraction (Anthropic + OpenAI adapters) + plan ingest port — Status: AWAITING REVIEW
+*Date: 2026-05-16*
+
+Scope: add provider-agnostic LLM interface in `packages/core/src/llm/` (Anthropic + OpenAI raw-fetch adapters + Mock), port `SYSTEM_PROMPT`, user-message builder, parser, and `plan_trip` orchestration from `server/app/planner.py` into `packages/core/src/planner/`. Web frontend / iOS not wired (Steps 11 / 15). Python `planner.py` untouched.
+
+Files changed:
+- **New (8 source + 6 tests):**
+  - `packages/core/src/llm/types.ts` — `LLMClient`, `LLMMessage`, `LLMOptions`, `LLMError`, `PlanParseError`.
+  - `packages/core/src/llm/anthropic.ts` — `AnthropicClient` (raw `fetch` POST → `/v1/messages`, joins `content[].text` blocks, throws `LLMError` on non-200). Accepts `fetchImpl` for tests. Default model `claude-sonnet-4-6`.
+  - `packages/core/src/llm/openai.ts` — `OpenAIClient` (raw `fetch` POST → `/v1/chat/completions`, merges system into messages, extracts `choices[0].message.content`). Default model `gpt-4o`.
+  - `packages/core/src/llm/mock.ts` — `MockLLMClient` returns deterministic stub plan JSON (ports `_mock_plan`); parses user message to recover destination/days/style.
+  - `packages/core/src/planner/types.ts` — `PlanInput`, `TripPlan`, `BookingPlan`, `DayPlan`, `StopPlan` (snake_case wire fields).
+  - `packages/core/src/planner/prompt.ts` — `SYSTEM_PROMPT` (byte-for-byte copy of Python), `buildUserMessage(input)`.
+  - `packages/core/src/planner/parse.ts` — `parsePlanResponse(rawText)` (strip fence + `JSON.parse`, throws `PlanParseError` with 500-char excerpt).
+  - `packages/core/src/planner/plan.ts` — `planTrip(client, input)` (1..14 range guard → user msg → `client.complete` → parse → annotate `start_date`/`end_date`/`source_url`). Re-exports `SYSTEM_PROMPT`/`buildUserMessage`/`parsePlanResponse`.
+  - Tests: `tests/llm/mock.test.ts` (3), `tests/llm/anthropic.test.ts` (6), `tests/llm/openai.test.ts` (5), `tests/planner/prompt.test.ts` (4), `tests/planner/parse.test.ts` (5), `tests/planner/plan.test.ts` (6).
+- **Modified (3):**
+  - `packages/core/src/index.ts` — added LLM + planner exports; bumped `CORE_VERSION` to `"0.3.0"`.
+  - `packages/core/package.json` — version `0.2.0` → `0.3.0`.
+  - `packages/core/tests/smoke.test.ts` — assertion bumped to `"0.3.0"`.
+
+Key decisions:
+- **No SDK dependency.** Both adapters use raw `fetch` and accept an optional `fetchImpl` so vitest can inject a vi.fn — verified by tests asserting URL/headers/body shape end-to-end.
+- **`SYSTEM_PROMPT`** copied verbatim from Python as a template literal. The Python source uses `"""\` (suppressing leading newline) and ends with `\n`; the TS template literal matches that end-of-string behavior.
+- **`buildUserMessage` matches Python byte-for-byte.** Verified by a prompt-test against a hand-computed expected string for both URL-present and URL-absent inputs.
+- **Mock client parses the user message** rather than carrying side-channel state, so it works through the `LLMClient.complete` contract just like real adapters. The brief said "port `_mock_plan`" — the only way to get destination/days/style at `complete()` time without breaking the interface was to read them out of the user message produced by `buildUserMessage`. Lossless because the format is fixed.
+- **Date math in `planTrip`** uses UTC (`Date.UTC(...)` + `86400000`-ms steps). Python `date.today()` is timezone-naive local; UTC is the lowest-surprise choice for a portable core. Aligned with how `start_date` is treated downstream as an ISO date string.
+- **`planTrip` does not overwrite `start_date`/`end_date`/`source_url` if the model already supplied them** — mirrors Python's `plan.setdefault(...)`. Test pins this behavior.
+- **`PlanParseError.excerpt`** is `text.slice(0, 500)` — matches Python's `text[:500]` log slice.
+- **`StopPlan.highlights`/`food`** typed as `string[]` (not `unknown[]` like the existing `Stop` wire type) because the SYSTEM_PROMPT schema specifies bullet-string arrays; this is the producer side, not the consumer.
+
+Verification:
+- `cd TourCompanion && npm test` → **67/67** vitest tests across 14 files (38 from Step 9 + 29 new: mock 3, anthropic 6, openai 5, prompt 4, parse 5, plan 6). PASS.
+- `npm run typecheck` → exits 0 under strict mode. PASS.
+- `npm run build` → tsc emits `.d.ts` + `.js` + `.js.map` for every new symbol under `packages/core/dist/llm/` and `packages/core/dist/planner/` (anthropic.d.ts, openai.d.ts, mock.d.ts, types.d.ts, prompt.d.ts, parse.d.ts, plan.d.ts). PASS.
+- `grep -r "anthropic@\|@anthropic-ai\|openai@" packages/core/package.json` → zero hits. PASS (no SDK deps).
+- `git diff --stat -- TourCompanion/server/ TourCompanion/server/frontend/` → empty. PASS (Python + frontend untouched).
+- FastAPI import smoke: `SECRET_KEY=test DATABASE_URL=sqlite:///tmp/test.db UPLOAD_DIR=/tmp/tc-uploads .venv/bin/python -c "from app.main import app"` → `IMPORT_OK`. PASS.
+
+### Step 9 — Port Pure Helpers Python → TypeScript — Status: COMPLETE
 *Date: 2026-05-16*
 
 Scope: port all *pure* business helpers from `TourCompanion/server/app/{geocoder,planner,routes/trips}.py` and the KG-7 frontend +N parser into `TourCompanion/packages/core/src/`. TS interfaces for Pydantic schemas. Strict mode, full unit tests. Python and frontend left untouched — Step 11 will retire the duplicates.

@@ -9,4 +9,21 @@ export { sanitizeTripForPublic } from "./trips/sanitize.js";
 export { parseStopTime, stopTimeSortKey } from "./time/parse.js";
 export type { StopTime } from "./time/parse.js";
 
-export const CORE_VERSION = "0.2.0";
+// LLM provider abstraction
+export type { LLMClient, LLMMessage, LLMOptions } from "./llm/types.js";
+export { LLMError, PlanParseError } from "./llm/types.js";
+export { AnthropicClient } from "./llm/anthropic.js";
+export { OpenAIClient } from "./llm/openai.js";
+export { MockLLMClient } from "./llm/mock.js";
+
+// Planner module
+export { planTrip, parsePlanResponse, buildUserMessage, SYSTEM_PROMPT } from "./planner/plan.js";
+export type {
+  PlanInput,
+  TripPlan,
+  BookingPlan,
+  DayPlan,
+  StopPlan,
+} from "./planner/types.js";
+
+export const CORE_VERSION = "0.3.0";
