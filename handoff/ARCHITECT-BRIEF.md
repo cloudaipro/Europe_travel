@@ -1,191 +1,105 @@
-# Architect Brief — Step 6: KG-3b Publish flow
+# Architect Brief
+
+## Initiative — Standalone iOS Version
+
+**Goal:** Ship a standalone iOS app of TourCompanion alongside the existing client/server web version. Shared business logic in a TypeScript `core` package. Native shell via Capacitor.
+
+**Owner decisions locked:**
+1. Capacitor (not native Swift, not PWA)
+2. Shared core package (Python → TS port)
+3. Full feature parity (photos + voice notes + map + check-ins)
+4. iOS uses **OpenAI GPT** API key (web stays Anthropic). Key stored in iOS Keychain.
+5. Leaflet in WebView on both platforms
+6. No login/auth on iOS. No publish flow on iOS. No sync with web.
+
+**Roadmap:** Steps 8 → 20. Each step deployed + logged before next.
 
 ---
 
-## Step 6 — Wire the "Publish" pill to a real share-link flow
+## Step 8 — Monorepo Workspace Skeleton
 
-### Goal
+**Scope:** Introduce monorepo layout with `packages/` directory. Create `core` TS package skeleton + `ios` placeholder dir + `web` placeholder dir. Set up npm workspaces + root TS build config. **Do NOT move existing server or frontend code.** Existing FastAPI app must still run unchanged.
 
-Tapping the **Publish** pill in the mobile app bar (currently `disabled title="Coming soon"`) opens a small modal that generates a public read-only shareable URL for the current trip. Toggling Publish OFF revokes the slug. Public viewers see the trip on a no-auth route.
+### Build Order
 
-### Decisions (locked)
+1. Create directories:
+   - `TourCompanion/packages/core/`
+   - `TourCompanion/packages/core/src/`
+   - `TourCompanion/packages/core/tests/`
+   - `TourCompanion/packages/ios/` (placeholder with README only)
+   - `TourCompanion/packages/web/` (placeholder with README only — actual move happens in Step 11)
 
-- **Slug.** 10-char URL-safe base62 random string (e.g. `aB3xK9pLq2`). Generated server-side, never reused. Stored on Trip as `published_slug` (nullable string, unique).
-- **Public URL shape.** `GET /p/{slug}` returns the SPA shell (same index.html) with a query/state hint to load public mode; OR cleaner: `GET /api/public/trips/{slug}` returns a sanitized `TripDetail` (no `journal`, no `check_in_count`, no `photo_paths`, no `voice_transcript`). The SPA detects "public mode" from URL path and renders accordingly. **Pick:** simpler is a dedicated read-only public viewer page mounted at `/p/{slug}`, which serves a slimmed-down render. To minimize new code, **do this:**
-  - Add backend route `GET /api/public/trips/{slug}` → returns sanitized TripDetail (or 404).
-  - Add backend route `GET /p/{slug}` → serves the existing `index.html` (same as `/`). Frontend detects `location.pathname` starts with `/p/` and:
-    - Skips login flow.
-    - Fetches `/api/public/trips/${slug}` instead of `/api/trips/{id}`.
-    - Hides edit affordances: Auto-sort CTA, `+`/`−` day controls, orange `+` FAB, Publish pill, drag handles.
-- **Backend endpoints:**
-  - `POST /api/trips/{trip_id}/publish` — generates slug if not present, returns `{slug, url}`. Requires auth + ownership.
-  - `DELETE /api/trips/{trip_id}/publish` — sets `published_slug = NULL`. Requires auth + ownership.
-  - `GET /api/public/trips/{slug}` — no auth; returns sanitized TripDetail; 404 if slug not found or trip's slug was revoked.
-- **Sanitized public TripDetail.**
-  - Drop fields: `journal`, `bookings` (might contain private notes), per-stop `note`, `tickets`, `hours` are fine to keep, `check_in_count`, `photo_paths`, `voice_transcript`.
-  - Keep: trip name/destination/dates, days, stops (name/time/address/lat/lng/intro/highlights/transit/food), street_food.
-  - Easiest implementation: reuse `_trip_to_detail()` then post-process to null out sensitive fields. Define a `_public_trip_to_detail(t)` helper.
-- **Slug generation.** Use `secrets.token_urlsafe(8)` (Python stdlib) — returns ~11 char string, take first 10.
-- **Migration.** Add `published_slug` column to `trips`. Nullable. Unique index.
-- **Frontend modal.** Reuse the existing `#add-stop-modal` styles (`.modal-overlay`, `.modal-card`, etc.) — create a new `#publish-modal` with same CSS classes.
-- **Publish modal contents:**
-  - Title: "Publish trip"
-  - If unpublished: a short paragraph + a primary "Generate share link" button.
-  - If published: show the URL in a read-only `<input>`, a "Copy" button (`navigator.clipboard.writeText`), and a secondary "Unpublish" button.
-- **Public-mode UI distinctions.**
-  - Add `body.classList.add('is-public')` when path starts with `/p/`.
-  - CSS: `body.is-public .plan-fab-cluster, body.is-public .plan-fab-add, body.is-public .pscr-cta, body.is-public .dsm-end, body.is-public .mab-publish, body.is-public .pscm-nav-arrow ~ * { display: none !important; }` (or similar — hide edit controls).
-  - Skip the entire auth flow on public paths.
-
-### Backend specifics
-
-In `app/models.py`:
-```python
-published_slug: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, unique=True, index=True)
-```
-
-In `app/schemas.py`: extend `TripDetail` with `published_slug: Optional[str] = None`.
-
-In `app/routes/trips.py`:
-```python
-import secrets
-
-@router.post("/{trip_id}/publish")
-def publish_trip(trip_id: int, user: CurrentUser, db: Annotated[Session, Depends(get_db)]):
-    t = _owned(db, user, trip_id)
-    if not t.published_slug:
-        # Retry on rare slug collision
-        for _ in range(5):
-            slug = secrets.token_urlsafe(8)[:10]
-            existing = db.query(Trip).filter_by(published_slug=slug).first()
-            if not existing:
-                t.published_slug = slug
-                db.commit()
-                break
-        else:
-            raise HTTPException(500, "could not generate unique slug")
-    return {"slug": t.published_slug, "url": f"/p/{t.published_slug}"}
-
-@router.delete("/{trip_id}/publish", status_code=204)
-def unpublish_trip(trip_id: int, user: CurrentUser, db: Annotated[Session, Depends(get_db)]):
-    t = _owned(db, user, trip_id)
-    t.published_slug = None
-    db.commit()
-```
-
-New file `app/routes/public.py` (or add to `trips.py`):
-```python
-@router.get("/api/public/trips/{slug}", response_model=schemas.TripDetail)
-def get_public_trip(slug: str, db: Annotated[Session, Depends(get_db)]):
-    t = db.query(Trip).filter_by(published_slug=slug).first()
-    if not t:
-        raise HTTPException(404, "not found")
-    detail = _trip_to_detail(t)
-    detail.journal = None
-    detail.bookings = []
-    for d in detail.days:
-        for s in d.stops:
-            s.note = None
-            s.check_in_count = 0
-            s.photo_paths = []
-            s.voice_transcript = ""
-    return detail
-```
-
-In `app/main.py` (or wherever static is mounted), add:
-```python
-@app.get("/p/{slug}")
-def serve_public_spa(slug: str):
-    return FileResponse(FRONTEND_DIR / "index.html")
-```
-
-Adapt to actual static-mount pattern — grep `main.py` for `StaticFiles` / `FileResponse`.
-
-### Frontend specifics
-
-1. Detect public mode at boot: `const PUBLIC_MODE = location.pathname.startsWith('/p/'); const PUBLIC_SLUG = PUBLIC_MODE ? location.pathname.slice(3) : null;`
-2. If `PUBLIC_MODE`, skip login. Fetch `/api/public/trips/${PUBLIC_SLUG}` instead. Add `body.is-public` class.
-3. Hide edit controls via CSS.
-4. Add `#publish-modal` markup near `#add-stop-modal`.
-5. Wire Publish pill `onclick="openPublishModal()"`. Remove `disabled title="Coming soon"`.
-6. Functions:
-   ```js
-   async function openPublishModal() {
-     // Refresh current trip to get latest slug
-     await refreshTrip();
-     document.getElementById('publish-modal').classList.remove('hidden');
-     renderPublishModalBody();
-   }
-   function closePublishModal() {
-     document.getElementById('publish-modal').classList.add('hidden');
-   }
-   function renderPublishModalBody() {
-     const body = document.getElementById('pub-modal-body');
-     const slug = TRIP_PUBLISHED_SLUG; // set by adaptTrip
-     if (slug) {
-       const url = location.origin + '/p/' + slug;
-       body.innerHTML = `
-         <p>Anyone with this link can view your trip (read-only):</p>
-         <input id="pub-url" readonly value="${url}">
-         <div class="modal-actions">
-           <button onclick="copyPublishUrl()">Copy</button>
-           <button onclick="unpublishTrip()" class="danger">Unpublish</button>
-         </div>`;
-     } else {
-       body.innerHTML = `
-         <p>Generate a shareable read-only link for this trip.</p>
-         <div class="modal-actions">
-           <button onclick="closePublishModal()">Cancel</button>
-           <button onclick="publishTrip()" class="primary">Generate link</button>
-         </div>`;
-     }
-   }
-   async function publishTrip() {
-     try {
-       const resp = await apiCall(`/trips/${TRIP_ID}/publish`, { method: 'POST', body: '{}' });
-       TRIP_PUBLISHED_SLUG = resp.slug;
-       renderPublishModalBody();
-     } catch (e) { showSnack('Publish failed'); }
-   }
-   async function unpublishTrip() {
-     try {
-       await apiCall(`/trips/${TRIP_ID}/publish`, { method: 'DELETE' });
-       TRIP_PUBLISHED_SLUG = null;
-       renderPublishModalBody();
-     } catch (e) { showSnack('Unpublish failed'); }
-   }
-   async function copyPublishUrl() {
-     const input = document.getElementById('pub-url');
-     try {
-       await navigator.clipboard.writeText(input.value);
-       showSnack('Link copied');
-     } catch {
-       input.select(); document.execCommand('copy'); showSnack('Link copied');
+2. Create root `TourCompanion/package.json`:
+   ```json
+   {
+     "name": "tourcompanion-monorepo",
+     "private": true,
+     "workspaces": ["packages/*"],
+     "scripts": {
+       "build": "npm run build --workspaces --if-present",
+       "test": "npm run test --workspaces --if-present",
+       "typecheck": "npm run typecheck --workspaces --if-present"
      }
    }
    ```
-7. In `adaptTrip()`, set `TRIP_PUBLISHED_SLUG = api.published_slug || null;`.
 
-### Flags
+3. Create `TourCompanion/tsconfig.base.json` — strict mode, ES2022 target, declaration output, sourceMap, esModuleInterop, skipLibCheck. All package tsconfigs extend this.
 
-- **No personal data in public view.** Sanitization is critical. Triple-check that `journal`, `bookings`, per-stop `note`/`check_in_count`/`photo_paths`/`voice_transcript` are all stripped.
-- **Slug is opaque.** Don't expose `trip_id` in any public response. Public viewer never sees the internal trip id.
-- **CORS / auth header.** Public fetch doesn't send Authorization. `apiCall` likely adds it automatically — for public fetch, use raw `fetch` without auth.
-- **Public mode flag persists.** Once `PUBLIC_MODE` is true at boot, all subsequent renders skip edit affordances.
+4. Create `TourCompanion/packages/core/package.json`:
+   - `"name": "@tourcompanion/core"`
+   - `"version": "0.1.0"`
+   - `"main": "./dist/index.js"`, `"types": "./dist/index.d.ts"`
+   - `"files": ["dist"]`
+   - Dev deps: `typescript@^5`, `vitest@^1`, `@types/node@^20`
+   - Scripts: `build` (`tsc`), `test` (`vitest run`), `typecheck` (`tsc --noEmit`)
 
-### Definition of Done
+5. Create `TourCompanion/packages/core/tsconfig.json` extending base, with `rootDir: ./src`, `outDir: ./dist`, `include: ["src/**/*"]`.
 
-- [ ] `trips.published_slug` column + migration applied.
-- [ ] `POST /api/trips/{id}/publish` returns `{slug, url}`.
-- [ ] `DELETE /api/trips/{id}/publish` returns 204.
-- [ ] `GET /api/public/trips/{slug}` returns sanitized TripDetail (no `journal`, no per-stop `note`/`check_in_count`/`photo_paths`/`voice_transcript`, no `bookings`).
-- [ ] `GET /p/{slug}` serves index.html.
-- [ ] Publish pill no longer disabled; opens modal showing Generate Link or Copy+Unpublish based on current state.
-- [ ] Generated URL works in incognito (no auth required).
-- [ ] Public-mode UI hides Auto-sort, +/-, orange +, Publish, nav arrow.
-- [ ] No new console errors.
-- [ ] Desktop pixel-frozen.
-- [ ] `handoff/REVIEW-REQUEST.md` updated with Revision 7.
+6. Create `TourCompanion/packages/core/src/index.ts` with a single placeholder export:
+   ```ts
+   export const CORE_VERSION = "0.1.0";
+   ```
+
+7. Create `TourCompanion/packages/core/tests/smoke.test.ts` — imports `CORE_VERSION` and asserts equality.
+
+8. Create `TourCompanion/packages/core/README.md` — one paragraph: "Shared business logic. Empty in Step 8; logic ports in Step 9." Note Node 20 LTS as target.
+
+9. Create `TourCompanion/packages/ios/README.md` — "Placeholder. Capacitor scaffold in Step 12."
+
+10. Create `TourCompanion/packages/web/README.md` — "Placeholder. Frontend moves here in Step 11. Server stays at `TourCompanion/server/` for now."
+
+11. Update `TourCompanion/.gitignore` (create if missing) — entries: `node_modules/`, `dist/`, `*.log`, `.DS_Store`, `coverage/`.
+
+12. Verify build chain green:
+    - `cd TourCompanion && npm install` succeeds
+    - `npm run build` succeeds
+    - `npm run test` succeeds (smoke test passes)
+    - `npm run typecheck` succeeds
+
+13. Verify existing app untouched:
+    - `./TourCompanion/server/run_local.sh` still starts. At minimum confirm Python imports + uvicorn binds to port. Document the result in BUILD-LOG.
+
+### Flags Bob Must Not Guess At
+
+- **Do not move** `TourCompanion/server/` or `TourCompanion/server/frontend/` in this step. Path stability matters.
+- **Do not add** business logic to `core` yet. Empty skeleton only. Step 9 ports logic.
+- **Do not** install Capacitor or any iOS deps. Step 12 scaffolds iOS.
+- **Node target:** Node 20 LTS. Document in `packages/core/README.md`.
+- Commit `package-lock.json` at `TourCompanion/`.
+- If a top-level `package.json` already exists in repo root (`/Users/alex/data/work/Europe_travel/`) — do not modify it. Place the monorepo `package.json` at `TourCompanion/package.json` only.
+
+### Verification Checklist
+
+- [ ] `find TourCompanion/packages -type f -not -path '*/node_modules/*' -not -path '*/dist/*'` lists exactly the files this brief specifies
+- [ ] `cd TourCompanion && npm test` exits 0
+- [ ] `cd TourCompanion && npm run build` exits 0, produces `packages/core/dist/index.js`
+- [ ] `npm run typecheck` exits 0
+- [ ] Existing FastAPI server starts cleanly via `./TourCompanion/server/run_local.sh` (kill after verifying port bind)
+- [ ] No files outside `TourCompanion/packages/`, `TourCompanion/package.json`, `TourCompanion/tsconfig.base.json`, `TourCompanion/package-lock.json`, `TourCompanion/.gitignore` modified
+
+---
+
+*Subsequent step briefs (9-20) issued by Architect when prior step clears.*
 
 ---
 

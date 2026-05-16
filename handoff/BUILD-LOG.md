@@ -5,13 +5,45 @@
 
 ## Current Status
 
-**Active step:** — (Step 7 closed; all known gaps resolved)
+**Active step:** Step 8 — Monorepo workspace skeleton — awaiting review
 **Last cleared:** Step 7 — KG-8 rate limit + KG-9 real 404 — 2026-05-15
 **Pending deploy:** NO (committed locally; no remote configured)
 
 ---
 
 ## Step History
+
+### Step 8 — Monorepo workspace skeleton — Status: AWAITING REVIEW
+*Date: 2026-05-16*
+
+Scope: introduce npm-workspaces monorepo layout under `TourCompanion/packages/` to set up the standalone-iOS initiative. No server/frontend code moved; no business logic ported.
+
+Files changed (all new):
+- `TourCompanion/package.json` — root workspaces manifest (`packages/*`); scripts `build`/`test`/`typecheck` fan out via `--workspaces --if-present`.
+- `TourCompanion/tsconfig.base.json` — strict, ES2022, declaration + sourceMap, esModuleInterop, skipLibCheck. Extended by every package tsconfig.
+- `TourCompanion/.gitignore` — `node_modules/`, `dist/`, `*.log`, `.DS_Store`, `coverage/`.
+- `TourCompanion/package-lock.json` — committed (npm install resolved 80 packages).
+- `TourCompanion/packages/core/package.json` — `@tourcompanion/core@0.1.0`, private, `type: module`, dev deps `typescript@^5`, `vitest@^1`, `@types/node@^20`.
+- `TourCompanion/packages/core/tsconfig.json` — extends base, `rootDir: ./src`, `outDir: ./dist`.
+- `TourCompanion/packages/core/src/index.ts` — sole export `CORE_VERSION = "0.1.0"`.
+- `TourCompanion/packages/core/tests/smoke.test.ts` — vitest asserts `CORE_VERSION === "0.1.0"`.
+- `TourCompanion/packages/core/README.md` — placeholder note, Node 20 LTS target.
+- `TourCompanion/packages/ios/README.md` — placeholder, Capacitor scaffold in Step 12.
+- `TourCompanion/packages/web/README.md` — placeholder, frontend moves in Step 11.
+
+Key decisions:
+- `@tourcompanion/core` set `"private": true` to avoid any accidental publish; brief did not specify, leaning safe.
+- `"type": "module"` on core package so emitted ESM (`module: ES2022`) matches Node 20 ESM resolution. Test imports use `.js` suffix on a `.ts` source to satisfy strict `isolatedModules` + NodeNext-style consumers when core ships to ios/web later.
+- Added `forceConsistentCasingInFileNames`, `resolveJsonModule`, `isolatedModules` to `tsconfig.base.json` (defaults for safe TS strict mode; not specified in brief but standard hygiene).
+- Did **not** modify repo-root `.gitignore` or create a repo-root `package.json` — brief flag honored.
+
+Verification:
+- `find TourCompanion/packages -type f -not -path '*/node_modules/*' -not -path '*/dist/*'` lists exactly the 8 files from the brief. PASS.
+- `cd TourCompanion && npm install` → 80 packages added, no errors. PASS.
+- `npm run build` → tsc produced `packages/core/dist/index.js` (+ `.d.ts`, `.js.map`). PASS.
+- `npm test` → 1/1 vitest test passing. PASS.
+- `npm run typecheck` → exits 0. PASS.
+- FastAPI server: `python -c "from app.main import app"` with env vars set → `IMPORT_OK`. Started `uvicorn app.main:app --port 8765` (forked); `curl /docs` returned HTTP 200 and alembic ran context impl; killed cleanly. Server runtime untouched. PASS.
 
 ### Step 7 — KG-8 rate limit + KG-9 real 404 — Status: COMPLETE
 *Date: 2026-05-15*
