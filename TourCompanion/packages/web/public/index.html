@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tour Companion — Budapest Demo</title>
+<script src="/core.bundle.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
@@ -1557,11 +1558,8 @@ async function autoSortCurrentDay() {
   // KG-7: recognize "HH:MM +N" so next-day stamps sort after same-day ones.
   // e.g. "00:24 +1" -> 1440 + 24 = 1464  (sorts after 23:42 = 1422)
   const toMinutes = (t) => {
-    if (!t) return Infinity;
-    const m = /^(\d{1,2}):(\d{2})(?:\s*\+(\d+))?/.exec(t);
-    if (!m) return Infinity;
-    const dayOffset = m[3] ? parseInt(m[3], 10) : 0;
-    return dayOffset * 1440 + parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+    // Delegate to @tourcompanion/core (KG-7 +1 parser).
+    try { return TC.stopTimeSortKey(t); } catch { return Infinity; }
   };
   const sortedIds = [...day.stops]
     .map((s, i) => ({ id: s._stop_id, min: toMinutes(s.time), i }))

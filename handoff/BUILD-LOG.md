@@ -5,13 +5,59 @@
 
 ## Current Status
 
-**Active step:** Step 10 — LLM Provider Abstraction + plan-ingest port — awaiting review
+**Active step:** Step 11 — Web frontend uses `@tourcompanion/core` (esbuild bundle on `window.TC`) — awaiting review
 **Last cleared:** Step 9 — Port Pure Helpers Python → TypeScript — 2026-05-16
 **Pending deploy:** NO (committed locally; no remote configured)
 
 ---
 
 ## Step History
+
+### Step 11 — Web frontend consumes `@tourcompanion/core` via esbuild IIFE bundle — Status: AWAITING REVIEW
+*Date: 2026-05-16*
+
+Scope: relocate the SPA from `server/frontend/` to `packages/web/public/`, add an esbuild step that bundles a curated slice of `@tourcompanion/core` into `public/core.bundle.js` as an IIFE on `window.TC`, point FastAPI's static mount at the new path, and prove end-to-end wiring with a single inline replacement: KG-7 `toMinutes` now delegates to `TC.stopTimeSortKey`. Server-side LLM (Python `planner.py`) untouched — web stays server-side-LLM.
+
+Files changed:
+- **Moved (git mv):** `TourCompanion/server/frontend/index.html` → `TourCompanion/packages/web/public/index.html`. Directory `server/frontend/` removed.
+- **New:**
+  - `TourCompanion/packages/web/package.json` — `@tourcompanion/web` workspace; depends on `@tourcompanion/core` (`*`) + `esbuild ^0.21` dev dep; `build`/`typecheck`/`test` scripts.
+  - `TourCompanion/packages/web/build.mjs` — esbuild script: bundles `src/entry.ts` → `public/core.bundle.js` (IIFE, `globalName: TC`, target `es2020`, sourcemap on).
+  - `TourCompanion/packages/web/src/entry.ts` — re-exports the curated core slice the SPA needs: `stopTimeSortKey`, `parseStopTime`, `cleanName`, `extractCity`, `buildQueries`, `haversineKm`, `viewboxAround`, `generateSlug`, `sanitizeTripForPublic`, `CORE_VERSION`.
+  - `TourCompanion/packages/web/.gitignore` — ignores `public/core.bundle.js`, `public/core.bundle.js.map`, `node_modules/`, `dist/`.
+  - `TourCompanion/packages/web/README.md` — overwrites the prior placeholder with build/serve instructions.
+- **Edited:**
+  - `TourCompanion/server/app/main.py` (line 79) — `frontend_dir` repointed to `parent.parent.parent / "packages" / "web" / "public"`. Only Python edit in this step (+3/−1).
+  - `TourCompanion/server/run_local.sh` — added pre-uvicorn build hook: `(cd .. && npm install --silent && npm run build --workspace=@tourcompanion/web --silent)` guarded by `command -v npm` so the API still boots in minimal envs.
+  - `TourCompanion/packages/web/public/index.html` line 7 — added `<script src="/core.bundle.js"></script>` immediately after `<title>`, before Tailwind. Lines 1559–1565 — replaced the 7-line inline `toMinutes` with the 3-line delegating version: `try { return TC.stopTimeSortKey(t); } catch { return Infinity; }`. **No other SPA edits.**
+
+Decisions made (judgment calls beyond the brief):
+- **Bundle the IIFE under `globalName: "TC"`** (concise namespace) as specified; verified the emitted file starts with `var TC = (() => { ... })()`.
+- **`try/catch` preserves the legacy `Infinity`-on-bad-input contract** — callers in `applyAutoSortToDay` (line 1567) read `min: toMinutes(s.time)` and sort numerically; throwing would corrupt the sort. The catch is silent and total.
+- **`run_local.sh` build step uses `--silent` + npm presence check** so non-Node deployments (e.g. CI building the wheel only) don't fail at boot — they just emit a one-line skip notice.
+- **No symlink, no duplicate of `index.html`.** Old `server/frontend/` directory is fully removed; FastAPI serves the canonical copy from `packages/web/public/`.
+
+Verification:
+- `find TourCompanion/server/frontend` → "No such file or directory" (passes).
+- `find TourCompanion/packages/web -type f -not -path '*/node_modules/*' -not -name 'core.bundle.js*'` → 6 expected files (passes).
+- `npm install && npm run build` from `TourCompanion/` succeeds; emits `public/core.bundle.js` (5.3KB) + `.map` (10.3KB).
+- `head -c 100 packages/web/public/core.bundle.js` shows `var TC = (() => { ... })`.
+- `npm test` → 67/67 core tests pass; web/ios placeholders no-op.
+- `npm run typecheck` → exit 0 across workspaces.
+- Live server smoke (`PORT=8765 ./run_local.sh`):
+  - `GET /` → 200, `text/html`, 157493 bytes (index.html, with `/core.bundle.js` script tag in head).
+  - `GET /core.bundle.js` → 200, `text/javascript`, 5441 bytes, body starts `var TC = (() => {`.
+- No other Python files modified (git diff confirms).
+
+Out-of-scope (later phases):
+- Further migration of inline JS in `index.html` to `@tourcompanion/core` (parseStopTime, cleanName, etc. are exposed on `TC` but no other call-sites switched in this step).
+- iOS bundling — Step 15.
+
+Reviewer findings: pending.
+
+Deploy: not committed yet — awaiting Richard.
+
+---
 
 ### Step 10 — LLM Provider Abstraction (Anthropic + OpenAI adapters) + plan ingest port — Status: AWAITING REVIEW
 *Date: 2026-05-16*
@@ -306,7 +352,7 @@ Deploy: committed locally 2026-05-14. No remote push (no remote configured).
 ## Architecture Decisions
 *Locked decisions that cannot be changed without breaking the system.*
 
-- **Single-file constraint** — all UI in `TourCompanion/server/frontend/index.html` — 2026-05-14.
+- **Single-file constraint** — all UI in one `index.html`. Relocated 2026-05-16 (Step 11) from `TourCompanion/server/frontend/index.html` to `TourCompanion/packages/web/public/index.html`. The single-file invariant still holds; only the path changed.
 - **Desktop ≥1024px is pixel-frozen** — any visual change at desktop is a regression — 2026-05-14.
 - **Sheet snap state owned by CSS class on `.plan-sheet-shell`** (`sheet--peek/--half/--full`); JS only writes the class — 2026-05-14.
 - **No new external libraries** — Tailwind CDN + Leaflet only — 2026-05-14.

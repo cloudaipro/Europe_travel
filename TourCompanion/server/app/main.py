@@ -76,7 +76,9 @@ app.include_router(plan.router)
 Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
 
-frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
+frontend_dir = (
+    Path(__file__).resolve().parent.parent.parent / "packages" / "web" / "public"
+)
 
 
 # KG-3b: public share-link viewer. Serve the same SPA shell as "/"; the

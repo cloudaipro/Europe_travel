@@ -28,6 +28,15 @@ if [ ! -f "$MARKER" ] || [ requirements.txt -nt "$MARKER" ]; then
   touch "$MARKER"
 fi
 
+# Build the web bundle (esbuild → packages/web/public/core.bundle.js).
+# Skipped silently if npm is missing, so the API still boots in minimal envs.
+if command -v npm >/dev/null 2>&1; then
+  echo "→ building web bundle"
+  (cd .. && npm install --silent && npm run build --workspace=@tourcompanion/web --silent)
+else
+  echo "→ npm not found; skipping web bundle build (run 'npm run build' manually)"
+fi
+
 mkdir -p uploads
 
 export DATABASE_URL="${DATABASE_URL:-sqlite:///./tour.db}"
