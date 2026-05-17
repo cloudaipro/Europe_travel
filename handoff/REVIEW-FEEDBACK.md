@@ -1,4 +1,4 @@
-# Review Feedback — Step 17
+# Review Feedback — Step 18
 Date: 2026-05-16
 Ready for Builder: YES
 
@@ -6,65 +6,31 @@ Ready for Builder: YES
 None.
 
 ## Should Fix
-None.
+Two observations logged here for the record. Neither warrants a change in this step.
+
+- `entry.ts:155-162` — `tryInstallTileCache` polls every 200 ms with no upper bound. On iOS, Leaflet ships from the bundled CDN `<script>` so this terminates within the first frame or two; if it never resolves, the cost is a silent 5 Hz no-op timer. Matches the brief's "use the polling form — safe in both cases." No action.
+- `tiles/index.ts:53-54` — on a successful fetch+write, `tile.src` is assigned the rewritten `capacitor://localhost/_capacitor_file_...` URI. If the Capacitor 6 prefix is ever wrong, the freshly-fetched tile renders broken even though the bytes are on disk. The brief explicitly accepted this ("ship as-is — fallback path catches errors"); re-fetching on every miss would be wasteful and the `readTileUri` path on the next render hits the same prefix, so behaviour is consistent. No action.
 
 ## Escalate to Architect
 None.
 
 ## Cleared
 
-Reviewed Step 17 — native iOS foreground geolocation + `window.checkIn` override.
-All brief checkpoints verified:
+Reviewed `tiles/cache.ts`, `tiles/index.ts`, `tiles/cache.test.ts`, and the `entry.ts` diff against the Step 18 brief.
 
-- **Plugin (Cap 6).** `packages/ios/package.json` pins
-  `@capacitor/geolocation ^6.1.1`. `Podfile.lock` shows
-  `CapacitorGeolocation (6.1.1)` (line 13), declared dependency (line 34),
-  spec path under `node_modules/@capacitor/geolocation` (lines 55-56), and
-  checksum `ef657a46a125be74010f4ce57caae173c23204d2` (line 68).
-- **Info.plist.** `NSLocationWhenInUseUsageDescription` present at lines
-  56-57 with the brief-specified string ("Tag your check-ins with where
-  you visited."). When-in-use only; no `Always`/background key — correct
-  per "No background location."
-- **`geo/index.ts` (25 lines).** Matches brief exactly. Single attempt.
-  Blanket `try { ... } catch { return null; }` wraps both the permission
-  request and the position fetch, so denial, plugin throw, and
-  `getCurrentPosition` timeout all degrade to `null`. Accepts
-  `perm.location === "granted"` **or** `perm.coarseLocation === "granted"`
-  (iOS Reduced Accuracy fallback). `enableHighAccuracy: true`,
-  `timeout: 8000`, `maximumAge: 30000` — all per brief. No retries.
-- **`entry.ts` override (lines 111-140).** Lives inside the
-  `Capacitor.getPlatform() === "ios"` guard and inside the
-  `installNativeCapture` DOMContentLoaded block, so it cannot fire on web
-  and cannot install before the SPA's `checkIn` declaration exists.
-  Calls `await getCoords()` then POSTs `coords ?? {}` — never blocks on
-  permission failure. `!res.ok` check fires before any STATE mutation, so
-  a failed POST never produces a stale UI. STATE mutation is
-  null-guarded (`if (state)` + `??=` on `check_ins`, `??=` on
-  `current_stop_index`, `includes()` guard on `push`) — safer than the
-  brief's terse one-liner and correctly survives a check-in that fires
-  before SPA `init()` populates STATE. Snack message conditionally
-  appends `"(GPS)"` only when coords were captured, so the user can
-  distinguish a tagged check-in from an untagged one.
-- **`index.html` unchanged.** Grep confirms `async function checkIn(day,
-  idx)` declared at line 2859 in a classic top-level `<script>` — already
-  window-accessible (same pattern as `addPhoto`/`recordVoice`). The Step
-  16 iOS bridge block at line 3456 exposes `_stopIdFor` which the
-  override relies on. No edit required this step; Bob correctly skipped.
-- **Fetch interceptor compatibility.** `fetch-interceptor.ts` lines
-  122-138 (Step 14) reads `payload.lat ?? null` and `payload.lng ?? null`,
-  so the override's `{}` body is accepted and persists a check-in row
-  with null coords — exactly the non-fatal denial path the brief
-  requires.
+- **`cache.ts:24-31`** — `urlToKey` is deterministic FNV-1a 32-bit, base-36, dependency-free; `Math.imul` correctly handles 32-bit overflow.
+- **`cache.ts:34-45`** — `readTileUri` uses `Filesystem.stat` as the existence probe (the brief's required pattern); the throw on missing file is caught and converted to `null`. Bob calls `stat` before `getUri` rather than after, as in the brief pseudo-code, but both calls are inside the same try/catch so the observable behaviour is identical. The `file://` → `capacitor://localhost/_capacitor_file_` rewrite is applied.
+- **`cache.ts:48-57`** — `writeTile` persists base64 to `Directory.Cache/tiles/<key>.png` with `recursive: true` and returns the webview-safe URI. Matches brief exactly.
+- **`tiles/index.ts:21-29`** — installer guards on `L?.TileLayer?.prototype?.createTile` before patching and sets the `__tcTileCacheInstalled` sentinel on `TileLayer.prototype`; a double-install (hot reload / poll race) is a no-op. Sentinel scoped to the prototype, not the instance — correct, since the patch is on the prototype.
+- **`tiles/index.ts:31-64`** — `createTile` returns the `<img>` synchronously per Leaflet's contract; the async IIFE attempts cache → fetch → base64 → persist → serve. Any throw (including the added `reader.onerror`, `!res.ok` and `writeTile` failures) routes through the single catch to `tile.src = url` plus `done(null, tile)` — preserving pre-Step-18 web behaviour. The post-persist `tile.src` is the cached webview-safe URI, not the raw `file://`.
+- **`cache.test.ts:10-30`** — four pure tests for `urlToKey`: determinism, base-36 shape + non-empty, distinctness across adjacent tile coords, empty-string safety. No Filesystem mocking, per brief.
+- **`entry.ts:20, 150-162`** — installer is imported once and invoked from inside the existing `Capacitor.getPlatform() === "ios"` block via the 200 ms poll-until-`window.L.TileLayer`. Web SPA bundle is unaffected (the entire iOS block is gated).
+- **Security.** Tile URLs originate from `this.getTileUrl(coords)` (Leaflet-controlled, not user input). `urlToKey` returns base-36 alphanumerics only, so no path-traversal risk on the cache key. base64 is written via `Filesystem.writeFile`, not via shell/eval.
+- **Drift.** None. Bob added a defensive `reader.onerror` and a top-of-function `if (!L?.TileLayer?.prototype?.createTile) return;` guard — both improvements within scope. The brief's `getUri`/`stat` order was inverted; equivalent under the shared try/catch.
 - **Verification reproduced locally.**
-  - `npm run typecheck --workspace=@tourcompanion/ios` — green (no
-    diagnostics emitted by `tsc --noEmit`).
-  - `npm test` — 79 pass (73 core + 6 iOS), no regressions.
-  - Bob's `xcodebuild ... CODE_SIGNING_ALLOWED=NO` — **BUILD SUCCEEDED**
-    (per request; pod entry + checksum confirm a clean `cap sync`).
-- **Out-of-scope hygiene.** No Python changes. No new endpoints. No new
-  tests — Capacitor Geolocation has no Node-runnable shim, same
-  precedent as Camera/Filesystem/VoiceRecorder in Step 16. No drift from
-  the brief; the longer state-mutation form vs. the brief's one-liner is
-  a defensive improvement, not a scope expansion.
+  - `npm run typecheck --workspace=@tourcompanion/ios` — green (no diagnostics from `tsc --noEmit`).
+  - `npm test --workspace=@tourcompanion/ios` — **10/10 pass** (4 new `urlToKey` tests + 6 existing plan-handler), no regressions.
+  - Bob's `npm run build` (175.7 kB iOS bundle, +2.5 kB), `cap sync ios`, and `xcodebuild ... CODE_SIGNING_ALLOWED=NO` BUILD SUCCEEDED reported in REVIEW-REQUEST.
+- **Out-of-scope hygiene.** `git status` confirms zero `index.html` changes and zero Python changes; only `entry.ts` was modified and the new `tiles/` directory was added. No new endpoints, no new permissions, no Info.plist edits.
 
-Step 17 is clear.
+Step 18 is clear.

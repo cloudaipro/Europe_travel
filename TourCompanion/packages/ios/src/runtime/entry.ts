@@ -17,6 +17,7 @@ import { keychainStore } from "./keychain/index.js";
 import { installFetchInterceptor } from "./fetch-interceptor.js";
 import { capturePhoto, startVoice, stopVoice } from "./capture/index.js";
 import { getCoords } from "./geo/index.js";
+import { installTileCache } from "./tiles/index.js";
 // ./global.d.ts contributes ambient Window type augmentations; no runtime emit.
 
 // Synchronous on iOS: build the TripStore promise, install interceptor +
@@ -145,4 +146,18 @@ if (Capacitor.getPlatform() === "ios") {
   } else {
     installNativeCapture();
   }
+
+  // Step 18 — install the offline Leaflet tile cache. Leaflet is loaded
+  // via a CDN <script> in the SPA's index.html; it may be parsed before
+  // or after this bundle. Poll every 200 ms until window.L is present,
+  // then patch L.TileLayer.prototype.createTile (idempotent — see
+  // tiles/index.ts).
+  const tryInstallTileCache = () => {
+    if ((window as any).L?.TileLayer) {
+      installTileCache();
+      return;
+    }
+    setTimeout(tryInstallTileCache, 200);
+  };
+  tryInstallTileCache();
 }

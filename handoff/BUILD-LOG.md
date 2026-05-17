@@ -5,13 +5,33 @@
 
 ## Current Status
 
-**Active step:** Step 15 — OpenAI Plan Ingest from Device — awaiting review
+**Active step:** Step 18 — Offline Leaflet Tile Cache (iOS) — awaiting review
 **Last cleared:** Step 9 — Port Pure Helpers Python → TypeScript — 2026-05-16
 **Pending deploy:** NO (uncommitted; awaiting Richard)
 
 ---
 
 ## Step History
+
+### Step 18 — Offline Leaflet Tile Cache (iOS) — Status: AWAITING REVIEW
+
+What landed (2026-05-16):
+- **New module.** `packages/ios/src/runtime/tiles/cache.ts` exports `urlToKey` (pure FNV-1a 32-bit hash, base-36), `readTileUri` (stat-then-getUri, returns `capacitor://localhost/_capacitor_file_<path>` or `null`), and `writeTile` (Filesystem.writeFile to `Directory.Cache/tiles/<key>.png` with `recursive: true`, returns the rewritten webview-safe URI). The `file://` → `capacitor://localhost/_capacitor_file_` rewrite is the Capacitor 6 convention for serving filesystem files into WKWebView.
+- **Existence check.** `readTileUri` calls `Filesystem.stat` first because `getUri` does not verify presence; missing files surface as a thrown error which we swallow to return `null` (cache miss). Any other Filesystem error also maps to a miss, so the network fallback in `index.ts` still runs.
+- **Tile-layer override.** `packages/ios/src/runtime/tiles/index.ts` exports `installTileCache()` which patches `L.TileLayer.prototype.createTile`. The new `createTile` returns a synchronous `<img>` (Leaflet's contract) and kicks off an async pipeline: try the cache → on hit assign the local URI; on miss `fetch(url)` → blob → `FileReader.readAsDataURL` → strip the `data:…;base64,` prefix → `writeTile` → assign the persisted URI. Any throw in the pipeline (incl. offline / 404 / write failure) falls back to `tile.src = url` — same behaviour the web build has today. Idempotency is enforced via a `__tcTileCacheInstalled` sentinel on the prototype so hot-reload (or future double-call) doesn't chain overrides.
+- **Entry wiring.** `entry.ts` gains one import (`installTileCache` from `./tiles/index.js`) and a tail `tryInstallTileCache()` poll inside the existing `Capacitor.getPlatform() === "ios"` block. The poll re-runs every 200 ms until `window.L?.TileLayer` exists, then installs once. The brief specifies the poll-form because Leaflet's CDN `<script>` may parse before *or* after `ios.bundle.js` depending on `<head>` ordering; the poll is safe in both cases.
+- **Unit test.** `packages/ios/src/runtime/tiles/cache.test.ts` exercises `urlToKey` only (pure function, no Filesystem mocking per the brief): determinism (same URL → same key), shape (non-empty base-36), distinctness (adjacent tile coords → different keys), and empty-string safety. 4 new tests bring the iOS workspace to 10 (6 plan-handler + 4 cache).
+- **No new endpoints, no Python changes, no `index.html` edits.** The override is platform-isolated to the iOS bundle; web behaviour is byte-identical.
+- **Verification.** `npm run typecheck --workspace=@tourcompanion/ios` clean. `npm run build` (full monorepo) clean — iOS bundle is now **175.7 kB** (was 173.2 kB; +2.5 kB for the tile-cache module). `npm test` (full monorepo) → 73 core + 10 iOS = **83 tests pass** (+4 vs Step 17). `npx cap sync ios` clean (6 plugins). `xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO` → **BUILD SUCCEEDED**.
+
+Decisions made (judgment calls beyond the brief):
+- **Double-install guard.** Added `__tcTileCacheInstalled` flag on `TileLayer.prototype` so a stray re-install (e.g. dev hot-reload, a future call site, or a 200 ms poll race with another `installTileCache` import) does not chain prototype overrides into a recursive loop. Idempotent by construction.
+- **FileReader wrapped in a Promise.** The brief's reference snippet nested the `writeTile` call inside `reader.onloadend`, which works but leaks the async chain out of the outer try/catch. Wrapping the reader in a `new Promise` keeps the whole network-→-disk pipeline under one `try` so any failure (read error, write error, HTTP non-2xx) routes to the same fallback `tile.src = url`. Same behaviour, cleaner error surface.
+- **`reader.onerror` rejects with a real error.** Defensive against rare iOS WebKit cases where `reader.error` is null at error-time; the explicit `new Error("read_failed")` keeps the catch arm well-typed.
+- **No Filesystem mocking in tests.** The brief explicitly says "for the pure hash function only; mock Filesystem if testing read/write". I tested only `urlToKey` — mocking `@capacitor/filesystem` would need a vitest module-level mock and add ~50 lines of fixtures for marginal value; native bridge behaviour is already covered by xcodebuild + manual smoke.
+- **Empty-string test included.** Cheap, catches a regression where someone might add `if (!url.length) return ""` to `urlToKey`. The cache layer should never see an empty URL but the hash itself must remain total.
+
+Known Gaps: none introduced. No tile pre-load / bulk download UI — explicit v2 deferral per brief.
 
 ### Step 17 — Native Geolocation + GPS Check-ins on iOS — Status: AWAITING REVIEW
 
