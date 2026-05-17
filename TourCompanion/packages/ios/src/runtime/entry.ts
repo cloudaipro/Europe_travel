@@ -11,6 +11,8 @@
 // the SQLite plugin initialises.
 
 import { Capacitor } from "@capacitor/core";
+import { StatusBar, Style } from "@capacitor/status-bar";
+import { SplashScreen } from "@capacitor/splash-screen";
 import { createSettings, type TripStore } from "@tourcompanion/core";
 import { initSqliteStore } from "./sqlite/index.js";
 import { keychainStore } from "./keychain/index.js";
@@ -34,6 +36,17 @@ if (Capacitor.getPlatform() === "ios") {
   });
 
   window.TCSettings = createSettings(keychainStore);
+
+  // Step 19 — native chrome: lock status-bar style to dark + dismiss the
+  // launch splash once the SPA is parsed. Wrapped in an async IIFE so the
+  // synchronous interceptor install below isn't gated on plugin RTT. Both
+  // calls are best-effort — any plugin throw is swallowed (older iOS, sim
+  // quirks) so app boot is never blocked by chrome polish.
+  (async () => {
+    try { await StatusBar.setStyle({ style: Style.Dark }); } catch {}
+    try { await SplashScreen.hide({ fadeOutDuration: 200 }); } catch {}
+  })();
+
   installFetchInterceptor(() => storePromise);
 
   // Mark the body once the DOM exists so iOS-only UI (settings gear) shows.
@@ -83,10 +96,13 @@ if (Capacitor.getPlatform() === "ios") {
       if (!stopId) return;
       try {
         await startVoice();
-        // v1 UX: WKWebView native confirm gates stop. Step 19 replaces with a styled modal.
-        const proceed = window.confirm("Recording… tap OK to stop");
+        // Step 19 — styled in-page modal (window.openVoiceModal) replaces the
+        // WKWebView native confirm. Resolves with "stop" or "cancel"; fall
+        // back to "stop" if the SPA hasn't installed the helper (defensive —
+        // matches v1 behaviour where confirm always returned a decision).
+        const action = (await (window as any).openVoiceModal?.()) ?? "stop";
         const { path, transcript } = await stopVoice();
-        if (!proceed) {
+        if (action !== "stop") {
           (window as any).showSnack?.("🎤 Cancelled");
           return;
         }

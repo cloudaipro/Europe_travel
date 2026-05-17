@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Tour Companion — Budapest Demo</title>
 <script src="/core.bundle.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
@@ -1106,6 +1106,30 @@
   .ts-sub {
     font-size: 12px; color: #64748b; line-height: 1.5; margin: 0 0 4px;
   }
+
+  /* Step 19 — iOS safe-area + chrome polish. All rules scoped to body.is-ios
+     (set by the iOS runtime bundle), so web behaviour is byte-identical. */
+  body.is-ios .mobile-app-bar,
+  body.is-ios .app-header { padding-top: env(safe-area-inset-top, 0px); }
+  body.is-ios .day-strip-mobile { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  body.is-ios { overscroll-behavior-y: none; -webkit-overflow-scrolling: touch; }
+  body.is-ios .as-overlay,
+  body.is-ios .modal-backdrop {
+    padding-top: max(16px, env(safe-area-inset-top, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+  }
+  /* Disable iOS text selection / callout on chrome — leave inputs alone. */
+  body.is-ios .mobile-app-bar,
+  body.is-ios .app-header,
+  body.is-ios .day-strip-mobile,
+  body.is-ios .nav-tab-wrap,
+  body.is-ios button {
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  }
+  body.is-ios input,
+  body.is-ios textarea { -webkit-user-select: text; user-select: text; }
 </style>
 
 <!-- Modal -->
@@ -1173,6 +1197,21 @@
       <button type="button" onclick="closeSettingsModal()" class="as-btn as-btn-cancel">Cancel</button>
       <button type="button" onclick="clearSettingsKey()" class="as-btn as-btn-danger">Clear</button>
       <button type="button" onclick="saveSettings()" class="as-btn as-btn-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Voice-recording modal (Step 19) — iOS-only entry point; replaces the
+     window.confirm gate used in Step 16. Opens via window.openVoiceModal,
+     stays display:none on web since nothing else calls it. Reuses the
+     .as-overlay/.as-card design system. -->
+<div id="voice-modal" class="as-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="voice-title">
+  <div class="as-card">
+    <h3 id="voice-title" class="font-bold text-slate-800 text-base mb-1">🎤 Recording…</h3>
+    <p id="voice-elapsed" class="ts-sub" style="font-size: 18px; font-variant-numeric: tabular-nums; color: #0f172a;">00:00</p>
+    <div class="as-actions">
+      <button type="button" id="voice-cancel" class="as-btn as-btn-cancel">Cancel</button>
+      <button type="button" id="voice-stop" class="as-btn as-btn-save">Stop &amp; Save</button>
     </div>
   </div>
 </div>
@@ -3458,6 +3497,37 @@ window.showSnack = showSnack;
 window.renderTour = renderTour;
 window.renderMemory = renderMemory;
 Object.defineProperty(window, "STATE", { get: () => STATE, set: (v) => { STATE = v; }, configurable: true });
+
+// Step 19 — voice recording modal. Opens #voice-modal, ticks an elapsed
+// timer (mm:ss), resolves with "stop" or "cancel" when the user taps a
+// button. The iOS recordVoice override uses this to gate stopVoice().
+// Defensive on missing nodes (returns "stop" immediately so the user
+// never loses an in-progress recording if the modal markup is absent).
+window.openVoiceModal = () => new Promise((resolve) => {
+  const m = document.getElementById("voice-modal");
+  const elapsed = document.getElementById("voice-elapsed");
+  const stopBtn = document.getElementById("voice-stop");
+  const cancelBtn = document.getElementById("voice-cancel");
+  if (!m || !elapsed || !stopBtn || !cancelBtn) { resolve("stop"); return; }
+  const t0 = Date.now();
+  elapsed.textContent = "00:00";
+  const timer = setInterval(() => {
+    const s = Math.floor((Date.now() - t0) / 1000);
+    elapsed.textContent =
+      String(Math.floor(s / 60)).padStart(2, "0") + ":" +
+      String(s % 60).padStart(2, "0");
+  }, 250);
+  const close = (action) => {
+    clearInterval(timer);
+    m.classList.add("hidden");
+    stopBtn.onclick = null;
+    cancelBtn.onclick = null;
+    resolve(action);
+  };
+  stopBtn.onclick = () => close("stop");
+  cancelBtn.onclick = () => close("cancel");
+  m.classList.remove("hidden");
+});
 
 init();
 </script>

@@ -15,6 +15,10 @@ PODS:
   - CapacitorSecureStoragePlugin (0.10.0):
     - Capacitor
     - SwiftKeychainWrapper
+  - CapacitorSplashScreen (6.0.4):
+    - Capacitor
+  - CapacitorStatusBar (6.0.3):
+    - Capacitor
   - CapacitorVoiceRecorder (6.0.3):
     - Capacitor
   - SQLCipher (4.10.0):
@@ -33,6 +37,8 @@ DEPENDENCIES:
   - "CapacitorFilesystem (from `../../../../node_modules/@capacitor/filesystem`)"
   - "CapacitorGeolocation (from `../../../../node_modules/@capacitor/geolocation`)"
   - CapacitorSecureStoragePlugin (from `../../../../node_modules/capacitor-secure-storage-plugin`)
+  - "CapacitorSplashScreen (from `../../../../node_modules/@capacitor/splash-screen`)"
+  - "CapacitorStatusBar (from `../../../../node_modules/@capacitor/status-bar`)"
   - CapacitorVoiceRecorder (from `../../../../node_modules/capacitor-voice-recorder`)
 
 SPEC REPOS:
@@ -56,6 +62,10 @@ EXTERNAL SOURCES:
     :path: "../../../../node_modules/@capacitor/geolocation"
   CapacitorSecureStoragePlugin:
     :path: "../../../../node_modules/capacitor-secure-storage-plugin"
+  CapacitorSplashScreen:
+    :path: "../../../../node_modules/@capacitor/splash-screen"
+  CapacitorStatusBar:
+    :path: "../../../../node_modules/@capacitor/status-bar"
   CapacitorVoiceRecorder:
     :path: "../../../../node_modules/capacitor-voice-recorder"
 
@@ -67,11 +77,13 @@ SPEC CHECKSUMS:
   CapacitorFilesystem: 5b9aec35c0212bd0064e26d278c93e925864f212
   CapacitorGeolocation: ef657a46a125be74010f4ce57caae173c23204d2
   CapacitorSecureStoragePlugin: 545b51d782d35e61a39231ecf99a966b060a2cbb
+  CapacitorSplashScreen: ef140a8b1ea7244e0c245ce2dd4ce5251e7ab86a
+  CapacitorStatusBar: 149cde8f1328ec3aa6cbdd872a55137ae3f98b16
   CapacitorVoiceRecorder: 27c4c998c2280571d853579f319f6f53f884bdee
   SQLCipher: eb79c64049cb002b4e9fcb30edb7979bf4706dfc
   SwiftKeychainWrapper: 807ba1d63c33a7d0613288512399cd1eda1e470c
   ZIPFoundation: dfd3d681c4053ff7e2f7350bc4e53b5dba3f5351
 
-PODFILE CHECKSUM: b5c44a103b3946d06a3c7c5b2460d39965ead498
+PODFILE CHECKSUM: 7e96f840c27074bd536001daf80bec2d68453fcb
 
 COCOAPODS: 1.16.2

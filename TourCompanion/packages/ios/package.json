@@ -20,6 +20,8 @@
     "@capacitor/filesystem": "^6.0.4",
     "@capacitor/geolocation": "^6.1.1",
     "@capacitor/ios": "^6",
+    "@capacitor/splash-screen": "^6.0.4",
+    "@capacitor/status-bar": "^6.0.3",
     "@tourcompanion/core": "*",
     "capacitor-secure-storage-plugin": "^0.10.0",
     "capacitor-voice-recorder": "^6.0.3"

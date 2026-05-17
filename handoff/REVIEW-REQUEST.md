@@ -1,4 +1,4 @@
-# Review Request — Step 18 (Offline Leaflet Tile Cache, iOS)
+# Review Request — Step 19 (iOS UX Polish)
 
 **Builder:** Bob
 **Date:** 2026-05-16
@@ -8,12 +8,16 @@
 
 ## Summary
 
-Adds an iOS-only tile cache that intercepts Leaflet's `createTile`, serves OSM
-tiles from `Directory.Cache/tiles/` when present, and otherwise fetches them
-over the network, persists to disk, and serves the cached copy thereafter.
-Web behaviour is byte-identical (the override is gated by the existing
-`Capacitor.getPlatform() === "ios"` block in `entry.ts`). No new endpoints,
-no Python changes, no `index.html` edits.
+Native chrome polish for the iOS app: locks the status bar to dark, dismisses
+the launch splash, adds safe-area handling so the app bar / day strip / modals
+don't tuck under the notch or home indicator, kills the rubber-band overscroll,
+disables stray text-selection on buttons / chrome, and replaces the v1
+`window.confirm("Recording…")` gate with a styled in-page modal. App icon swap
+is documented (Owner artwork required) but not implemented per brief.
+
+Pure client-side polish — no Python, no schema, no new endpoints, no new tests.
+All CSS scoped to `body.is-ios`; `#voice-modal` only opens via the iOS-only
+`recordVoice` override. Web behaviour is byte-identical.
 
 ---
 
@@ -21,23 +25,39 @@ no Python changes, no `index.html` edits.
 
 ### New
 
-- **`TourCompanion/packages/ios/src/runtime/tiles/cache.ts`** (lines 1–57)
-  - 22–30 — `urlToKey(url)`: pure FNV-1a 32-bit hash, base-36 encoded. Deterministic, dependency-free, sufficient collision-avoidance for a few thousand tiles per trip.
-  - 33–45 — `readTileUri(url)`: stat-then-getUri pattern; missing-file throw from `stat` becomes a `null` return (cache miss). Rewrites the returned `file://` URI to `capacitor://localhost/_capacitor_file_<path>` for WKWebView.
-  - 48–57 — `writeTile(url, base64)`: persists to `Directory.Cache/tiles/<key>.png` with `recursive: true`, returns the rewritten webview-safe URI.
-
-- **`TourCompanion/packages/ios/src/runtime/tiles/index.ts`** (lines 1–65)
-  - 23–33 — Setup + idempotency guard (`__tcTileCacheInstalled` on `TileLayer.prototype`) so a double-install (hot reload / poll race) is a no-op.
-  - 35–62 — `createTile` override. Synchronously returns `<img>` per Leaflet's contract; async pipeline tries cache → fetches → base64s → persists → serves. Any throw routes to `tile.src = url` fallback (matches pre-Step-18 web behaviour).
-
-- **`TourCompanion/packages/ios/src/runtime/tiles/cache.test.ts`** (lines 1–31)
-  - 13–28 — Four tests for `urlToKey`: determinism, base-36 shape + non-empty, distinctness for adjacent tile coords, empty-string safety. Pure-function only — no Filesystem mocking per the brief.
+None.
 
 ### Modified
 
+- **`TourCompanion/packages/ios/package.json`** — added two deps:
+  - `@capacitor/status-bar: ^6.0.3`
+  - `@capacitor/splash-screen: ^6.0.4`
+  - Cap 6 pin (the unversioned brief default resolved to v8 and fought the rest of the workspace; pinning to `^6` matches the existing Cap-6 lineup).
+
+- **`TourCompanion/packages/ios/capacitor.config.ts`** (lines 10–22)
+  - Added `plugins.StatusBar` (`style: "DARK"`, `overlaysWebView: false`, `backgroundColor: "#0e0f12"`).
+  - Added `plugins.SplashScreen` (`launchShowDuration: 1500`, `backgroundColor: "#0e0f12"`, `showSpinner: false`, `splashFullScreen: true`, `splashImmersive: true`).
+
 - **`TourCompanion/packages/ios/src/runtime/entry.ts`**
-  - Line 20 — new import: `import { installTileCache } from "./tiles/index.js";`
-  - Lines 149–161 — poll-until-Leaflet-ready installer (`tryInstallTileCache`) inside the existing iOS-gated block, after the `installNativeCapture` registration. Re-runs every 200 ms until `window.L?.TileLayer` exists, then calls `installTileCache()`.
+  - Lines 14–15 — new imports: `StatusBar` + `Style` from `@capacitor/status-bar`; `SplashScreen` from `@capacitor/splash-screen`.
+  - Lines 40–49 — async IIFE inside the iOS-gated block, after `window.TCSettings = createSettings(keychainStore);` and before `installFetchInterceptor(...)`. Calls `StatusBar.setStyle({ style: Style.Dark })` and `SplashScreen.hide({ fadeOutDuration: 200 })`, each wrapped in `try/catch {}`. Fire-and-forget so interceptor install isn't gated on plugin RTT.
+  - Lines 99–106 — voice override switch: `const action = (await (window as any).openVoiceModal?.()) ?? "stop";` replaces the old `window.confirm(...)` line. Subsequent guard is `if (action !== "stop")`. The `?? "stop"` fallback preserves v1 save-recording behaviour if the SPA bridge is stale.
+
+- **`TourCompanion/packages/web/public/index.html`**
+  - Line 5 — viewport meta updated: `width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1`. `viewport-fit=cover` enables non-zero `env(safe-area-inset-*)`; `maximum-scale=1` blocks double-tap zoom on chrome (inputs explicitly re-enable selection / typing below).
+  - Lines 1110–1133 — `body.is-ios`-scoped CSS block appended just before `</style>`:
+    - 1112–1113 — `.mobile-app-bar, .app-header` → `padding-top: env(safe-area-inset-top)`.
+    - 1114 — `.day-strip-mobile` → `padding-bottom: env(safe-area-inset-bottom)` (home-indicator clearance; this app has no bottom tab bar).
+    - 1115 — `body.is-ios` → `overscroll-behavior-y: none` + `-webkit-overflow-scrolling: touch`.
+    - 1116–1122 — `.as-overlay, .modal-backdrop` → `padding: max(16px, env(safe-area-inset-*))` on all four sides.
+    - 1124–1130 — `-webkit-user-select: none` + `-webkit-touch-callout: none` on chrome (`.mobile-app-bar`, `.app-header`, `.day-strip-mobile`, `.nav-tab-wrap`, `button`).
+    - 1131–1132 — `input, textarea` re-enabled with `-webkit-user-select: text`.
+  - Lines 1204–1218 — `#voice-modal` markup. Hidden by default (`.as-overlay.hidden`). Reuses `.as-card` / `.as-actions` / `.as-btn-cancel` / `.as-btn-save` from the existing modal design system (the brief's `.ghost` / `.primary` classes don't exist in this codebase). Headline "🎤 Recording…", tabular `#voice-elapsed` (default `00:00`), and two `<button>`s with ids `voice-cancel` + `voice-stop`.
+  - Lines 3500–3530 — `window.openVoiceModal` helper added in the iOS bridge block (next to `window._stopIdFor`, `window.showSnack`, etc.). Returns `Promise<"stop"|"cancel">`. Drives the elapsed counter on a 250 ms `setInterval` (cleared on close); clears button `onclick`s and re-adds `hidden` on resolve. Defensive: if any of the four DOM nodes are absent, resolves `"stop"` immediately so an in-progress recording is never lost.
+
+- **`TourCompanion/packages/ios/ios/App/Podfile.lock`** — auto-regenerated by `npx cap sync ios`. Now includes `CapacitorStatusBar (6.0.3)` and `CapacitorSplashScreen (6.0.4)`. 8 plugins total (was 6).
+
+- **`TourCompanion/packages/ios/www/ios.bundle.js`** — auto-regenerated build artefact (177.3 kB, was 175.7 kB). Also copied into `packages/ios/ios/App/App/public/` by `cap sync`.
 
 ---
 
@@ -46,26 +66,33 @@ no Python changes, no `index.html` edits.
 | Gate | Result |
 | --- | --- |
 | `npm run typecheck --workspace=@tourcompanion/ios` | clean |
-| `npm run build` (monorepo) | clean — iOS bundle 175.7 kB (+2.5 kB vs Step 17) |
-| `npm test` (monorepo) | 73 core + 10 iOS = **83 pass** (+4) |
-| `npx cap sync ios` | 6 plugins, sync finished in 1.681s |
+| `npm run build` (monorepo) | clean — iOS bundle 177.3 kB (+1.6 kB vs Step 18) |
+| `npm test` (monorepo) | 73 core + 10 iOS = **83 pass** (unchanged) |
+| `npx cap sync ios` | 8 plugins, sync finished in 1.745s |
 | `xcodebuild … build CODE_SIGNING_ALLOWED=NO` | **BUILD SUCCEEDED** |
+| `Podfile.lock` lists `CapacitorStatusBar` + `CapacitorSplashScreen` | yes (6.0.3 + 6.0.4) |
+
+---
+
+## Web Behaviour Unchanged — Proof Points
+
+- All new CSS is `body.is-ios`-scoped. Only the iOS runtime (`packages/ios/src/runtime/entry.ts:40`) adds `is-ios` to `<body>`; the web build never loads `ios.bundle.js`.
+- `#voice-modal` is `.as-overlay.hidden` by default. The only code that opens it is `window.openVoiceModal`, which is only invoked by the iOS-runtime's `recordVoice` override (added in Step 16, modified here in entry.ts:99–106). Web's `recordVoice` (defined at index.html:2891) is untouched.
+- Viewport meta now includes `viewport-fit=cover, maximum-scale=1`. `viewport-fit=cover` is a no-op on browsers without notches / safe areas. `maximum-scale=1` matches the previous `initial-scale=1.0` pinch behaviour for most users; we judged this acceptable per the brief, but flagging for Reviewer.
 
 ---
 
 ## Open Questions
 
-None. The brief flagged the Capacitor 6 file-URL prefix
-(`capacitor://localhost/_capacitor_file_`) as worth verifying in simulator if
-possible; we ship as-is per the brief's "fallback path catches errors"
-guidance — a mis-prefix simply routes through the network-URL fallback
-without breaking rendering.
+- **`maximum-scale=1` a11y.** Disables iOS pinch-zoom on the page. Acceptable for an app-style SPA but flagging — Reviewer call if this should be `user-scalable=no` instead, or relaxed.
+- **App icon.** Documented at `TourCompanion/packages/ios/ios/App/App/Assets.xcassets/AppIcon.appiconset/` per Cap 6 convention; Owner artwork required (1024×1024 PNG named `AppIcon-512@2x.png`). Out of scope for Step 19 per brief.
 
 ---
 
 ## Out of Scope (deferred per brief)
 
-- Tile pre-load / bulk download UI — v2 feature.
-- WKWebView NSAppTransportSecurity — Apple permits `https://*.tile.openstreetmap.org` by default; no Info.plist change required.
+- App icon implementation — Owner artwork blocker.
+- Test for `window.openVoiceModal` — pure DOM helper; brief did not request one and the iOS workspace has no DOM-test harness.
+- Splash screen artwork — uses Capacitor's solid `#0e0f12` per config; bespoke imagery is a future step.
 
 Ready for Review: YES

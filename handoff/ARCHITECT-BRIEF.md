@@ -2,167 +2,156 @@
 
 ## Initiative — Standalone iOS Version (continued)
 
-Steps 8-17 complete. Now Step 18.
+Steps 8-18 complete. Now Step 19.
 
 ---
 
-## Step 18 — Offline Leaflet Tile Cache (iOS)
+## Step 19 — iOS UX Polish
 
-**Scope:** On iOS, every OSM tile request is intercepted: if the tile is in Filesystem cache, serve from local disk; otherwise fetch over network, save, then serve. Multi-day trips revisiting the same map area survive a no-signal period. No new UI — caching is transparent and on-demand. Web behavior unchanged.
+**Scope:** Safe-area handling, status bar styling, splash screen config, native voice modal (replace `window.confirm`), disable rubber-band overscroll, polish chrome interactions. App icon swap is documented as a manual Owner step (artwork required) — not implemented here.
 
-### Approach
+### Build Order
 
-Override `L.TileLayer.prototype.createTile` (or the simpler `getTileUrl`) on iOS only, after Leaflet is loaded. The custom layer:
+1. **Plugins (Cap 6):**
+   ```bash
+   npm install @capacitor/status-bar @capacitor/splash-screen --workspace=@tourcompanion/ios
+   npx cap sync ios
+   ```
 
-1. Computes the tile URL the standard way.
-2. Hashes the URL → cache key (`tile-<hash>.png`).
-3. Checks `Filesystem` for the file in `Directory.Cache/tiles/`.
-4. If present → assign image src to the local `webPath` from `Filesystem.getUri`.
-5. If absent → `fetch` the tile, write to Filesystem, then assign src.
+2. **Status bar + splash config — `packages/ios/capacitor.config.ts`:**
+   ```ts
+   const config: CapacitorConfig = {
+     appId: "com.cloudaipro.tourcompanion",
+     appName: "TourCompanion",
+     webDir: "www",
+     server: { androidScheme: "https" },
+     plugins: {
+       StatusBar: { style: "DARK", overlaysWebView: false, backgroundColor: "#0e0f12" },
+       SplashScreen: {
+         launchShowDuration: 1500,
+         backgroundColor: "#0e0f12",
+         showSpinner: false,
+         splashFullScreen: true,
+         splashImmersive: true
+       }
+     }
+   };
+   ```
 
-### Files
+3. **Boot wiring — `packages/ios/src/runtime/entry.ts`:**
+   ```ts
+   import { StatusBar, Style } from "@capacitor/status-bar";
+   import { SplashScreen } from "@capacitor/splash-screen";
 
-```
-packages/ios/src/runtime/tiles/
-  index.ts        # installTileCache() — call after Leaflet is global
-  cache.ts        # readTile, writeTile, urlToKey
-```
+   // After window.TCStore set, before installFetchInterceptor:
+   try { await StatusBar.setStyle({ style: Style.Dark }); } catch {}
+   try { await SplashScreen.hide({ fadeOutDuration: 200 }); } catch {}
+   ```
 
-`cache.ts`:
+4. **Safe-area CSS — `packages/web/public/index.html`:**
 
-```ts
-import { Filesystem, Directory } from "@capacitor/filesystem";
+   Locate the `<style>` block. Append a small `body.is-ios` scoped block:
+   ```css
+   body.is-ios .app-bar, body.is-ios .mobile-app-bar { padding-top: env(safe-area-inset-top, 0px); }
+   body.is-ios .bottom-tabs, body.is-ios .mobile-tabs { padding-bottom: env(safe-area-inset-bottom, 0px); }
+   body.is-ios { overscroll-behavior-y: none; -webkit-overflow-scrolling: touch; }
+   body.is-ios .modal-overlay { padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+   ```
+   Grep `index.html` for actual class names of the app bar and bottom tab strip first (likely `mob-app-bar` or `mobile-app-bar` or similar). Use the real class names.
 
-const TILE_DIR = "tiles";
+   Also append to `<head>`:
+   ```html
+   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+   ```
+   If a `<meta name="viewport">` already exists, **modify** the existing one — add `viewport-fit=cover, maximum-scale=1` to the content. Do not duplicate.
 
-/** Deterministic short key from a tile URL. */
-export function urlToKey(url: string): string {
-  // Cheap stable hash — Web Crypto SHA-1 isn't sync, so use FNV-1a 32-bit.
-  let h = 0x811c9dc5;
-  for (let i = 0; i < url.length; i++) {
-    h ^= url.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(36);
-}
+5. **Voice recording modal — replace `window.confirm`:**
 
-export async function readTileUri(url: string): Promise<string | null> {
-  const key = urlToKey(url);
-  try {
-    const r = await Filesystem.getUri({
-      path: `${TILE_DIR}/${key}.png`,
-      directory: Directory.Cache,
-    });
-    // getUri does not check existence — confirm by stat.
-    await Filesystem.stat({ path: `${TILE_DIR}/${key}.png`, directory: Directory.Cache });
-    // Convert file:// to a webview-safe URI.
-    return r.uri.replace(/^file:\/\//, "capacitor://localhost/_capacitor_file_");
-  } catch {
-    return null;
-  }
-}
+   In `packages/web/public/index.html`, add a hidden modal markup near the existing modals (grep for `as-overlay` / `modal-overlay`):
+   ```html
+   <div id="voice-modal" class="as-overlay hidden" role="dialog" aria-modal="true">
+     <div class="as-card">
+       <h3>Recording…</h3>
+       <p id="voice-elapsed">00:00</p>
+       <div class="as-actions">
+         <button id="voice-cancel" class="ghost">Cancel</button>
+         <button id="voice-stop" class="primary">Stop &amp; Save</button>
+       </div>
+     </div>
+   </div>
+   ```
+   Reuse existing card classes — grep what's actually in the file (`as-card`/`as-actions`/etc.).
 
-export async function writeTile(url: string, base64: string): Promise<string> {
-  const key = urlToKey(url);
-  const w = await Filesystem.writeFile({
-    path: `${TILE_DIR}/${key}.png`,
-    data: base64,
-    directory: Directory.Cache,
-    recursive: true,
-  });
-  return w.uri.replace(/^file:\/\//, "capacitor://localhost/_capacitor_file_");
-}
-```
+   Expose two helpers via the `// iOS bridge` block:
+   ```js
+   window.openVoiceModal = () => new Promise(resolve => {
+     const m = document.getElementById("voice-modal");
+     const elapsed = document.getElementById("voice-elapsed");
+     const t0 = Date.now();
+     const timer = setInterval(() => {
+       const s = Math.floor((Date.now() - t0) / 1000);
+       elapsed.textContent = `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+     }, 250);
+     const close = (action) => {
+       clearInterval(timer);
+       m.classList.add("hidden");
+       document.getElementById("voice-stop").onclick = null;
+       document.getElementById("voice-cancel").onclick = null;
+       resolve(action);
+     };
+     document.getElementById("voice-stop").onclick = () => close("stop");
+     document.getElementById("voice-cancel").onclick = () => close("cancel");
+     m.classList.remove("hidden");
+   });
+   ```
 
-`index.ts`:
+6. **Update voice override in `entry.ts`:**
+   Replace the `window.confirm("Recording…")` block:
+   ```ts
+   await startVoice();
+   const action = await (window as any).openVoiceModal?.();
+   const { path, transcript } = await stopVoice();
+   if (action !== "stop") {
+     (window as any).showSnack("🎤 Cancelled");
+     return;
+   }
+   // ... continue with the existing fetch POST
+   ```
 
-```ts
-import { readTileUri, writeTile } from "./cache";
+7. **Disable iOS text selection on chrome** — append to safe-area CSS block:
+   ```css
+   body.is-ios .app-bar, body.is-ios .mobile-app-bar, body.is-ios .bottom-tabs, body.is-ios .mobile-tabs,
+   body.is-ios button, body.is-ios .ts-tabs {
+     -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+   }
+   body.is-ios input, body.is-ios textarea { -webkit-user-select: text; user-select: text; }
+   ```
 
-declare const L: any;
-
-export function installTileCache(): void {
-  if (!(window as any).L) return;
-  const TileLayer = (window as any).L.TileLayer;
-  const origCreateTile = TileLayer.prototype.createTile;
-
-  TileLayer.prototype.createTile = function (coords: any, done: any) {
-    const tile = document.createElement("img");
-    const url = this.getTileUrl(coords);
-
-    (async () => {
-      let src = await readTileUri(url);
-      if (src) {
-        tile.src = src;
-        done(null, tile);
-        return;
-      }
-      try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error("tile_http_" + res.status);
-        const blob = await res.blob();
-        const reader = new FileReader();
-        reader.onloadend = async () => {
-          const base64 = String(reader.result).replace(/^data:[^,]+,/, "");
-          const cached = await writeTile(url, base64);
-          tile.src = cached;
-          done(null, tile);
-        };
-        reader.readAsDataURL(blob);
-      } catch (e) {
-        // Fall back to plain network URL (will fail gracefully if offline).
-        tile.src = url;
-        done(null, tile);
-      }
-    })();
-
-    return tile;
-  };
-}
-```
-
-### Wire from `entry.ts`
-
-After all other init, in the same DOMContentLoaded block (after Leaflet's `<script>` has loaded — Leaflet is loaded via CDN `<script>` in `index.html`, and DOMContentLoaded fires after `<head>` scripts):
-
-```ts
-import { installTileCache } from "./tiles";
-
-// After existing overrides:
-installTileCache();
-```
-
-If Leaflet is loaded lazily or after DOMContentLoaded, wrap in a 200ms poll:
-```ts
-const tryInstall = () => {
-  if ((window as any).L?.TileLayer) { installTileCache(); return; }
-  setTimeout(tryInstall, 200);
-};
-tryInstall();
-```
-
-Use the polling form — safe in both cases.
+8. **App icon — document only, do NOT implement:**
+   In BUILD-LOG note that `packages/ios/ios/App/App/Assets.xcassets/AppIcon.appiconset/` currently holds Capacitor's default icon. To replace: drop a 1024×1024 PNG named `AppIcon-512@2x.png` (per Cap convention). Owner provides artwork; out of scope for this step.
 
 ### Verification Checklist
 
-- [ ] `packages/ios/src/runtime/tiles/{index.ts,cache.ts}` exist
-- [ ] `entry.ts` calls `installTileCache()` via the poll-until-Leaflet-ready pattern
-- [ ] `urlToKey` is deterministic — same URL produces same key (add a quick unit test in `packages/ios/src/runtime/tiles/cache.test.ts` for the pure hash function only; mock Filesystem if testing read/write)
+- [ ] `@capacitor/status-bar` + `@capacitor/splash-screen` installed; `Podfile.lock` shows both
+- [ ] `capacitor.config.ts` has `plugins.StatusBar` + `plugins.SplashScreen`
+- [ ] `entry.ts` calls `StatusBar.setStyle` + `SplashScreen.hide`
+- [ ] `index.html` has `viewport-fit=cover` in viewport meta; safe-area + select CSS added
+- [ ] `#voice-modal` markup present in `index.html`
+- [ ] `window.openVoiceModal` exposed via iOS bridge block
+- [ ] `entry.ts` voice override uses `openVoiceModal` instead of `window.confirm`
 - [ ] `npm run build` green
 - [ ] `npm run typecheck` green
 - [ ] `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` green
-- [ ] 79+ tests pass
+- [ ] 83+ tests pass
 - [ ] No Python changes
-- [ ] No `index.html` edits in this step
+- [ ] Web behavior unchanged — all new CSS scoped to `body.is-ios`; new `#voice-modal` hidden by default and only opened via `window.openVoiceModal` which is only called by iOS override path
 
 ### Flags Bob Must Not Guess At
 
-- **Don't import Leaflet from core.** It's loaded as a CDN script in `index.html`; reach via `window.L`.
-- **`Directory.Cache`** (not `Directory.Data`) — iOS may purge under storage pressure. Acceptable for tiles.
-- **Hashing** — FNV-1a is sufficient. Don't use Web Crypto (async, overkill for non-cryptographic).
-- **`capacitor://localhost/_capacitor_file_<path>`** — the Capacitor 6 convention for serving filesystem files into WKWebView. If the iOS version uses a different scheme, refer to `node_modules/@capacitor/ios/CapacitorWebView/*.swift` for the actual prefix. Cap 6 uses `capacitor://localhost/_capacitor_file_/...`. Bob: verify by grepping Capacitor source or test in simulator (if available); if Bob can't verify in simulator, ship as-is — fallback path catches errors.
-- **No tile preload / bulk download UI** — out of scope. v2 feature.
-- **WKWebView NSAppTransportSecurity** — Apple allows `https://*.tile.openstreetmap.org` by default. No Info.plist change.
+- **App bar class names** — grep `index.html` for actual class names. Brief uses placeholders.
+- **`viewport-fit=cover`** is required for `env(safe-area-inset-*)` to return non-zero values.
+- **No app icon swap** — Owner artwork required. Document path for future swap.
+- **`overscroll-behavior-y: none`** — prevents the rubber-band on the body. Modals can still scroll internally.
 
 ---
 

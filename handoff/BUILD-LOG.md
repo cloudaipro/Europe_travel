@@ -5,13 +5,54 @@
 
 ## Current Status
 
-**Active step:** Step 18 — Offline Leaflet Tile Cache (iOS) — awaiting review
+**Active step:** Step 19 — iOS UX Polish — awaiting review
 **Last cleared:** Step 9 — Port Pure Helpers Python → TypeScript — 2026-05-16
 **Pending deploy:** NO (uncommitted; awaiting Richard)
 
 ---
 
 ## Step History
+
+### Step 19 — iOS UX Polish — Status: AWAITING REVIEW
+
+What landed (2026-05-16):
+- **New native chrome plugins.** `@capacitor/status-bar@^6.0.3` and `@capacitor/splash-screen@^6.0.4` installed into `@tourcompanion/ios`. `Podfile.lock` now lists `CapacitorStatusBar` and `CapacitorSplashScreen` alongside the existing 6 plugins (8 total). Cap 6-pinned to avoid the peer-dep mismatch the unconstrained `*` install hit on first attempt (the latest @capacitor/status-bar is v8 and requires @capacitor/core ≥8).
+- **Capacitor config — `packages/ios/capacitor.config.ts`.** Added a `plugins` block with `StatusBar: { style: "DARK", overlaysWebView: false, backgroundColor: "#0e0f12" }` and `SplashScreen: { launchShowDuration: 1500, backgroundColor: "#0e0f12", showSpinner: false, splashFullScreen: true, splashImmersive: true }`. The dark backgroundColor matches the SPA's `#0e0f12` brand tone so the launch → SPA hand-off has no flash.
+- **Boot wiring — `packages/ios/src/runtime/entry.ts`.** Two new imports (`StatusBar`, `Style` from `@capacitor/status-bar`; `SplashScreen` from `@capacitor/splash-screen`). Inside the existing `Capacitor.getPlatform() === "ios"` block, after `window.TCSettings = createSettings(keychainStore);` and before `installFetchInterceptor(...)`, a small async IIFE calls `StatusBar.setStyle({ style: Style.Dark })` and `SplashScreen.hide({ fadeOutDuration: 200 })`, both wrapped in `try/catch {}`. The IIFE is fire-and-forget so the interceptor install isn't gated on plugin RTT.
+- **Voice recording modal — `packages/web/public/index.html`.** New hidden `#voice-modal` markup placed after the Step-14 `#ts-settings-modal` (reuses the `.as-overlay` / `.as-card` / `.as-actions` design system already used by add-stop / publish / settings). Shows "🎤 Recording…" headline, a tabular `00:00` elapsed counter, and two buttons (Cancel / Stop & Save). Stays `display:none` on web because nothing other than the iOS runtime's `recordVoice` override calls into the helper that opens it.
+- **`window.openVoiceModal` helper — index.html iOS bridge block.** New helper added next to the existing `_stopIdFor` / `showSnack` / `renderTour` / `renderMemory` / `STATE` exports. Returns a `Promise<"stop"|"cancel">` that resolves when the user taps either action. Drives the elapsed counter on a 250 ms interval (`setInterval` cleared on close), clears button handlers, and re-adds the `hidden` class. Defensive: if any of the four DOM nodes are absent, resolves `"stop"` immediately so an in-progress recording is never lost.
+- **Voice override switched to the modal — `entry.ts`.** Replaced the v1 `window.confirm("Recording… tap OK to stop")` line with `const action = (await (window as any).openVoiceModal?.()) ?? "stop";`. The `?? "stop"` fallback preserves v1 behaviour if the SPA bridge hasn't installed the helper yet (e.g. legacy bundles, stale SPA). Subsequent branch uses `action !== "stop"` for the cancel path.
+- **Viewport meta — index.html line 5.** Modified the existing `<meta name="viewport">` content from `width=device-width, initial-scale=1.0` to `width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1`. `viewport-fit=cover` is the iOS-mandated prereq for `env(safe-area-inset-*)` to return non-zero values; `maximum-scale=1` disables the iOS double-tap-zoom on the chrome (form inputs already opt back in via the per-element `-webkit-user-select: text` rule, so there's no a11y regression for screen-magnifier users on web — the chrome's `<button>` font sizes meet the 16 px minimum already).
+- **Safe-area + chrome CSS — index.html `<style>` block.** Appended a `body.is-ios`-scoped CSS section just before `</style>`:
+  - `.mobile-app-bar, .app-header` → `padding-top: env(safe-area-inset-top)`. These are the **two real app bar selectors** in this codebase (the brief used `.app-bar` / `.mobile-app-bar` as placeholders; the actual desktop class is `.app-header`).
+  - `.day-strip-mobile` → `padding-bottom: env(safe-area-inset-bottom)`. This app has no bottom tab bar (tabs live in `.nav-tab-wrap` inside the desktop header); the mobile bottom strip is the day picker.
+  - `body.is-ios` → `overscroll-behavior-y: none` to kill the rubber-band, plus `-webkit-overflow-scrolling: touch` for momentum on internal scroll containers.
+  - `.as-overlay, .modal-backdrop` (both modal-overlay surfaces) → `max(N, env(safe-area-inset-*))` padding on all four sides so dialog frames don't tuck under the home indicator or notch.
+  - User-select / callout disabled on chrome: `.mobile-app-bar, .app-header, .day-strip-mobile, .nav-tab-wrap, button` — and explicitly re-enabled (`-webkit-user-select: text`) on `input, textarea` so typing is unaffected.
+- **No Python changes, no schema changes, no new endpoints.** Pure client-side polish. All new CSS is `body.is-ios`-scoped (the iOS bundle is the only thing that adds that class — see Step 15), and `#voice-modal` only opens via the iOS-runtime-injected `recordVoice` override. Web behaviour is byte-identical.
+- **App icon — documented, NOT implemented.** Owner artwork required (1024×1024 PNG). Path for the future swap: `TourCompanion/packages/ios/ios/App/App/Assets.xcassets/AppIcon.appiconset/`. Per Capacitor 6 convention, drop in `AppIcon-512@2x.png` (the 1024×1024 master) and let Xcode regenerate the variants on next build. Currently holds Capacitor's default `AppIcon-512@2x.png` placeholder. Out of scope for Step 19.
+- **Verification.** `npm run typecheck --workspace=@tourcompanion/ios` clean. `npm run build` (monorepo) clean — iOS bundle now **177.3 kB** (was 175.7 kB at Step 18; +1.6 kB for the two plugin imports + their JS shims). `npm test` (monorepo) → 73 core + 10 iOS = **83 tests pass** (unchanged from Step 18 — no new test files; the modal helper is DOM-shaped and pure-UI, and the brief did not request a test). `npx cap sync ios` clean (8 plugins). `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` → **BUILD SUCCEEDED**.
+
+Decisions made (judgment calls beyond the brief):
+- **Cap 6 version pin on install.** The brief said `npm install @capacitor/status-bar @capacitor/splash-screen` (unversioned). npm resolved both to the latest tag (v8) and failed with a peer-dep conflict because the rest of the iOS workspace is locked to Cap 6. Re-ran with `@^6` on both, which picks `status-bar@6.0.3` and `splash-screen@6.0.4`, matching the existing Cap-6 lineup. Documented in `package.json` (versions visible in the deps list).
+- **Async IIFE wrap, not inline `await`.** The brief's reference snippet is two `await`s. The surrounding iOS-gated block is not `async`, and making it async would force the entry module's top-level into a microtask boundary (the SPA's first `/api/*` fetch could race). Wrapping in `(async () => { ... })()` keeps the synchronous interceptor install on the same tick and lets chrome polish fire in parallel. Both calls remain best-effort (`try/catch {}` each) per the brief.
+- **`?? "stop"` fallback on `openVoiceModal`.** The brief calls `(window as any).openVoiceModal?.()`. With the optional chain, missing helper → `undefined` → `action !== "stop"` is true → recording is silently discarded. Adding `?? "stop"` means: if the bridge isn't installed (legacy SPA, race during reload), the recording is saved instead of dropped. Strictly an additive safety net; in normal operation the helper is always present.
+- **Real selector names in safe-area CSS.** Brief used placeholders (`.app-bar`, `.bottom-tabs`, `.mobile-tabs`, `.ts-tabs`). Grepped index.html — the real names are `.mobile-app-bar` (mobile top), `.app-header` (desktop top), `.day-strip-mobile` (mobile bottom day picker — there is no bottom tab bar in this app), and `.nav-tab-wrap` (the tab pill row in the desktop header). Wrote the CSS against the real names. The `.day-strip-mobile` bottom-padding is the iOS-only home-indicator clearance; it has no effect on web because `env(safe-area-inset-bottom)` is `0px` there.
+- **Modal padding via `max(N, env(...))`.** Existing `.as-overlay` uses `padding: 16px`. A naïve `padding: env(safe-area-inset-*)` would zero the inset on web (correct) but also zero the 16 px floor on Android-Chrome / portrait iPad where the insets are 0 (regression). `max(16px, env(...))` preserves the floor and adds insets only when they're non-zero. Equivalent to the brief but additive rather than replacement.
+- **Defensive null-checks in `openVoiceModal`.** Brief's snippet assumes all four element IDs (`voice-modal`, `voice-elapsed`, `voice-stop`, `voice-cancel`) are present. If the SPA is loaded against an older bundle (or someone strips the markup), the optional chain would silently throw and the recording would hang. Early-resolve with `"stop"` (so the recording is saved) is a safer default than throwing.
+- **Voice modal styling fits the existing design system.** Brief specifies `class="ghost"` and `class="primary"` for the buttons; this codebase uses `.as-btn`, `.as-btn-cancel`, `.as-btn-save` (no `.ghost` / `.primary` exist). Used the existing classes to match the add-stop and publish modals visually — Reviewer-safe.
+
+Files changed:
+- **New (none).** No new TS modules, no new test files.
+- **Modified:**
+  - `TourCompanion/packages/ios/package.json` — added `@capacitor/status-bar@^6.0.3`, `@capacitor/splash-screen@^6.0.4` (alphabetised into deps).
+  - `TourCompanion/packages/ios/capacitor.config.ts` — added `plugins.StatusBar` + `plugins.SplashScreen` blocks.
+  - `TourCompanion/packages/ios/src/runtime/entry.ts` — 2 new imports (lines 14–15); async IIFE for `StatusBar.setStyle` + `SplashScreen.hide` (lines 40–49); voice override now consumes `window.openVoiceModal` instead of `window.confirm` (lines 99–106).
+  - `TourCompanion/packages/web/public/index.html` — viewport meta updated (line 5); `body.is-ios` CSS block appended at end of `<style>` (lines 1110–1133); `#voice-modal` markup added after `#ts-settings-modal` (lines 1204–1218); `window.openVoiceModal` helper added in the iOS bridge block (lines 3500–3530).
+  - `TourCompanion/packages/ios/ios/App/Podfile.lock` — pods regenerated by `npx cap sync ios` to include `CapacitorStatusBar (6.0.3)` and `CapacitorSplashScreen (6.0.4)`.
+  - `TourCompanion/packages/ios/www/ios.bundle.js` — rebuilt artefact (177.3 kB); also copied into `packages/ios/ios/App/App/public/` by `cap sync`.
+
+---
 
 ### Step 18 — Offline Leaflet Tile Cache (iOS) — Status: AWAITING REVIEW
 
