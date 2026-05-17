@@ -10,7 +10,11 @@
     "typecheck": "tsc --noEmit",
     "cap:sync": "npx cap sync ios",
     "cap:open": "npx cap open ios",
-    "build:ios": "npm run build:web && npm run cap:sync && xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO | tail -30"
+    "build:ios": "npm run build:web && npm run cap:sync && xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO | tail -30",
+    "release:archive": "npm run build:web && npm run cap:sync && xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphoneos -configuration Release -destination 'generic/platform=iOS' archive -archivePath build/TourCompanion.xcarchive",
+    "release:archive:nosign": "npm run build:web && npm run cap:sync && xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -configuration Release -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO | tail -30",
+    "release:export": "xcodebuild -exportArchive -archivePath build/TourCompanion.xcarchive -exportOptionsPlist ios/App/ExportOptions.plist -exportPath build/export",
+    "release:upload": "xcrun altool --upload-app -f build/export/App.ipa -t ios --apiKey ${ASC_API_KEY_ID} --apiIssuer ${ASC_API_ISSUER_ID}"
   },
   "dependencies": {
     "@capacitor-community/sqlite": "^6.0.2",

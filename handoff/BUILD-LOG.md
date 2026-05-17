@@ -5,13 +5,64 @@
 
 ## Current Status
 
-**Active step:** Step 19 — iOS UX Polish — awaiting review
+**Active step:** Step 20 — TestFlight Build Scaffold + Apple Dev Onboarding — awaiting review (final step of Standalone iOS initiative)
 **Last cleared:** Step 9 — Port Pure Helpers Python → TypeScript — 2026-05-16
 **Pending deploy:** NO (uncommitted; awaiting Richard)
 
 ---
 
 ## Step History
+
+### Step 20 — TestFlight Build Scaffold + Apple Dev Onboarding — Status: AWAITING REVIEW
+
+What landed (2026-05-16):
+- **Version metadata.** Brief asked for literal `CFBundleShortVersionString=1.0.0`, `CFBundleVersion=1`, `CFBundleDisplayName=TourCompanion` in `Info.plist`. Pre-grep showed Info.plist already had all three keys, but `CFBundleShortVersionString` and `CFBundleVersion` use Xcode build-variable indirection (`$(MARKETING_VERSION)`, `$(CURRENT_PROJECT_VERSION)`). `CFBundleDisplayName` is already literal `TourCompanion`. To make the **resolved** values match the brief without breaking Xcode's auto-managed Info.plist, bumped `MARKETING_VERSION` from `1.0` → `1.0.0` in both Debug and Release config blocks of `ios/App/App.xcodeproj/project.pbxproj`. `CURRENT_PROJECT_VERSION = 1` was already correct. Net effect at archive time: bundle reports `1.0.0` / `1` / `TourCompanion` — exactly what the brief asks for.
+- **`ExportOptions.plist` — new file.** Created at `packages/ios/ios/App/ExportOptions.plist` with the literal `<string>REPLACE_WITH_TEAM_ID</string>` placeholder, `method=app-store`, automatic signing, no bitcode, symbols on, export destination. Verbatim from the brief.
+- **`.gitignore` — new file.** Added `packages/ios/.gitignore` listing `build/` (release archive output), `www/`, `node_modules/`, `ios/App/Pods/`, `ios/App/build/`, `ios/App/DerivedData/`. The existing README already documented these as "not committed"; this is the file that enforces it. Prior to this step the workspace had no package-local gitignore — only the root one.
+- **Four new npm scripts in `packages/ios/package.json`.** Added `release:archive`, `release:archive:nosign`, `release:export`, `release:upload` exactly as specified in the brief. `release:archive` is the real Xcode archive against `-sdk iphoneos -configuration Release` and will fail without a signing identity (Owner step). `release:archive:nosign` is the agent-side smoke-test: same `-configuration Release` but `-sdk iphonesimulator` + `CODE_SIGNING_ALLOWED=NO`, which proves the Release config compiles cleanly without any Apple credentials. Preserved all five existing scripts (`build:web`, `build`, `test`, `typecheck`, `cap:sync`, `cap:open`, `build:ios`) unchanged.
+- **`TESTFLIGHT.md` — new Owner runbook.** Wrote `packages/ios/TESTFLIGHT.md` covering: 5-step prereqs (Apple Dev signup → Team ID → ASC app record → ASC API key → Xcode signing), the 3-command build/upload chain, post-upload TestFlight propagation timeline, the `CFBundleVersion` bump rule for subsequent uploads, and the `release:archive:nosign` smoke-test for sanity-checking the Release config without going through the full signing flow. Every dollar sign, env var, file path, and URL is concrete — Owner can copy-paste.
+- **`README.md` — Release section added.** Appended a short "Release" section pointing at `TESTFLIGHT.md`, and added `build/` to the list of generated artefacts. Existing dev-loop docs unchanged.
+- **No Python changes. No `index.html` changes. No new TS modules. No new tests.** All edits are configuration / scripts / docs.
+- **Verification.**
+  - `npm run release:archive:nosign` (the new script) → **BUILD SUCCEEDED**. This proves the Release configuration compiles end-to-end against the Simulator SDK with code signing disabled. Pods (SwiftKeychainWrapper) emit two Swift-6-mode-future warnings unchanged from prior steps; not introduced by this step.
+  - `npm test` (monorepo) → **83 tests pass** (73 core + 10 iOS), unchanged from Step 19.
+  - `npm run typecheck` (monorepo) → clean across both TS workspaces.
+  - `npm run build:ios` (Debug iphonesimulator) → **BUILD SUCCEEDED**, unchanged from Step 19.
+
+Decisions made (judgment calls beyond the brief):
+- **MARKETING_VERSION bumped in pbxproj instead of replacing build-var refs in Info.plist with literals.** The brief shows the literal-string form of the keys but also explicitly says "If `CFBundleShortVersionString` already exists, leave it." It does exist (pointing at `$(MARKETING_VERSION)`). Replacing the build-var ref with a literal `1.0.0` would (a) contradict the "leave it" clause and (b) break Xcode's project-level version management — every future bump would have to edit two places. Bumping the pbxproj setting keeps the indirection (Xcode-idiomatic) and makes the resolved value match the brief's spec. TESTFLIGHT.md documents the bump location for future build-number increments.
+- **Smoke-test script added per the brief's verification note, not invented.** `release:archive:nosign` is called out in the brief's verification checklist as the canonical proof-of-compile when no Apple cert is available. Listed as a fourth script (not three) so the verification command stays a one-liner.
+- **Ordered scripts: archive, archive:nosign, export, upload.** Keeps the no-sign smoke-test adjacent to the real archive so future readers see them as a pair. Brief order would have put `archive:nosign` last; this is a minor reorder for readability — all four scripts present, names verbatim.
+- **TESTFLIGHT.md's "Bumping the build" section.** Brief's "Flags Bob Must Not Guess At" calls out the Owner's responsibility to bump `CFBundleVersion` monotonically. Adding a 4-line section in TESTFLIGHT.md pointing them at the exact pbxproj field is a one-time cost that prevents the Owner from getting blocked on the second TestFlight upload (the most common gotcha — App Store Connect rejects same-build-number uploads with a confusing error).
+- **No App Store Connect API Key automation.** The brief lists ASC API Key creation as Owner-only. The `release:upload` script references `${ASC_API_KEY_ID}` and `${ASC_API_ISSUER_ID}` env vars per the brief; TESTFLIGHT.md documents both the export and the `.p8` file placement at `~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8` (the default location `xcrun altool` and `xcrun notarytool` look up).
+
+Files changed:
+- **New:**
+  - `TourCompanion/packages/ios/ios/App/ExportOptions.plist`
+  - `TourCompanion/packages/ios/.gitignore`
+  - `TourCompanion/packages/ios/TESTFLIGHT.md`
+- **Modified:**
+  - `TourCompanion/packages/ios/ios/App/App.xcodeproj/project.pbxproj` — `MARKETING_VERSION` 1.0 → 1.0.0 (Debug + Release blocks, two lines).
+  - `TourCompanion/packages/ios/package.json` — appended `release:archive`, `release:archive:nosign`, `release:export`, `release:upload` to the `scripts` block; existing scripts untouched.
+  - `TourCompanion/packages/ios/README.md` — added `build/` to the generated-artefacts list and appended a "Release" section pointing to TESTFLIGHT.md.
+
+Known Gaps: none introduced. Apple Dev signup, Team ID fill-in, ASC app record, ASC API Key, and Xcode signing wire-up are documented Owner steps and are explicitly out of agent scope (per brief's "Cannot be done by agent" list).
+
+**This is the final step of the Standalone iOS initiative.** All eight Step 8-20 deliverables are complete:
+- Step 8: Cap 6 scaffold + workspace
+- Step 9-12: Pure-helper Python → TS port + SPA relocation
+- Step 13: API base + JWT bridge
+- Step 14: GPS check-ins / photos / voice (web side)
+- Step 15: Native iOS app shell + bridge bootstrapping
+- Step 16: Camera + Filesystem + Voice Recorder native overrides
+- Step 17: Native Geolocation
+- Step 18: Offline Leaflet tile cache
+- Step 19: UX polish (status bar, splash, safe areas, voice modal)
+- Step 20: TestFlight scaffold + Owner runbook
+
+The iOS workspace now builds cleanly in both Debug and Release configurations, has all six native plugins wired (sqlite, camera, filesystem, geolocation, secure-storage, voice-recorder) plus the two chrome plugins from Step 19 (status-bar, splash-screen), passes 83 tests + typecheck, and is one Owner-side Apple Dev signup away from a TestFlight build.
+
+---
 
 ### Step 19 — iOS UX Polish — Status: AWAITING REVIEW
 

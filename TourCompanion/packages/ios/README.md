@@ -23,4 +23,10 @@ npm run build:ios    # full headless build (CI / scaffold proof)
 - `capacitor.config.ts`, `copy-web.mjs`, `package.json`, this README
 
 Generated artifacts (not committed): `www/`, `node_modules/`, `ios/App/Pods/`,
-`ios/App/build/`, `ios/App/DerivedData/`.
+`ios/App/build/`, `ios/App/DerivedData/`, `build/`.
+
+## Release
+
+Shipping to TestFlight is an Owner-only flow because it needs a paid Apple
+Developer account and signing identity. See [TESTFLIGHT.md](./TESTFLIGHT.md)
+for the full runbook (prereqs + three-command build/upload sequence).

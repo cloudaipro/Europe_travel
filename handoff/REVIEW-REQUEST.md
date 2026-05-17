@@ -1,98 +1,120 @@
-# Review Request — Step 19 (iOS UX Polish)
+# Review Request — Step 20: TestFlight Build Scaffold + Apple Dev Onboarding
 
 **Builder:** Bob
 **Date:** 2026-05-16
 **Ready for Review: YES**
 
+This is the **final step of the Standalone iOS initiative.** After Richard clears
+it, the workspace is ready for the Owner to wire up Apple Dev signing and ship
+to TestFlight.
+
 ---
 
 ## Summary
 
-Native chrome polish for the iOS app: locks the status bar to dark, dismisses
-the launch splash, adds safe-area handling so the app bar / day strip / modals
-don't tuck under the notch or home indicator, kills the rubber-band overscroll,
-disables stray text-selection on buttons / chrome, and replaces the v1
-`window.confirm("Recording…")` gate with a styled in-page modal. App icon swap
-is documented (Owner artwork required) but not implemented per brief.
+Wired the release build pipeline as far as it can go without Owner-only Apple
+account actions. Added four npm scripts (archive / archive:nosign / export /
+upload), an `ExportOptions.plist` with a literal `REPLACE_WITH_TEAM_ID`
+placeholder, a `.gitignore` to keep build artefacts out of the repo, an Owner
+runbook in `TESTFLIGHT.md`, and pointed the iOS package README at it. Bumped
+`MARKETING_VERSION` in the pbxproj from `1.0` → `1.0.0` so the build-var
+indirection in `Info.plist` resolves to the value the brief specifies.
 
-Pure client-side polish — no Python, no schema, no new endpoints, no new tests.
-All CSS scoped to `body.is-ios`; `#voice-modal` only opens via the iOS-only
-`recordVoice` override. Web behaviour is byte-identical.
-
----
-
-## Files (with line ranges)
-
-### New
-
-None.
-
-### Modified
-
-- **`TourCompanion/packages/ios/package.json`** — added two deps:
-  - `@capacitor/status-bar: ^6.0.3`
-  - `@capacitor/splash-screen: ^6.0.4`
-  - Cap 6 pin (the unversioned brief default resolved to v8 and fought the rest of the workspace; pinning to `^6` matches the existing Cap-6 lineup).
-
-- **`TourCompanion/packages/ios/capacitor.config.ts`** (lines 10–22)
-  - Added `plugins.StatusBar` (`style: "DARK"`, `overlaysWebView: false`, `backgroundColor: "#0e0f12"`).
-  - Added `plugins.SplashScreen` (`launchShowDuration: 1500`, `backgroundColor: "#0e0f12"`, `showSpinner: false`, `splashFullScreen: true`, `splashImmersive: true`).
-
-- **`TourCompanion/packages/ios/src/runtime/entry.ts`**
-  - Lines 14–15 — new imports: `StatusBar` + `Style` from `@capacitor/status-bar`; `SplashScreen` from `@capacitor/splash-screen`.
-  - Lines 40–49 — async IIFE inside the iOS-gated block, after `window.TCSettings = createSettings(keychainStore);` and before `installFetchInterceptor(...)`. Calls `StatusBar.setStyle({ style: Style.Dark })` and `SplashScreen.hide({ fadeOutDuration: 200 })`, each wrapped in `try/catch {}`. Fire-and-forget so interceptor install isn't gated on plugin RTT.
-  - Lines 99–106 — voice override switch: `const action = (await (window as any).openVoiceModal?.()) ?? "stop";` replaces the old `window.confirm(...)` line. Subsequent guard is `if (action !== "stop")`. The `?? "stop"` fallback preserves v1 save-recording behaviour if the SPA bridge is stale.
-
-- **`TourCompanion/packages/web/public/index.html`**
-  - Line 5 — viewport meta updated: `width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1`. `viewport-fit=cover` enables non-zero `env(safe-area-inset-*)`; `maximum-scale=1` blocks double-tap zoom on chrome (inputs explicitly re-enable selection / typing below).
-  - Lines 1110–1133 — `body.is-ios`-scoped CSS block appended just before `</style>`:
-    - 1112–1113 — `.mobile-app-bar, .app-header` → `padding-top: env(safe-area-inset-top)`.
-    - 1114 — `.day-strip-mobile` → `padding-bottom: env(safe-area-inset-bottom)` (home-indicator clearance; this app has no bottom tab bar).
-    - 1115 — `body.is-ios` → `overscroll-behavior-y: none` + `-webkit-overflow-scrolling: touch`.
-    - 1116–1122 — `.as-overlay, .modal-backdrop` → `padding: max(16px, env(safe-area-inset-*))` on all four sides.
-    - 1124–1130 — `-webkit-user-select: none` + `-webkit-touch-callout: none` on chrome (`.mobile-app-bar`, `.app-header`, `.day-strip-mobile`, `.nav-tab-wrap`, `button`).
-    - 1131–1132 — `input, textarea` re-enabled with `-webkit-user-select: text`.
-  - Lines 1204–1218 — `#voice-modal` markup. Hidden by default (`.as-overlay.hidden`). Reuses `.as-card` / `.as-actions` / `.as-btn-cancel` / `.as-btn-save` from the existing modal design system (the brief's `.ghost` / `.primary` classes don't exist in this codebase). Headline "🎤 Recording…", tabular `#voice-elapsed` (default `00:00`), and two `<button>`s with ids `voice-cancel` + `voice-stop`.
-  - Lines 3500–3530 — `window.openVoiceModal` helper added in the iOS bridge block (next to `window._stopIdFor`, `window.showSnack`, etc.). Returns `Promise<"stop"|"cancel">`. Drives the elapsed counter on a 250 ms `setInterval` (cleared on close); clears button `onclick`s and re-adds `hidden` on resolve. Defensive: if any of the four DOM nodes are absent, resolves `"stop"` immediately so an in-progress recording is never lost.
-
-- **`TourCompanion/packages/ios/ios/App/Podfile.lock`** — auto-regenerated by `npx cap sync ios`. Now includes `CapacitorStatusBar (6.0.3)` and `CapacitorSplashScreen (6.0.4)`. 8 plugins total (was 6).
-
-- **`TourCompanion/packages/ios/www/ios.bundle.js`** — auto-regenerated build artefact (177.3 kB, was 175.7 kB). Also copied into `packages/ios/ios/App/App/public/` by `cap sync`.
+Verified: `release:archive:nosign` → BUILD SUCCEEDED. Debug build still
+SUCCEEDED. 83 tests pass. Typecheck clean.
 
 ---
 
-## Verification Run
+## Files Changed
 
-| Gate | Result |
-| --- | --- |
-| `npm run typecheck --workspace=@tourcompanion/ios` | clean |
-| `npm run build` (monorepo) | clean — iOS bundle 177.3 kB (+1.6 kB vs Step 18) |
-| `npm test` (monorepo) | 73 core + 10 iOS = **83 pass** (unchanged) |
-| `npx cap sync ios` | 8 plugins, sync finished in 1.745s |
-| `xcodebuild … build CODE_SIGNING_ALLOWED=NO` | **BUILD SUCCEEDED** |
-| `Podfile.lock` lists `CapacitorStatusBar` + `CapacitorSplashScreen` | yes (6.0.3 + 6.0.4) |
+### New files
+
+**`TourCompanion/packages/ios/ios/App/ExportOptions.plist`** (lines 1-17)
+- Verbatim from the brief: `method=app-store`, `teamID=REPLACE_WITH_TEAM_ID`
+  (literal — Owner fills in post-signup), `uploadBitcode=false`,
+  `uploadSymbols=true`, `signingStyle=automatic`, `destination=export`.
+
+**`TourCompanion/packages/ios/.gitignore`** (lines 1-6)
+- Lists `node_modules/`, `www/`, `build/` (new, for release archive output),
+  `ios/App/Pods/`, `ios/App/build/`, `ios/App/DerivedData/`. Mirrors what the
+  README already documented as "not committed".
+
+**`TourCompanion/packages/ios/TESTFLIGHT.md`** (lines 1-78)
+- 5-step prereqs (Apple Dev signup → Team ID → ASC app record → ASC API Key →
+  Xcode signing).
+- 3-command build/upload chain (`release:archive` / `release:export` /
+  `release:upload`).
+- TestFlight propagation timeline + bump rule for `CFBundleVersion` on the
+  next upload.
+- Sanity-check section pointing at `release:archive:nosign`.
+
+### Modified files
+
+**`TourCompanion/packages/ios/ios/App/App.xcodeproj/project.pbxproj`**
+- Line 355: `MARKETING_VERSION = 1.0;` → `MARKETING_VERSION = 1.0.0;` (Debug block).
+- Line 375: `MARKETING_VERSION = 1.0;` → `MARKETING_VERSION = 1.0.0;` (Release block).
+- `CURRENT_PROJECT_VERSION = 1` (lines 351, 371) already correct — untouched.
+
+**`TourCompanion/packages/ios/package.json`** (lines 13-17 added)
+- Added `release:archive` — full `iphoneos` Release archive (Owner will run after signing wired).
+- Added `release:archive:nosign` — `iphonesimulator` Release smoke-test with `CODE_SIGNING_ALLOWED=NO` (the agent-verifiable proof-of-compile).
+- Added `release:export` — `xcodebuild -exportArchive` consuming the `ExportOptions.plist`.
+- Added `release:upload` — `xcrun altool --upload-app` with ASC API env vars.
+- All pre-existing scripts (`build:web`, `build`, `test`, `typecheck`, `cap:sync`, `cap:open`, `build:ios`) preserved.
+
+**`TourCompanion/packages/ios/README.md`** (lines 24-30)
+- Added `build/` to the "not committed" list.
+- New "Release" section pointing at `TESTFLIGHT.md`.
+
+### Info.plist (unchanged)
+- Pre-grep showed `CFBundleShortVersionString`, `CFBundleVersion`, and
+  `CFBundleDisplayName` all already present. Display name is literal
+  `TourCompanion`; version keys use build-var indirection
+  (`$(MARKETING_VERSION)`, `$(CURRENT_PROJECT_VERSION)`), which is Xcode-idiomatic.
+  Bumping `MARKETING_VERSION` in the pbxproj makes the resolved value match
+  the brief's spec without breaking Xcode's project-level version management.
 
 ---
 
-## Web Behaviour Unchanged — Proof Points
+## Verification Results
 
-- All new CSS is `body.is-ios`-scoped. Only the iOS runtime (`packages/ios/src/runtime/entry.ts:40`) adds `is-ios` to `<body>`; the web build never loads `ios.bundle.js`.
-- `#voice-modal` is `.as-overlay.hidden` by default. The only code that opens it is `window.openVoiceModal`, which is only invoked by the iOS-runtime's `recordVoice` override (added in Step 16, modified here in entry.ts:99–106). Web's `recordVoice` (defined at index.html:2891) is untouched.
-- Viewport meta now includes `viewport-fit=cover, maximum-scale=1`. `viewport-fit=cover` is a no-op on browsers without notches / safe areas. `maximum-scale=1` matches the previous `initial-scale=1.0` pinch behaviour for most users; we judged this acceptable per the brief, but flagging for Reviewer.
+| Check | Result |
+|---|---|
+| `Info.plist` has CFBundle{ShortVersionString,Version,DisplayName} | YES (resolved to `1.0.0` / `1` / `TourCompanion`) |
+| `ExportOptions.plist` exists | YES |
+| `packages/ios/.gitignore` includes `build/` | YES |
+| `package.json` has four new release scripts | YES |
+| `TESTFLIGHT.md` exists with 5-step prereqs + 3-command chain | YES |
+| `npm run release:archive:nosign` → BUILD SUCCEEDED | YES |
+| `npm test` (monorepo) → 83 tests pass | YES (73 core + 10 iOS) |
+| `npm run typecheck` (monorepo) → clean | YES |
+| `npm run build:ios` (Debug iphonesimulator) → BUILD SUCCEEDED | YES |
+| No Python changes | YES |
+| No `index.html` changes | YES |
+| `REPLACE_WITH_TEAM_ID` stays literal in committed file | YES |
 
 ---
 
 ## Open Questions
 
-- **`maximum-scale=1` a11y.** Disables iOS pinch-zoom on the page. Acceptable for an app-style SPA but flagging — Reviewer call if this should be `user-scalable=no` instead, or relaxed.
-- **App icon.** Documented at `TourCompanion/packages/ios/ios/App/App/Assets.xcassets/AppIcon.appiconset/` per Cap 6 convention; Owner artwork required (1024×1024 PNG named `AppIcon-512@2x.png`). Out of scope for Step 19 per brief.
+None. Brief was unambiguous and the Owner-vs-agent scope split was precisely
+defined.
 
 ---
 
-## Out of Scope (deferred per brief)
+## Notes for Richard
 
-- App icon implementation — Owner artwork blocker.
-- Test for `window.openVoiceModal` — pure DOM helper; brief did not request one and the iOS workspace has no DOM-test harness.
-- Splash screen artwork — uses Capacitor's solid `#0e0f12` per config; bespoke imagery is a future step.
-
-Ready for Review: YES
+- **Why MARKETING_VERSION instead of replacing the Info.plist build-var ref?**
+  The brief shows literal-string XML for the keys but also explicitly says "If
+  `CFBundleShortVersionString` already exists, leave it." Replacing the
+  build-var with a literal would contradict that clause and force a two-place
+  edit on every future version bump. Bumping the pbxproj setting keeps the
+  Xcode-idiomatic indirection and makes the resolved bundle value match the
+  brief.
+- **`release:archive:nosign` is the agent-side verifiable build.** The real
+  `release:archive` will fail in any environment without a signing identity —
+  the brief itself flags this. The no-sign variant compiles the Release config
+  end-to-end against the Simulator SDK; if it builds, the Release config is
+  sound.
+- **Two Swift-6-mode warnings in Pods/SwiftKeychainWrapper** are pre-existing
+  (visible in Step 17/18/19 builds too); not introduced by this step.

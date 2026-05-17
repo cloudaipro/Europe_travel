@@ -2,156 +2,148 @@
 
 ## Initiative — Standalone iOS Version (continued)
 
-Steps 8-18 complete. Now Step 19.
+Steps 8-19 complete. Now Step 20.
 
 ---
 
-## Step 19 — iOS UX Polish
+## Step 20 — TestFlight Build Scaffold + Apple Dev Onboarding
 
-**Scope:** Safe-area handling, status bar styling, splash screen config, native voice modal (replace `window.confirm`), disable rubber-band overscroll, polish chrome interactions. App icon swap is documented as a manual Owner step (artwork required) — not implemented here.
+**Scope:** Wire the release build pipeline as far as it can go without Owner-only actions (Apple Dev account + signing certs + App Store Connect record). Provide turnkey scripts + a step-by-step `TESTFLIGHT.md` so the Owner can ship to TestFlight once they have signing in place.
+
+**Cannot be done by agent:**
+- Apple Dev membership ($99/yr) purchase
+- App Store Connect (ASC) app record creation
+- Signing certificate + provisioning profile generation
+- `altool` / `xcrun notarytool` upload with ASC API key
+
+**Can be done by agent:**
+- Bump iOS version metadata in `Info.plist`
+- Generate `ExportOptions.plist` for App Store distribution
+- Add `release:archive` + `release:export` + `release:upload` npm scripts
+- Write `TESTFLIGHT.md` Owner runbook
+- Verify clean release-config build (without code signing) still succeeds
 
 ### Build Order
 
-1. **Plugins (Cap 6):**
-   ```bash
-   npm install @capacitor/status-bar @capacitor/splash-screen --workspace=@tourcompanion/ios
-   npx cap sync ios
+1. **Version metadata — `packages/ios/ios/App/App/Info.plist`:**
+   ```xml
+   <key>CFBundleShortVersionString</key>
+   <string>1.0.0</string>
+   <key>CFBundleVersion</key>
+   <string>1</string>
+   <key>CFBundleDisplayName</key>
+   <string>TourCompanion</string>
    ```
+   Add the keys if missing. If `CFBundleShortVersionString` already exists, leave it (Cap default is `1.0`); add `CFBundleVersion` if absent. Add `CFBundleDisplayName`.
 
-2. **Status bar + splash config — `packages/ios/capacitor.config.ts`:**
-   ```ts
-   const config: CapacitorConfig = {
-     appId: "com.cloudaipro.tourcompanion",
-     appName: "TourCompanion",
-     webDir: "www",
-     server: { androidScheme: "https" },
-     plugins: {
-       StatusBar: { style: "DARK", overlaysWebView: false, backgroundColor: "#0e0f12" },
-       SplashScreen: {
-         launchShowDuration: 1500,
-         backgroundColor: "#0e0f12",
-         showSpinner: false,
-         splashFullScreen: true,
-         splashImmersive: true
-       }
+2. **Export options — `packages/ios/ios/App/ExportOptions.plist`:**
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+   <plist version="1.0">
+   <dict>
+     <key>method</key>
+     <string>app-store</string>
+     <key>teamID</key>
+     <string>REPLACE_WITH_TEAM_ID</string>
+     <key>uploadBitcode</key>
+     <false/>
+     <key>uploadSymbols</key>
+     <true/>
+     <key>signingStyle</key>
+     <string>automatic</string>
+     <key>destination</key>
+     <string>export</string>
+   </dict>
+   </plist>
+   ```
+   `REPLACE_WITH_TEAM_ID` stays literal — Owner fills in after Apple Dev signup.
+
+3. **Release scripts — `packages/ios/package.json`:**
+   Add scripts (preserve existing ones):
+   ```json
+   {
+     "scripts": {
+       "build:web": "...",
+       "cap:sync": "...",
+       "cap:open": "...",
+       "build:ios": "...",
+       "release:archive": "npm run build:web && npm run cap:sync && xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphoneos -configuration Release -destination 'generic/platform=iOS' archive -archivePath build/TourCompanion.xcarchive",
+       "release:export": "xcodebuild -exportArchive -archivePath build/TourCompanion.xcarchive -exportOptionsPlist ios/App/ExportOptions.plist -exportPath build/export",
+       "release:upload": "xcrun altool --upload-app -f build/export/App.ipa -t ios --apiKey ${ASC_API_KEY_ID} --apiIssuer ${ASC_API_ISSUER_ID}"
      }
-   };
-   ```
-
-3. **Boot wiring — `packages/ios/src/runtime/entry.ts`:**
-   ```ts
-   import { StatusBar, Style } from "@capacitor/status-bar";
-   import { SplashScreen } from "@capacitor/splash-screen";
-
-   // After window.TCStore set, before installFetchInterceptor:
-   try { await StatusBar.setStyle({ style: Style.Dark }); } catch {}
-   try { await SplashScreen.hide({ fadeOutDuration: 200 }); } catch {}
-   ```
-
-4. **Safe-area CSS — `packages/web/public/index.html`:**
-
-   Locate the `<style>` block. Append a small `body.is-ios` scoped block:
-   ```css
-   body.is-ios .app-bar, body.is-ios .mobile-app-bar { padding-top: env(safe-area-inset-top, 0px); }
-   body.is-ios .bottom-tabs, body.is-ios .mobile-tabs { padding-bottom: env(safe-area-inset-bottom, 0px); }
-   body.is-ios { overscroll-behavior-y: none; -webkit-overflow-scrolling: touch; }
-   body.is-ios .modal-overlay { padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
-   ```
-   Grep `index.html` for actual class names of the app bar and bottom tab strip first (likely `mob-app-bar` or `mobile-app-bar` or similar). Use the real class names.
-
-   Also append to `<head>`:
-   ```html
-   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-   ```
-   If a `<meta name="viewport">` already exists, **modify** the existing one — add `viewport-fit=cover, maximum-scale=1` to the content. Do not duplicate.
-
-5. **Voice recording modal — replace `window.confirm`:**
-
-   In `packages/web/public/index.html`, add a hidden modal markup near the existing modals (grep for `as-overlay` / `modal-overlay`):
-   ```html
-   <div id="voice-modal" class="as-overlay hidden" role="dialog" aria-modal="true">
-     <div class="as-card">
-       <h3>Recording…</h3>
-       <p id="voice-elapsed">00:00</p>
-       <div class="as-actions">
-         <button id="voice-cancel" class="ghost">Cancel</button>
-         <button id="voice-stop" class="primary">Stop &amp; Save</button>
-       </div>
-     </div>
-   </div>
-   ```
-   Reuse existing card classes — grep what's actually in the file (`as-card`/`as-actions`/etc.).
-
-   Expose two helpers via the `// iOS bridge` block:
-   ```js
-   window.openVoiceModal = () => new Promise(resolve => {
-     const m = document.getElementById("voice-modal");
-     const elapsed = document.getElementById("voice-elapsed");
-     const t0 = Date.now();
-     const timer = setInterval(() => {
-       const s = Math.floor((Date.now() - t0) / 1000);
-       elapsed.textContent = `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
-     }, 250);
-     const close = (action) => {
-       clearInterval(timer);
-       m.classList.add("hidden");
-       document.getElementById("voice-stop").onclick = null;
-       document.getElementById("voice-cancel").onclick = null;
-       resolve(action);
-     };
-     document.getElementById("voice-stop").onclick = () => close("stop");
-     document.getElementById("voice-cancel").onclick = () => close("cancel");
-     m.classList.remove("hidden");
-   });
-   ```
-
-6. **Update voice override in `entry.ts`:**
-   Replace the `window.confirm("Recording…")` block:
-   ```ts
-   await startVoice();
-   const action = await (window as any).openVoiceModal?.();
-   const { path, transcript } = await stopVoice();
-   if (action !== "stop") {
-     (window as any).showSnack("🎤 Cancelled");
-     return;
    }
-   // ... continue with the existing fetch POST
    ```
 
-7. **Disable iOS text selection on chrome** — append to safe-area CSS block:
-   ```css
-   body.is-ios .app-bar, body.is-ios .mobile-app-bar, body.is-ios .bottom-tabs, body.is-ios .mobile-tabs,
-   body.is-ios button, body.is-ios .ts-tabs {
-     -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
-   }
-   body.is-ios input, body.is-ios textarea { -webkit-user-select: text; user-select: text; }
+4. **`packages/ios/.gitignore`:** add `build/` so archive + ipa aren't committed.
+
+5. **Owner runbook — `packages/ios/TESTFLIGHT.md`:** create with the following sections (be precise + executable):
+
+   ```markdown
+   # Ship to TestFlight — Owner Runbook
+
+   Prerequisites (one-time, ~30 min):
+   1. Apple Developer Program — $99/yr — https://developer.apple.com/programs/enroll/
+      Membership processed within 24-48h.
+   2. Find your Team ID — https://developer.apple.com/account → Membership.
+      Copy the 10-char ID. Paste into `packages/ios/ios/App/ExportOptions.plist`
+      replacing `REPLACE_WITH_TEAM_ID`.
+   3. App Store Connect — https://appstoreconnect.apple.com → My Apps → +
+      - Bundle ID: `com.cloudaipro.tourcompanion`
+      - SKU: `tourcompanion-ios`
+      - Name: `TourCompanion`
+   4. ASC API Key — Users + Access → Keys → +
+      - Save the .p8 file. Note the Key ID + Issuer ID.
+      - Export: `export ASC_API_KEY_ID=...` and `export ASC_API_ISSUER_ID=...`.
+      - Place the .p8 file at `~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8`.
+   5. Open the project in Xcode: `npm run cap:open --workspace=@tourcompanion/ios`
+      - Select the App target → Signing & Capabilities.
+      - Tick "Automatically manage signing". Select your Team.
+      - Xcode generates the provisioning profile.
+
+   Build + Upload:
+   ```bash
+   cd TourCompanion/packages/ios
+   npm run release:archive   # ~5 min — builds .xcarchive
+   npm run release:export    # ~30 s — produces build/export/App.ipa
+   npm run release:upload    # ~3 min — uploads to ASC
    ```
 
-8. **App icon — document only, do NOT implement:**
-   In BUILD-LOG note that `packages/ios/ios/App/App/Assets.xcassets/AppIcon.appiconset/` currently holds Capacitor's default icon. To replace: drop a 1024×1024 PNG named `AppIcon-512@2x.png` (per Cap convention). Owner provides artwork; out of scope for this step.
+   TestFlight propagation: 10-30 min after upload, build appears in ASC →
+   TestFlight tab. Add internal testers + invite. They install via the
+   TestFlight iOS app.
+   ```
+
+6. **`packages/ios/README.md`** — add a short "Release" section that points to `TESTFLIGHT.md`.
+
+7. **Verification — no-signing release archive smoke-test:**
+   The full `release:archive` will fail without a real signing identity. Add a `release:archive:nosign` script for CI/sanity:
+   ```json
+   "release:archive:nosign": "npm run build:web && npm run cap:sync && xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -configuration Release -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO | tail -30"
+   ```
+   Run this to prove Release config compiles cleanly. (Real device archive needs signing; that's an Owner step.)
 
 ### Verification Checklist
 
-- [ ] `@capacitor/status-bar` + `@capacitor/splash-screen` installed; `Podfile.lock` shows both
-- [ ] `capacitor.config.ts` has `plugins.StatusBar` + `plugins.SplashScreen`
-- [ ] `entry.ts` calls `StatusBar.setStyle` + `SplashScreen.hide`
-- [ ] `index.html` has `viewport-fit=cover` in viewport meta; safe-area + select CSS added
-- [ ] `#voice-modal` markup present in `index.html`
-- [ ] `window.openVoiceModal` exposed via iOS bridge block
-- [ ] `entry.ts` voice override uses `openVoiceModal` instead of `window.confirm`
-- [ ] `npm run build` green
+- [ ] `Info.plist` contains `CFBundleShortVersionString=1.0.0`, `CFBundleVersion=1`, `CFBundleDisplayName=TourCompanion`
+- [ ] `ExportOptions.plist` exists at `packages/ios/ios/App/ExportOptions.plist`
+- [ ] `packages/ios/.gitignore` includes `build/`
+- [ ] `package.json` adds `release:archive`, `release:export`, `release:upload`, `release:archive:nosign` scripts
+- [ ] `TESTFLIGHT.md` exists with the 5-step prereqs + 3-command build sequence
+- [ ] `npm run release:archive:nosign` exits 0 with `BUILD SUCCEEDED` (this proves Release config compiles)
+- [ ] `npm test` — 83 tests still pass
 - [ ] `npm run typecheck` green
-- [ ] `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` green
-- [ ] 83+ tests pass
+- [ ] `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` (Debug iphonesimulator) still green
 - [ ] No Python changes
-- [ ] Web behavior unchanged — all new CSS scoped to `body.is-ios`; new `#voice-modal` hidden by default and only opened via `window.openVoiceModal` which is only called by iOS override path
+- [ ] No `index.html` changes
 
 ### Flags Bob Must Not Guess At
 
-- **App bar class names** — grep `index.html` for actual class names. Brief uses placeholders.
-- **`viewport-fit=cover`** is required for `env(safe-area-inset-*)` to return non-zero values.
-- **No app icon swap** — Owner artwork required. Document path for future swap.
-- **`overscroll-behavior-y: none`** — prevents the rubber-band on the body. Modals can still scroll internally.
+- **`REPLACE_WITH_TEAM_ID`** stays literal in committed file. Owner edits post-signup.
+- **`release:archive` (real)** will fail in this agent session — no signing identity. Use `release:archive:nosign` for verification.
+- **`release:upload`** uses env vars `ASC_API_KEY_ID` + `ASC_API_ISSUER_ID`. Document in TESTFLIGHT.md.
+- **CFBundleVersion** must be a monotonically increasing integer per TestFlight upload. v1 = `1`. Bumping to `2` for the next upload is the Owner's responsibility.
+- **No "app icon swap" implementation** — Step 19 already documented the path.
 
 ---
 
