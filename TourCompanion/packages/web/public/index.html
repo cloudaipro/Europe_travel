@@ -3449,6 +3449,16 @@ async function init() {
   } catch (e) { setToken(null, null); showLogin(); }
 }
 
+// iOS bridge — expose SPA internals to native runtime overrides (Step 16).
+// Function declarations are window-accessible in a classic <script>, but
+// `let STATE` is not — list all five here so the iOS runtime's
+// `window.addPhoto` / `window.recordVoice` overrides have a stable surface.
+window._stopIdFor = _stopIdFor;
+window.showSnack = showSnack;
+window.renderTour = renderTour;
+window.renderMemory = renderMemory;
+Object.defineProperty(window, "STATE", { get: () => STATE, set: (v) => { STATE = v; }, configurable: true });
+
 init();
 </script>
 </body>

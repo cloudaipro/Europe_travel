@@ -13,6 +13,18 @@
 
 ## Step History
 
+### Step 16 — Camera + Filesystem + Voice Recorder (Native iOS Capture) — Status: AWAITING REVIEW
+
+What landed (2026-05-16):
+- **Plugins.** Installed `@capacitor/camera@^6.1.3`, `@capacitor/filesystem@^6.0.4`, `capacitor-voice-recorder@^6.0.3` into `@tourcompanion/ios`. `npx cap sync ios` reports all 5 plugins (sqlite, camera, filesystem, secure-storage, voice-recorder).
+- **iOS permissions.** Added 4 `NS*UsageDescription` keys to `packages/ios/ios/App/App/Info.plist` — Camera, PhotoLibrary, PhotoLibraryAdd, Microphone. PhotoLibraryAdd is kept even though `saveToGallery: false` because the Camera plugin's compile-time check requires it.
+- **Capture module.** New `packages/ios/src/runtime/capture/index.ts` exports `capturePhoto` / `startVoice` / `stopVoice`. Photos: `Camera.getPhoto({resultType: Base64, source: Prompt, saveToGallery: false})` → `Filesystem.writeFile(photos/photo-<ts>.<ext>, Directory.Data, recursive: true)` → returns `{path, uri}`. Voice: `VoiceRecorder.requestAudioRecordingPermission` → `startRecording` (paired with `stopRecording` later) → `Filesystem.writeFile(voice/voice-<ts>.m4a, Directory.Data)` → returns `{path, transcript: "", durationMs}`. Transcript stays empty in v1; STT is a later step.
+- **Entry override.** `packages/ios/src/runtime/entry.ts` registers a DOMContentLoaded handler (or runs synchronously if DOM already parsed) that installs `window.addPhoto` / `window.recordVoice` overrides for iOS only. Order matters: the SPA's inline `<script>` parses AFTER `ios.bundle.js` (injected in `<head>`), so the override must wait for DOM ready before clobbering `addPhoto` / `recordVoice`. The overrides call the capture module, POST to `/api/stops/<id>/photos-link` and `/api/stops/<id>/voice` (handled by Step 14's fetch interceptor — no new endpoints), mutate `window.STATE`, then re-render Tour + Memory.
+- **SPA bridge.** `packages/web/public/index.html` ends with a single `// iOS bridge` block (right before `init();`) that does `window._stopIdFor = _stopIdFor; window.showSnack = showSnack; window.renderTour = renderTour; window.renderMemory = renderMemory;` plus a getter/setter `Object.defineProperty` on `window.STATE` so the `let STATE` reassignment in inline JS stays live-read from the iOS override. Function declarations would technically auto-attach to window, but the brief required all five listed for safety; the explicit assignments are a no-op for the four functions and load-bearing for `STATE`. Web behavior is unchanged.
+- **Web fallback unchanged.** The SPA's demo `addPhoto` / `recordVoice` in `index.html` are untouched; only the iOS runtime replaces them.
+- **No Python changes.**
+- **Verification.** `npm run typecheck --workspace=@tourcompanion/ios` clean. `npm run build --workspace=@tourcompanion/ios` clean (`ios.bundle.js` 169.6 kB). `npm test` (full monorepo) — 73 core + 6 iOS = 79 tests pass. `npx cap sync ios` clean. `xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO` → **BUILD SUCCEEDED**.
+
 ### Step 15 — OpenAI Plan Ingest from Device — Status: AWAITING REVIEW
 *Date: 2026-05-16*
 

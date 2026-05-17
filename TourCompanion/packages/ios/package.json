@@ -14,11 +14,14 @@
   },
   "dependencies": {
     "@capacitor-community/sqlite": "^6.0.2",
+    "@capacitor/camera": "^6.1.3",
     "@capacitor/cli": "^6",
     "@capacitor/core": "^6",
+    "@capacitor/filesystem": "^6.0.4",
     "@capacitor/ios": "^6",
     "@tourcompanion/core": "*",
-    "capacitor-secure-storage-plugin": "^0.10.0"
+    "capacitor-secure-storage-plugin": "^0.10.0",
+    "capacitor-voice-recorder": "^6.0.3"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

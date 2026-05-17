@@ -1,79 +1,76 @@
-# Review Request — Step 15: OpenAI Plan Ingest from Device
+# Review Request — Step 16: Camera + Filesystem + Voice Recorder (Native iOS Capture)
 
-**Step:** 15 — OpenAI Plan Ingest from Device
+**Step:** 16 — Camera + Filesystem + Voice Recorder (Native iOS Capture)
+**Date:** 2026-05-16
 **Ready for Review:** YES
 **Builder:** Bob
 
 ---
 
-## Summary
+## Scope
 
-Replaces the Step 14 `/api/plan/ingest` 503 stub with a real on-device OpenAI planner. Reads the OpenAI key from the Keychain-backed `TCSettings`, calls `planTrip` from `@tourcompanion/core`, persists the resulting `TripPlan` via `IOSTripStore.createTrip`. Response shape matches the Python endpoint so the existing inline `submitIngest` handler works unchanged. Frontend catch block now opens the Settings modal when the error message contains `missing_openai_key`. `clientFactory` injection point added for tests so no live network calls occur.
-
-All `npm test` (79 tests), `npm run typecheck`, `npm run build`, and `xcodebuild` are green.
+Native iOS capture for photos and voice notes. iOS-only override of the SPA's
+demo `addPhoto` / `recordVoice` handlers using Capacitor Camera, Filesystem,
+and capacitor-voice-recorder. Files persist to `Directory.Data`; paths
+round-trip through Step 14's `/api/stops/<id>/photos-link` and
+`/api/stops/<id>/voice` fetch interceptor — no new endpoints. Web behavior
+unchanged.
 
 ---
 
-## Files to Review
+## Files Changed
 
 ### New
 
-**`TourCompanion/packages/ios/src/runtime/plan-handler.ts`** (lines 1–133)
-The new handler. Key spots:
-- Lines 38–62 — request validation (destination + days range).
-- Lines 64–71 — missing-key 401 + client construction (uses `clientFactory` so tests inject a fake).
-- Lines 73–80 — LLM call wrapped in try/catch → 502 `ingest_failed` on throw.
-- Lines 82–115 — `TripPlan` → `TripCreateInput` mapping. `order_idx = idx`, `note: ""`, `promo: null`, `b.url ?? ""`, `b.done ?? false` cover the optional/required mismatches.
-- Lines 117–131 — `crypto.randomUUID()` with `Date.now()` fallback; 200 response shape matches Python `IngestOut`.
-
-**`TourCompanion/packages/ios/src/runtime/plan-handler.test.ts`** (lines 1–271)
-- Lines 22–40 — `FakeSettings` (in-memory key + model).
-- Lines 44–104 — `FakeStore` implementing the full `TripStore` interface; only `createTrip` records input, every other method throws to surface accidental calls.
-- Lines 107–115 — `makeFakeClient(json)` returns a deterministic stub `LLMClient` (no network).
-- Lines 117–155 — `validPlanJson(destination, days)` builds a parser-compatible `TripPlan` JSON.
-- Lines 157–172 — Test 1: 401 missing key (asserts `store.lastInput === null`).
-- Lines 174–183 — Test 2: 400 days=0.
-- Lines 185–194 — Test 3: 400 days=15.
-- Lines 196–205 — Test 4: 400 empty destination (`"   "` trimmed).
-- Lines 207–224 — Test 5: 502 when LLM throws.
-- Lines 226–266 — Test 6: 200 success — asserts `factoryArgs` carry key+model, `trip_id` plumbed through, days/stops/bookings mapped into `createTrip`.
+- `TourCompanion/packages/ios/src/runtime/capture/index.ts` (lines 1-53)
+  - `capturePhoto()` — lines 12-30
+  - `startVoice()` — lines 32-37
+  - `stopVoice()` — lines 39-53
 
 ### Modified
 
-**`TourCompanion/packages/ios/src/runtime/fetch-interceptor.ts`**
-- Lines 1–11 — header comment updated (ingest no longer 503-stubbed).
-- Line 12 — `import { handlePlanIngest } from "./plan-handler.js"`.
-- Lines 176–183 — replaced 503 stub with `handlePlanIngest(body, store, window.TCSettings!)` plus defensive `settings_unavailable` 500 if `window.TCSettings` is somehow missing.
+- `TourCompanion/packages/ios/src/runtime/entry.ts` (lines 1-117)
+  - Import added — line 18 (`capturePhoto, startVoice, stopVoice` from `./capture/index.js`)
+  - DOMContentLoaded override block — lines 48-115 (installs `window.addPhoto` + `window.recordVoice`; registers via `document.addEventListener("DOMContentLoaded", ...)` if `document.readyState === "loading"`, else runs immediately)
 
-**`TourCompanion/packages/ios/package.json`**
-- Line 10 — added `"test": "vitest run"`.
-- Line 26 — added `"vitest": "^1.0.0"` to devDependencies (hoisted from workspace root; no new install needed).
+- `TourCompanion/packages/ios/ios/App/App/Info.plist` (lines 1-57)
+  - `NSCameraUsageDescription` — lines 48-49
+  - `NSPhotoLibraryUsageDescription` — lines 50-51
+  - `NSPhotoLibraryAddUsageDescription` — lines 52-53
+  - `NSMicrophoneUsageDescription` — lines 54-55
 
-**`TourCompanion/packages/web/public/index.html`**
-- Lines ~1436–1441 — `submitIngest` catch block: 2 additional lines that check `e.message` for `missing_openai_key` and call `openSettingsModal()` if defined. No other code in the file touched.
+- `TourCompanion/packages/ios/package.json` (lines 17, 20, 24)
+  - `@capacitor/camera ^6.1.3`
+  - `@capacitor/filesystem ^6.0.4`
+  - `capacitor-voice-recorder ^6.0.3`
 
----
+- `TourCompanion/package-lock.json` — npm lockfile updates for the three plugins
 
-## Verification Run
-
-- `npm run build` → green. iOS bundle 99.3kb (was 90.5kb pre-Step-15; +8.8kb is plan-handler + the LLM/planner code pulled by the new `OpenAIClient` import).
-- `npm run typecheck` → green across both `@tourcompanion/core` and `@tourcompanion/ios`.
-- `npm test` → **79 tests** in 16 files (73 core + 6 new ios). All pass.
-- `npx cap sync ios` + `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` → `** BUILD SUCCEEDED **`.
-- No Python files touched; `git status TourCompanion/server/` empty.
+- `TourCompanion/packages/web/public/index.html`
+  - iOS bridge block right before `init();` near end of inline `<script>` (search `// iOS bridge`) — exposes `_stopIdFor`, `showSnack`, `renderTour`, `renderMemory` on window, plus a getter/setter `Object.defineProperty` for `STATE` (because `let STATE` does not auto-attach). Web behavior unchanged.
 
 ---
 
-## Open Questions
+## Verification
 
-1. **`apiCall` 401 → `logout()`.** When the user hits Generate with no OpenAI key, the 401 makes `apiCall` call `logout()` on the way out. On iOS this is harmless because auth is stubbed and `logout()` just clears local state — the Settings modal opens because `submitIngest`'s catch fires first. But it's mildly ugly. Should we add an iOS-specific bypass in `apiCall` for `missing_openai_key` 401s, or accept the current behaviour? Documented in BUILD-LOG.
-
-2. **Auto-test for the `submitIngest` `openSettingsModal()` call.** index.html has no test infrastructure (vanilla JS in an HTML file). I left it untested. The catch block is 3 lines; visual/runtime testing on the simulator is straightforward but out of scope here.
-
-3. **`fetch-interceptor.ts` `window.TCSettings!` non-null assertion.** The defensive `settings_unavailable` 500 below it makes the `!` lossless at runtime, but stylistically it's a TS escape hatch. Alternative: take a `() => TCSettings | undefined` provider param like `storeProvider`. Did not change the function signature this step — let me know if it's worth restructuring.
+- `npm run typecheck --workspace=@tourcompanion/ios` — **green**
+- `npm run build --workspace=@tourcompanion/ios` — **green** (`ios.bundle.js` 169.6 kB)
+- `npm test` (full monorepo) — **79 tests pass** (73 core + 6 iOS)
+- `npx cap sync ios` — clean, all 5 plugins detected (sqlite, camera, filesystem, secure-storage, voice-recorder)
+- `xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO` — **BUILD SUCCEEDED**
 
 ---
 
-## What I Need From Richard
+## Notes for Reviewer
 
-A standard review pass. Particularly: the mapping at lines 82–115 of `plan-handler.ts` is the largest single block, and the optional/required field handling there is where the biggest landmine sits if I missed a corner. The test exercises the booking + stops mapping but doesn't exhaustively cover every optional field.
+- **iOS-only.** The override is inside the `Capacitor.getPlatform() === "ios"` guard. Web SPA's demo `addPhoto` / `recordVoice` are unchanged.
+- **DOMContentLoaded sequencing.** `ios.bundle.js` is injected into `<head>` via `copy-web.mjs` — it parses BEFORE the SPA's inline `<script>` runs. That means at script-load the SPA's `addPhoto` / `_stopIdFor` are not yet on window. The override therefore registers on DOMContentLoaded (or runs synchronously if the DOM already finished parsing), which fires after the inline `<script>` block has executed and bridge globals are attached.
+- **STATE bridging via getter/setter.** `let STATE = null;` then later `STATE = ...;` inside the inline SPA means a plain `window.STATE = STATE` assignment would freeze the old value. `Object.defineProperty` with a getter/setter gives the iOS code a live read on the current SPA value.
+- **`window.confirm` UX is intentional v1 compromise** — Step 19 polishes with a styled modal per brief.
+- **`saveToGallery: false`** — photos stay sandboxed; `NSPhotoLibraryAddUsageDescription` is still required by Apple's Camera plugin gate even when unused.
+- **No new tests** — native plugins are not Node-runnable. Existing 79 tests still pass.
+- **No Python changes.**
+
+---
+
+**Ready for Review: YES**

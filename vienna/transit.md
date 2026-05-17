@@ -1,4 +1,7 @@
 <img src="../imgs/abbr_Mon_Sun.png" height="50%" width="50%" alt="abbreviations for Monday to Sunday in German" /> <br/>
+<img src="../imgs/vienna_train_map.png" height="50%" width="50%" /><br/>
+<img src="../imgs/largemap-s-wien.png" height="75%" width="75%" /><br/>
+[airport - arte hotel](https://maps.app.goo.gl/r5GN8QFMuztepC9G8)
 * [維也納停車 - video](https://youtu.be/UmdhnuNLvr8?si=ING_6Pbju7aeGRcN)
   * [Parking fees in Vienna](https://www.wien.gv.at/en/transportation/parking-fees#prepaid-parking-voucher)
   * [Where to buy parking vouchers](https://www.wien.gv.at/en/transportation/parking-voucher-where-to-buy)

@@ -12,7 +12,10 @@ def capacitor_pods
   pod 'Capacitor', :path => '../../../../node_modules/@capacitor/ios'
   pod 'CapacitorCordova', :path => '../../../../node_modules/@capacitor/ios'
   pod 'CapacitorCommunitySqlite', :path => '../../../../node_modules/@capacitor-community/sqlite'
+  pod 'CapacitorCamera', :path => '../../../../node_modules/@capacitor/camera'
+  pod 'CapacitorFilesystem', :path => '../../../../node_modules/@capacitor/filesystem'
   pod 'CapacitorSecureStoragePlugin', :path => '../../../../node_modules/capacitor-secure-storage-plugin'
+  pod 'CapacitorVoiceRecorder', :path => '../../../../node_modules/capacitor-voice-recorder'
 end
 
 target 'App' do

@@ -45,5 +45,13 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Take photos at your tour stops.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Pick photos for your tour stops.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save tour photos to your library.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Record voice notes at your tour stops.</string>
 </dict>
 </plist>
