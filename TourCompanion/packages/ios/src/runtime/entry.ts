@@ -16,6 +16,7 @@ import { initSqliteStore } from "./sqlite/index.js";
 import { keychainStore } from "./keychain/index.js";
 import { installFetchInterceptor } from "./fetch-interceptor.js";
 import { capturePhoto, startVoice, stopVoice } from "./capture/index.js";
+import { getCoords } from "./geo/index.js";
 // ./global.d.ts contributes ambient Window type augmentations; no runtime emit.
 
 // Synchronous on iOS: build the TripStore promise, install interceptor +
@@ -104,6 +105,37 @@ if (Capacitor.getPlatform() === "ios") {
         (window as any).renderMemory?.();
       } catch (e: any) {
         (window as any).showSnack?.("Voice failed: " + (e?.message ?? e));
+      }
+    };
+
+    // Step 17 — override the SPA's check-in handler so iOS check-ins are
+    // tagged with native GPS coords. `getCoords()` returns null on denial /
+    // timeout; we still POST (with `{}`) so the check-in is recorded — the
+    // fetch interceptor's `/checkin` route accepts missing `lat`/`lng`.
+    (window as any).checkIn = async (day: number, idx: number) => {
+      const stopId = (window as any)._stopIdFor?.(day, idx);
+      if (!stopId) return;
+      const coords = await getCoords();
+      try {
+        const res = await fetch(`/api/stops/${stopId}/checkin`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(coords ?? {}),
+        });
+        if (!res.ok) throw new Error(`check-in failed (${res.status})`);
+        const state = (window as any).STATE;
+        if (state) {
+          state.check_ins ??= {};
+          (state.check_ins[day] ??= []);
+          if (!state.check_ins[day].includes(idx)) state.check_ins[day].push(idx);
+          state.current_stop_index ??= {};
+          state.current_stop_index[day] = idx + 1;
+        }
+        (window as any).showSnack?.(coords ? "📍 Checked in (GPS)" : "📍 Checked in");
+        (window as any).renderTour?.();
+        (window as any).renderMemory?.();
+      } catch (e: any) {
+        (window as any).showSnack?.("Check-in failed: " + (e?.message ?? e));
       }
     };
   };

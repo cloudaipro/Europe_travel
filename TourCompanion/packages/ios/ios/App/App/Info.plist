@@ -53,5 +53,7 @@
 	<string>Save tour photos to your library.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Record voice notes at your tour stops.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Tag your check-ins with where you visited.</string>
 </dict>
 </plist>

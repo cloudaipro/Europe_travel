@@ -18,6 +18,7 @@
     "@capacitor/cli": "^6",
     "@capacitor/core": "^6",
     "@capacitor/filesystem": "^6.0.4",
+    "@capacitor/geolocation": "^6.1.1",
     "@capacitor/ios": "^6",
     "@tourcompanion/core": "*",
     "capacitor-secure-storage-plugin": "^0.10.0",

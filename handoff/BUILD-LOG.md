@@ -13,6 +13,28 @@
 
 ## Step History
 
+### Step 17 — Native Geolocation + GPS Check-ins on iOS — Status: AWAITING REVIEW
+
+What landed (2026-05-16):
+- **Plugin.** Installed `@capacitor/geolocation@^6.1.1` into `@tourcompanion/ios`. `npx cap sync ios` now reports 6 plugins (sqlite, camera, filesystem, geolocation, secure-storage, voice-recorder). Podfile.lock pins `CapacitorGeolocation 6.1.1`.
+- **iOS permission.** Added `NSLocationWhenInUseUsageDescription` ("Tag your check-ins with where you visited.") to `packages/ios/ios/App/App/Info.plist`. When-in-use only; no `NSLocationAlwaysAndWhenInUseUsageDescription` (v1 has no background tracking).
+- **Geo module.** New `packages/ios/src/runtime/geo/index.ts` exports a single `getCoords(): Promise<{lat,lng} | null>` that never throws. Calls `Geolocation.requestPermissions()` first; returns null unless `location === "granted"` OR `coarseLocation === "granted"` (iOS Reduced Accuracy is fine for tagging check-ins). Then `Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 })` and returns `{lat,lng}` from `pos.coords`. Any plugin throw is swallowed → null. Single attempt, no retries.
+- **Entry override.** `packages/ios/src/runtime/entry.ts` gets one new import (`getCoords` from `./geo/index.js`) and a third override inside the existing `installNativeCapture` DOMContentLoaded block (right after the `recordVoice` override). The override sets `window.checkIn = async (day, idx) => { ... }` which (1) resolves the stopId via the bridge's `window._stopIdFor`, (2) awaits `getCoords()`, (3) POSTs `/api/stops/<id>/checkin` with `coords ?? {}` as the body, (4) on success mirrors the SPA's local state update (`state.check_ins[day].push(idx)`, `state.current_stop_index[day] = idx + 1`) plus calls `renderTour()` + `renderMemory()`, (5) shows a snack tagged "(GPS)" when coords are present so the user can confirm the location grant worked.
+- **`window.checkIn` is auto-bound.** `checkIn` in `packages/web/public/index.html` is a top-level `async function checkIn(...)` declaration inside a classic `<script>`, so it's already on window — no change to the `// iOS bridge` block needed. Verified via grep (`function declarations are window-accessible` per Step 16's bridge comment).
+- **Fetch interceptor unchanged.** Step 14's `/api/stops/{id}/checkin` route already accepts `payload.lat`/`payload.lng` (defaulted to `null` when missing), so the same iOS-side handler stores either a tagged or untagged check-in row depending on what `getCoords()` returned. No new endpoints, no Python changes.
+- **Web fallback untouched.** The SPA's `async function checkIn` still runs on web; web check-ins continue to POST an empty body (no browser GPS in v1, as designed).
+- **Verification.** `npm run typecheck --workspace=@tourcompanion/ios` clean. `npm run build` (full monorepo) clean — iOS bundle is now **173.2 kB** (was 169.6 kB; +3.6 kB for the Geolocation plugin's JS shim). `npm test` (full monorepo) → 73 core + 6 iOS = **79 tests pass**. `npx cap sync ios` → "Sync finished in 1.667s", 6 plugins detected. `xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO` → **BUILD SUCCEEDED**.
+
+Decisions made (judgment calls beyond the brief):
+- **State mutation guards added** — the brief's example used `(s.check_ins[day] ??= []).includes(idx) || s.check_ins[day].push(idx)` which is terse but relies on `STATE.check_ins` existing. The native override now wraps the mutation in `if (state)` and initialises `state.check_ins ??= {}` + `state.current_stop_index ??= {}` so a hot-reload before the SPA's `init()` runs can't NPE the bridge.
+- **`renderTour?.()` / `renderMemory?.()` / `showSnack?.()` use optional chaining** — matches the photo/voice override style in the same file (line 73 et al). The bridge hot-attaches these functions; the `?.` guard is belt-and-suspenders only.
+- **Per-call permission request** — `Geolocation.requestPermissions` is called every check-in. iOS caches the answer at the OS level, so this is cheap. The alternative (request once at boot) would gate the SPA on a permission prompt the user hasn't asked for yet.
+- **`enableHighAccuracy: true` + 30s cache** — the brief specifies both; combining them is intentional. iOS will serve a recent fine-accuracy fix from the cache when available; if none, it warms up GPS for up to 8s.
+- **No new tests** — the Geolocation plugin can't run under vitest (no native bridge). The override's branch logic is trivial enough to defer to xcodebuild + manual smoke; existing 79 tests still pass to guarantee no regressions.
+- **`window.checkIn` is not added to the `// iOS bridge` block.** Step 16's bridge block lists four overrides because they're `let`-bound or non-window symbols; `checkIn` is a top-level `async function` declaration and is already on window. The brief's verification step 5 says "should be auto" and explicitly endorses this.
+
+Known Gaps: none introduced.
+
 ### Step 16 — Camera + Filesystem + Voice Recorder (Native iOS Capture) — Status: AWAITING REVIEW
 
 What landed (2026-05-16):

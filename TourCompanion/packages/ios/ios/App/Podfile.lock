@@ -10,6 +10,8 @@ PODS:
   - CapacitorCordova (6.2.1)
   - CapacitorFilesystem (6.0.4):
     - Capacitor
+  - CapacitorGeolocation (6.1.1):
+    - Capacitor
   - CapacitorSecureStoragePlugin (0.10.0):
     - Capacitor
     - SwiftKeychainWrapper
@@ -29,6 +31,7 @@ DEPENDENCIES:
   - "CapacitorCommunitySqlite (from `../../../../node_modules/@capacitor-community/sqlite`)"
   - "CapacitorCordova (from `../../../../node_modules/@capacitor/ios`)"
   - "CapacitorFilesystem (from `../../../../node_modules/@capacitor/filesystem`)"
+  - "CapacitorGeolocation (from `../../../../node_modules/@capacitor/geolocation`)"
   - CapacitorSecureStoragePlugin (from `../../../../node_modules/capacitor-secure-storage-plugin`)
   - CapacitorVoiceRecorder (from `../../../../node_modules/capacitor-voice-recorder`)
 
@@ -49,6 +52,8 @@ EXTERNAL SOURCES:
     :path: "../../../../node_modules/@capacitor/ios"
   CapacitorFilesystem:
     :path: "../../../../node_modules/@capacitor/filesystem"
+  CapacitorGeolocation:
+    :path: "../../../../node_modules/@capacitor/geolocation"
   CapacitorSecureStoragePlugin:
     :path: "../../../../node_modules/capacitor-secure-storage-plugin"
   CapacitorVoiceRecorder:
@@ -60,12 +65,13 @@ SPEC CHECKSUMS:
   CapacitorCommunitySqlite: 0299d20f4b00c2e6aa485a1d8932656753937b9b
   CapacitorCordova: 8d93e14982f440181be7304aa9559ca631d77fff
   CapacitorFilesystem: 5b9aec35c0212bd0064e26d278c93e925864f212
+  CapacitorGeolocation: ef657a46a125be74010f4ce57caae173c23204d2
   CapacitorSecureStoragePlugin: 545b51d782d35e61a39231ecf99a966b060a2cbb
   CapacitorVoiceRecorder: 27c4c998c2280571d853579f319f6f53f884bdee
   SQLCipher: eb79c64049cb002b4e9fcb30edb7979bf4706dfc
   SwiftKeychainWrapper: 807ba1d63c33a7d0613288512399cd1eda1e470c
   ZIPFoundation: dfd3d681c4053ff7e2f7350bc4e53b5dba3f5351
 
-PODFILE CHECKSUM: 92dd2496a540e3a5ab90311cc998bf77153ef8f2
+PODFILE CHECKSUM: b5c44a103b3946d06a3c7c5b2460d39965ead498
 
 COCOAPODS: 1.16.2
